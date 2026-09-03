@@ -75,7 +75,6 @@ CATEGORIES = [
     # --- Колекційне (запечатане, конкретний товарний ряд) ---
     {"query": "Pokemon Booster Box versiegelt", "min_price": 60},
     {"query": "Magic The Gathering Booster Box sealed", "min_price": 70},
-    {"query": "Pokemon TCG Starter Deck versiegelt", "min_price": 10},
     # --- Настолки (конкретні тайтли — визначений SKU, повтор, epid) ---
     {"query": "Catan Brettspiel neu",           "min_price": 22},
     {"query": "Ark Nova Brettspiel",            "min_price": 35},
@@ -90,7 +89,9 @@ CATEGORIES = [
     {"query": "LEGO 42143 Ferrari",             "min_price": 250},  # Daytona SP3
     {"query": "LEGO 10297 Boutique Hotel",      "min_price": 150},
     # --- TCG sealed (великий розрив «продавець не знає ціни») ---
-    {"query": "Pokemon 151 Elite Trainer Box",         "min_price": 45},
+    # Прибрано "Pokemon 151 Elite Trainer Box" і "Pokemon TCG Starter Deck
+    # versiegelt": запит ловив діапазон цін у ~10x (колода €12 … кейс €240),
+    # усе злипалось в 1 ключ → медіана безглузда, флуд фальшивих кандидатів.
     {"query": "Disney Lorcana Booster Display",         "min_price": 80},
     {"query": "Flesh and Blood Booster Box",            "min_price": 65},
     # --- Диски: ігри, що виходять з друку (Switch — Nintendo знімає з продажу) ---

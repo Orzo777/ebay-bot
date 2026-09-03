@@ -26,6 +26,7 @@ import re
 import statistics
 import sys
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote_plus
@@ -75,9 +76,26 @@ def _days_between(a_iso: str, b_iso: str) -> int:
     return (date.fromisoformat(b_iso[:10]) - date.fromisoformat(a_iso[:10])).days
 
 
+def _norm_title(s: str) -> str:
+    """Нормалізація назви перед токенізацією:
+    lower + фолд німецьких умлаутів (ä→ae, ö→oe, ü→ue, ß→ss) + зняття решти
+    діакритики (é→e, ñ→n, á→a, ç→c …). Без цього регексп-спліт по не-[a-z0-9äöüß]
+    рубав слова НАВПІЛ на акцентованих літерах: "pokémon" → "pok"+"mon",
+    "Sián" → "si"+"n" тощо."""
+    s = (s or "").lower()
+    s = (s.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+           .replace("ß", "ss"))
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def _tokens(s: str) -> list:
+    return [w for w in re.split(r"[^a-z0-9]+", _norm_title(s)) if w]
+
+
 def _title_sim(a: str, b: str) -> float:
-    ta = {w for w in re.split(r"[^a-z0-9]+", (a or "").lower()) if len(w) >= 2}
-    tb = {w for w in re.split(r"[^a-z0-9]+", (b or "").lower()) if len(w) >= 2}
+    ta = {w for w in _tokens(a) if len(w) >= 2}
+    tb = {w for w in _tokens(b) if len(w) >= 2}
     if not ta or not tb:
         return 0.0
     return len(ta & tb) / len(ta | tb)
@@ -234,23 +252,30 @@ def blocklisted(item: dict):
 # epid, якщо є (точна привʼязка до каталогу). Інакше — грубий підпис із назви:
 # бренд + модель + місткість/обсяг + бакет стану. Колір, комплектація, "OVP",
 # емоційні прикметники — відкидаються. Такі товари позначаються lower_confidence.
-_KEY_STOP = {
+# набори проганяються через _norm_title() → усі елементи в тій самій формі,
+# що й токени назви (умлаути → ae/oe/ue/ss).
+_KEY_STOP = {_norm_title(w) for w in (
     "neu", "new", "ovp", "original", "originalverpackt", "versiegelt", "sealed",
     "set", "kit", "und", "mit", "für", "fur", "the", "der", "die", "das", "von",
-    "inkl", "incl", "stück", "stuck", "stk", "pcs", "pc", "top", "sofort",
-    "versand", "blitzversand", "rechnung", "händler", "haendler", "garantie",
+    "inkl", "incl", "stück", "stk", "pcs", "pc", "top", "sofort",
+    "versand", "blitzversand", "rechnung", "händler", "garantie",
     "gebraucht", "wie", "sehr", "gut", "zustand", "aktion", "angebot", "deal",
-    "günstig", "guenstig", "selten", "rar", "komplett", "vollständig",
-    "vollstaendig", "boxed", "box", "karton", "generalüberholt", "refurbished",
-    "ersatz", "zubehör", "zubehoer", "kleinteil", "teile", "lesen",
+    "günstig", "selten", "rar", "komplett", "vollständig",
+    "boxed", "box", "karton", "generalüberholt", "refurbished",
+    "ersatz", "zubehör", "kleinteil", "teile", "lesen",
     "beschreibung", "fotos", "siehe", "nagelneu", "makelloser",
-}
-_KEY_COLOR = {
-    "schwarz", "weiss", "weiß", "blau", "rot", "grün", "gruen", "gelb", "rosa",
+    # платформи/формати/загальні слова — не несуть ідентичності товару
+    "nintendo", "switch", "playstation", "ps3", "ps4", "ps5", "xbox", "konsole",
+    "konsolen", "spiel", "spiele", "game", "games", "edition", "deluxe",
+    "standard", "disc", "disk", "bluray", "dvd", "code", "key", "download",
+    "dlc", "eu", "de", "uk", "usa", "pal", "englisch", "english", "deutsch",
+)}
+_KEY_COLOR = {_norm_title(w) for w in (
+    "schwarz", "weiss", "weiß", "blau", "rot", "grün", "gelb", "rosa",
     "pink", "grau", "silber", "gold", "black", "white", "blue", "red", "green",
-    "grey", "gray", "space", "titan", "natur", "beige", "türkis", "tuerkis",
+    "grey", "gray", "space", "titan", "natur", "beige", "türkis",
     "lila", "violett", "orange", "braun", "anthrazit", "mint",
-}
+)}
 _KEY_NUMNOISE = {
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "16", "18",
     "24", "36", "48", "1x", "2x", "3x", "4x", "5x", "6x", "2er", "3er", "4er",
@@ -269,8 +294,8 @@ def product_key(item: dict):
     if epid:
         return f"epid:{epid}", False
 
-    title = (item.get("title") or "").lower()
-    toks = [w for w in re.split(r"[^a-z0-9äöüß]+", title) if w]
+    title = _norm_title(item.get("title") or "")
+    toks = [w for w in re.split(r"[^a-z0-9]+", title) if w]
     caps = sorted({f"{m.group(1)}{m.group(2)}" for m in _KEY_CAP.finditer(title)})
     sig_words = [w for w in toks if w.isalpha() and len(w) >= 3
                  and w not in _KEY_STOP and w not in _KEY_COLOR]
