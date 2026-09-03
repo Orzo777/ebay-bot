@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+bot.log
+stop.flag
+discovery_log.jsonl
+price_history.json
+price_history.json.tmp
+discovery_report.md
+report_console.txt

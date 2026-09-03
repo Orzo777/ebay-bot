@@ -1,0 +1,44 @@
+name: discovery-report
+
+# Запуск вручну: вкладка Actions → "discovery-report" → Run workflow.
+# Читає накопичений стан і кладе discovery_report.md в артефакти прогону
+# (кнопка Summary → Artifacts → завантажити).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            price_history.json
+            discovery_log.jsonl
+          key: botstate-${{ github.run_id }}
+          restore-keys: botstate-
+
+      - name: Build report
+        env:
+          EBAY_MARKETPLACE_ID: ${{ vars.EBAY_MARKETPLACE_ID || 'EBAY_DE' }}
+          PYTHONIOENCODING: utf-8
+        run: python main.py --discovery-report | tee report_console.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discovery-report
+          path: |
+            discovery_report.md
+            report_console.txt

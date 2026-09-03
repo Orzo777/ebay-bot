@@ -1,0 +1,69 @@
+name: poll
+
+# Один прогін бота що ~30 хв. GitHub Actions безкоштовний і БЕЗ картки.
+# Стан (price_history.json, discovery_log.jsonl) зберігається між прогонами
+# через actions/cache (rolling-key: зберігаємо під унікальним ключем,
+# відновлюємо найсвіжіший за префіксом).
+#
+# Розклад cron у GitHub — "best effort": реальні запуски бувають на 5-20 хв
+# пізніше, іноді пропускаються під навантаженням. Для повільних/дорогих товарів
+# це ок; за швидкими угодами — краще always-on (телефон/Pi/ноут).
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}          # кнопка "Run workflow" вручну
+
+concurrency:
+  group: poll
+  cancel-in-progress: false      # прогони не наздоганяють один одного
+
+permissions:
+  contents: read
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            price_history.json
+            discovery_log.jsonl
+          key: botstate-${{ github.run_id }}
+          restore-keys: botstate-
+
+      - name: Ensure state files exist
+        run: |
+          test -f price_history.json || printf '{"history":{},"listings":{},"alerted_item_ids":[],"discovery_seen":[],"key_map":{},"key_query":{},"key_conf":{}}\n' > price_history.json
+          test -f discovery_log.jsonl || : > discovery_log.jsonl
+
+      - name: One pass
+        env:
+          EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+          EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EBAY_MARKETPLACE_ID: ${{ vars.EBAY_MARKETPLACE_ID || 'EBAY_DE' }}
+          DISCOVERY_MODE: ${{ vars.DISCOVERY_MODE || 'true' }}
+          PYTHONIOENCODING: utf-8
+        run: python main.py --once
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            price_history.json
+            discovery_log.jsonl
+          key: botstate-${{ github.run_id }}
