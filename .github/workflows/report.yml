@@ -7,6 +7,10 @@ name: discovery-report
 on:
   workflow_dispatch: {}
 
+concurrency:
+  group: report
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -39,6 +43,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: discovery-report
+          retention-days: 2
           path: |
             discovery_report.md
             report_console.txt
