@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 bot.log
 trigger.log
+trigger_secret.bat
 stop.flag
 discovery_log.jsonl
 price_history.json
