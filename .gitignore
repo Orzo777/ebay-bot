@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 bot.log
+trigger.log
 stop.flag
 discovery_log.jsonl
 price_history.json
