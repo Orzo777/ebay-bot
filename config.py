@@ -63,11 +63,13 @@ CATEGORIES = [
     {"query": "Flesh and Blood Booster Box",            "min_price": 65},
     # --- Warhammer / мініатюри (GW-пластик ~ непідробний; GW щороку +ціни) ---
     {"query": "Warhammer 40k Leviathan",               "min_price": 90},
-    {"query": "Warhammer 40k Combat Patrol",           "min_price": 60},
+    {"query": "Warhammer 40k Combat Patrol",           "min_price": 90},
     {"query": "Warhammer Necromunda",                  "min_price": 50},
     {"query": "Warhammer 40k Start Collecting",        "min_price": 50},
     {"query": "Warhammer Underworlds",                 "min_price": 25},
-    {"query": "Star Wars Legion",                      "min_price": 30},
+    # Legion: запит широкий (core set + десятки юніт-паків) — поріг €70 цілить
+    # лише в core/великі експансії, відсікає поштучні паки/кубики/кодекси.
+    {"query": "Star Wars Legion",                      "min_price": 70},
     # --- Дитяче / аудіо (ліцензійний контент — підробка безсенсова) ---
     {"query": "Ravensburger tiptoi Starterset",        "min_price": 30},
     # --- Консольні видання (запечатане, колекційне) ---
