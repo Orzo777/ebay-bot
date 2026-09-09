@@ -38,71 +38,46 @@ TELEGRAM_CHAT_ID = _get("TELEGRAM_CHAT_ID")
 TELEGRAM_API_BASE = "https://api.telegram.org"
 
 # --- Що шукаємо ------------------------------------------------------------
-# ШИРОКИЙ список під "режим розвідки" (DISCOVERY_MODE): напрямки з підтвердженим
-# високим sell-through rate, де низька ціна НЕ пояснюється станом товару.
+# ФОКУСНИЙ список: компактне, важко підробити, медіана ~€90-410, розкид цін
+# ("продавець не знає ціни"). Бюджет ~€1к → 5-8 позицій одночасно. Кожен напрям
+# пройшов пробник структурної придатності (обсяг лотів + повторюваність
+# product_key) і перевірку стану ринку (вересень 2026).
 #
-# min_price — очікувана НИЖНЯ межа реальної ціни ЦЬОГО товару (EUR), підібрана
-# під кожну категорію окремо на живих даних. Іде у filter=price:[min_price..] в
-# ОБОХ запитах циклу. Без неї sort=price тягне у вибірку аксесуарний шум
-# (поштучні деталі, захисні стекла), і товар не потрапляє в перші 50.
-# Значення різні: LEGO/iPhone — сотні євро, фільтри/еспандери/йога — десятки.
+# min_price — очікувана НИЖНЯ межа реальної ціни ЦЬОГО товару (EUR), ~45-55%
+# від спостереженої медіани. Іде у filter=price:[min_price..] в ОБОХ запитах
+# циклу. Без неї sort=price тягне у вибірку аксесуарний шум (поштучні деталі,
+# протектори карт, кабелі), і товар не потрапляє в перші 50.
 #
-# Список пройшов перевірку структурної придатності (див. README «Придатність
-# категорії»): прибрані запити, де ОДИН product_key бачиться раз-два за весь
-# період (загальні описові запити на десятки тисяч різних товарів —
-# "Vinyl ... versiegelt", "Playmobil Set", "Ravensburger Spiel"/"Puzzle",
-# "LEGO City/Duplo Set", "Trekkingrucksack/-stöcke") або надто тонкі ринки з
-# < ~50 лотів усього ("Dior Sauvage neu OVP" 8, "Instant Pot Dichtungsring" 12,
-# "Protein/Kreatin Pulver" 15/21, "Stirnlampe LED" 33, "Shimano Schaltgruppe" 34,
-# "Pokemon 151 Display" 19, "Vitamix Behälter" 68). Для них MIN_HISTORY_POINTS
-# практично не набирається → вічний UNKNOWN без корисного сигналу.
+# Свідомо НЕ включено: дешеві витратники (фільтри/еспандери — реальний виграш
+# €5-15), габаритне (електроінструмент, меблі — дорога пересилка), структурно
+# тонкі ринки (LEGO за SKU, нішеві настолки, вінілові платівки — фрагментація
+# по пресингу), легко-підроблюване (AirPods, Leatherman), Pokemon 151 та Marvel
+# Crisis Protocol (спадний ринок), Playmobil (банкрутство geobra, лютий 2026).
 CATEGORIES = [
-    # --- Пилососи / запчастини (витратні деталі, компактна пересилка) ---
-    {"query": "Dyson Filter Ersatz",            "min_price": 8},
-    {"query": "Dyson Zubehör Set neu",          "min_price": 18},
-    {"query": "Roomba Bürsten Ersatzteile",     "min_price": 9},
-    {"query": "Shark Staubsauger Filter",       "min_price": 8},
-    # --- Дрібна кухонна техніка ---
-    {"query": "Ninja Blender neu",              "min_price": 45},
-    {"query": "Vorwerk Thermomix TM6 Zubehör",  "min_price": 15},
-    {"query": "Kärcher Fenstersauger",          "min_price": 25},
-    # --- Сад / фітнес (компактне) ---
-    {"query": "Gardena Gartengeräte Set neu",   "min_price": 35},
-    {"query": "Widerstandsband Set Fitness",    "min_price": 8},
-    {"query": "Yogamatte Set neu",              "min_price": 14},
-    # --- Похід (компактне спорядження) ---
-    {"query": "Camping Kochgeschirr Set neu",   "min_price": 12},
-    # --- Колекційне (запечатане, конкретний товарний ряд) ---
-    {"query": "Pokemon Booster Box versiegelt", "min_price": 60},
+    # --- Запечатане TCG (шринк + вага = важко підробити; «продавець не знає ціни») ---
     {"query": "Magic The Gathering Booster Box sealed", "min_price": 70},
-    # --- Настолки (конкретні тайтли — визначений SKU, повтор, epid) ---
-    {"query": "Catan Brettspiel neu",           "min_price": 22},
-    {"query": "Ark Nova Brettspiel",            "min_price": 35},
-    {"query": "Dune Imperium Brettspiel",       "min_price": 28},
-    {"query": "Everdell Brettspiel",            "min_price": 40},
-    {"query": "Terraforming Mars Brettspiel",   "min_price": 30},
-    # --- LEGO — конкретні флагмани (пік волатильності перед зняттям з випуску) ---
-    {"query": "LEGO 10307",                     "min_price": 430},  # Eiffelturm
-    {"query": "LEGO 10294 Titanic",             "min_price": 400},
-    {"query": "LEGO 71043 Hogwarts",            "min_price": 320},  # Schloss
-    {"query": "LEGO 75313 AT-AT",               "min_price": 700},
-    {"query": "LEGO 42143 Ferrari",             "min_price": 250},  # Daytona SP3
-    {"query": "LEGO 10297 Boutique Hotel",      "min_price": 150},
-    # --- TCG sealed (великий розрив «продавець не знає ціни») ---
-    # Прибрано "Pokemon 151 Elite Trainer Box" і "Pokemon TCG Starter Deck
-    # versiegelt": запит ловив діапазон цін у ~10x (колода €12 … кейс €240),
-    # усе злипалось в 1 ключ → медіана безглузда, флуд фальшивих кандидатів.
+    {"query": "Pokemon Booster Box versiegelt",         "min_price": 60},
     {"query": "Disney Lorcana Booster Display",         "min_price": 80},
+    {"query": "One Piece Card Game Display OP",         "min_price": 60},
+    {"query": "Star Wars Unlimited Booster Box",        "min_price": 55},
     {"query": "Flesh and Blood Booster Box",            "min_price": 65},
-    # --- Диски: ігри, що виходять з друку (Switch — Nintendo знімає з продажу) ---
-    {"query": "Xenoblade Chronicles Definitive Edition Switch", "min_price": 30},
-    {"query": "Fire Emblem Three Houses Switch",        "min_price": 35},
-    {"query": "Metroid Prime Remastered Switch",        "min_price": 25},
-    # --- Мініатюри ---
-    {"query": "Warhammer 40k Leviathan",        "min_price": 90},
-    # --- Контрольні точки для порівняння ---
-    {"query": "LEGO 75192",                     "min_price": 280},
-    {"query": "iPhone 15",                      "min_price": 320},
+    # --- Warhammer / мініатюри (GW-пластик ~ непідробний; GW щороку +ціни) ---
+    {"query": "Warhammer 40k Leviathan",               "min_price": 90},
+    {"query": "Warhammer 40k Combat Patrol",           "min_price": 60},
+    {"query": "Warhammer Necromunda",                  "min_price": 50},
+    {"query": "Warhammer 40k Start Collecting",        "min_price": 50},
+    {"query": "Warhammer Underworlds",                 "min_price": 25},
+    {"query": "Star Wars Legion",                      "min_price": 30},
+    # --- Дитяче / аудіо (ліцензійний контент — підробка безсенсова) ---
+    {"query": "Ravensburger tiptoi Starterset",        "min_price": 30},
+    # --- Консольні видання (запечатане, колекційне) ---
+    {"query": "Zelda Tears of the Kingdom Collector's Edition", "min_price": 80},
+    # --- Аудіо / муз. інструменти (визначений SKU, churn від апгрейдів) ---
+    {"query": "Rode NT1",                              "min_price": 110},
+    {"query": "Electro-Harmonix Big Muff",             "min_price": 55},
+    # --- Хоум-офіс (корпоративний churn, важко підробити) ---
+    {"query": "Jabra Evolve2 65",                      "min_price": 90},
+    {"query": "Keychron Tastatur",                     "min_price": 70},
 ]
 
 # Параметри виклику Browse API (GET /buy/browse/v1/item_summary/search)
@@ -221,8 +196,8 @@ DISCOVERY_LOG_FILE = _get("DISCOVERY_LOG_FILE", "discovery_log.jsonl")
 DISCOVERY_REPORT_FILE = _get("DISCOVERY_REPORT_FILE", "discovery_report.md")
 
 # Інтервал полінгу за замовчуванням (для `--interval` без значення).
-# 1800с → 48 циклів/добу. Бюджет: 2 виклики × 34 категорії × 48 = 3264/добу
-# (≈ 65% від ліміту eBay 5000/добу).
+# 1800с → 48 циклів/добу. Бюджет: 2 виклики × 18 категорій × 48 = 1728/добу
+# (≈ 35% від ліміту eBay 5000/добу; запас під частіші тригери з ноута).
 POLL_INTERVAL_SECONDS = int(_get("POLL_INTERVAL_SECONDS", "1800"))
 
 # --- Локальний стан --------------------------------------------------------
