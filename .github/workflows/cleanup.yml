@@ -1,0 +1,83 @@
+name: cleanup
+
+# Запуск вручну: вкладка Actions → "cleanup" → Run workflow.
+# Прибирає з discovery_log.jsonl рядки категорій, яких уже немає в
+# config.CATEGORIES (залишки з часів, коли список категорій був ширший).
+# price_history.json проходить через restore/save незмінним.
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: cleanup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            price_history.json
+            discovery_log.jsonl
+          key: botstate-${{ github.run_id }}
+          restore-keys: botstate-
+
+      - name: Prune discovery_log.jsonl to current CATEGORIES
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python - <<'PY'
+          import json
+          import config
+
+          keep = {c["query"] for c in config.CATEGORIES}
+          kept, dropped, by_dropped = [], 0, {}
+          with open("discovery_log.jsonl", encoding="utf-8") as f:
+              for line in f:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  row = json.loads(line)
+                  cat = row.get("category")
+                  if cat in keep:
+                      kept.append(line)
+                  else:
+                      dropped += 1
+                      by_dropped[cat] = by_dropped.get(cat, 0) + 1
+
+          with open("discovery_log.jsonl", "w", encoding="utf-8") as f:
+              for line in kept:
+                  f.write(line + "\n")
+
+          print(f"Залишено рядків: {len(kept)}   Прибрано (старі категорії): {dropped}")
+          for cat, n in sorted(by_dropped.items(), key=lambda x: -x[1]):
+              print(f"  - {cat}: {n}")
+          PY
+
+      - name: Save pruned state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            price_history.json
+            discovery_log.jsonl
+          key: botstate-${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pruned-discovery-log
+          retention-days: 3
+          path: discovery_log.jsonl
