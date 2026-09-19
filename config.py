@@ -55,18 +55,10 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 # Crisis Protocol (спадний ринок), Playmobil (банкрутство geobra, лютий 2026).
 CATEGORIES = [
     # --- Запечатане TCG (шринк + вага = важко підробити; «продавець не знає ціни») ---
-    {"query": "Magic The Gathering Booster Box sealed", "min_price": 70},
-    {"query": "Pokemon Booster Box versiegelt",         "min_price": 60},
     {"query": "Disney Lorcana Booster Display",         "min_price": 80},
     {"query": "One Piece Card Game Display OP",         "min_price": 60},
-    {"query": "Star Wars Unlimited Booster Box",        "min_price": 55},
-    {"query": "Flesh and Blood Booster Box",            "min_price": 65},
     # --- Warhammer / мініатюри (GW-пластик ~ непідробний; GW щороку +ціни) ---
-    {"query": "Warhammer 40k Leviathan",               "min_price": 90},
     {"query": "Warhammer 40k Combat Patrol",           "min_price": 90},
-    {"query": "Warhammer Necromunda",                  "min_price": 50},
-    {"query": "Warhammer 40k Start Collecting",        "min_price": 50},
-    {"query": "Warhammer Underworlds",                 "min_price": 25},
     # Legion: запит широкий (core set + десятки юніт-паків) — поріг €70 цілить
     # лише в core/великі експансії, відсікає поштучні паки/кубики/кодекси.
     {"query": "Star Wars Legion",                      "min_price": 70},
@@ -79,7 +71,6 @@ CATEGORIES = [
     {"query": "Electro-Harmonix Big Muff",             "min_price": 55},
     # --- Хоум-офіс (корпоративний churn, важко підробити) ---
     {"query": "Jabra Evolve2 65",                      "min_price": 90},
-    {"query": "Keychron Tastatur",                     "min_price": 70},
 ]
 
 # Параметри виклику Browse API (GET /buy/browse/v1/item_summary/search)
