@@ -1,0 +1,32 @@
+name: export-state
+
+# Одноразово, вручну: віддає price_history.json + discovery_log.jsonl як
+# артефакт (1 день) для офлайн-аналізу/симуляцій. READ-ONLY, кеш не змінює.
+# Вміст: публічні дані лістингів eBay (id, назви, ціни, імена продавців), без ключів.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            price_history.json
+            discovery_log.jsonl
+          key: botstate-${{ github.run_id }}
+          restore-keys: botstate-
+      - uses: actions/upload-artifact@v4
+        with:
+          name: state-export
+          retention-days: 1
+          path: |
+            price_history.json
+            discovery_log.jsonl
