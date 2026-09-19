@@ -1,0 +1,48 @@
+name: analyze
+
+# Запуск вручну: Actions → "analyze" → Run workflow (поле since — дата для B2).
+# READ-ONLY: відновлює кеш стану, запускає analyze.py, нічого не зберігає назад.
+# Артефакт analysis-report містить analysis_console.txt.
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Дата для фіксованого вікна (YYYY-MM-DD)"
+        required: false
+        default: "2026-09-17"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            price_history.json
+            discovery_log.jsonl
+          key: botstate-${{ github.run_id }}
+          restore-keys: botstate-
+
+      - name: Analyze
+        env:
+          PYTHONIOENCODING: utf-8
+          SINCE: ${{ inputs.since }}
+        run: python analyze.py --since "${SINCE:-2026-09-17}" | tee analysis_console.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analysis-report
+          retention-days: 3
+          path: analysis_console.txt
