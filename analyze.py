@@ -107,6 +107,21 @@ def part_a(store, today):
     print("  * key_query = запит, під яким ключ УПЕРШЕ побачили; ключ, що "
           "перетинається з іншою категорією, рахується за першою.")
 
+    print("\nA5. Чутливість «готових» до вікна історії + прогноз (чинні категорії)")
+    print("    W = HISTORY_WINDOW_DAYS. Стовпці 23/24.09 — лише з уже записаних "
+          "точок, без НОВИХ лістингів (нижня межа).")
+    cols = [("сьогодні W=14", today, 14), ("W=21", today, 21), ("W=30", today, 30),
+            ("23.09 W=14", date(2026, 9, 23), 14), ("24.09 W=14", date(2026, 9, 24), 14)]
+    snaps = [ready_asof(store, a, w, M) for _, a, w in cols]
+    print(f"  {'категорія':<44}" + "".join(f"{n:>15}" for n, _, _ in cols))
+    tot = [0] * len(cols)
+    for cat in config.CATEGORIES:
+        ks = by_q.get(cat["query"], [])
+        vals = [sum(1 for k in ks if s.get(k, 0) >= M) for s in snaps]
+        tot = [a + b for a, b in zip(tot, vals)]
+        print(f"  {cat['query']:<44}" + "".join(f"{v:>15}" for v in vals))
+    print(f"  {'РАЗОМ (чинні)':<44}" + "".join(f"{v:>15}" for v in tot))
+
 
 def part_b(store, today, since):
     rows = _load_discovery_rows()
