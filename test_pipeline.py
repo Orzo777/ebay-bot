@@ -122,6 +122,15 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(st["hold_reasons"], {"liq-unknown": 1})
         self.assertEqual(self.sent, [])
 
+    def test_stale_listing_is_held(self):
+        # «знахідка», що висить роками, — пастка/привид, а не угода
+        self.run_pass(T0)
+        self.world.append(listing("v1|old", 80, seller="ghost", itemCreationDate="2023-11-01T09:00:00.000Z"))
+        store, st = self.run_pass(T0 + timedelta(minutes=30), "live")
+        self.assertEqual(st["verdicts"]["ALERT"], 0)
+        self.assertIn("stale-listing", st["hold_reasons"])
+        self.assertEqual(self.sent, [])
+
     def test_weak_seller_is_held(self):
         self.run_pass(T0)
         self.world.append(listing("v1|deal", 80, seller="risky", fb=12, pct="96.0"))

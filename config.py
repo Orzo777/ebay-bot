@@ -231,6 +231,10 @@ IDENTITY_V2 = _get("IDENTITY_V2", "true").lower() in ("1", "true", "yes", "on")
 # У Telegram лише ці рівні ліквідності (UNKNOWN/LOW → у shadow-лог із причиною).
 ALERT_TIERS = [t for t in _get("ALERT_TIERS", "OK,MEDIUM").split(",") if t]
 # Суворіший продавець для СПОВІЩЕННЯ (еталон рахується за базовим MIN_SELLER_*).
+# Вік лота (itemCreationDate). Справжня знижка не висить тижнями: її купують за години.
+# Лот, що місяцями/роками висить на пів-ціни, — «привид» (продавець скасовує замовлення)
+# або застарілий GTC. Старіші за це число днів → HOLD "stale-listing".
+ALERT_MAX_AGE_DAYS = float(_get("ALERT_MAX_AGE_DAYS", "7"))
 ALERT_MIN_SELLER_SCORE = int(_get("ALERT_MIN_SELLER_SCORE", "25"))
 ALERT_MIN_SELLER_PCT = float(_get("ALERT_MIN_SELLER_PCT", "97.0"))
 STATE_SCHEMA = 2

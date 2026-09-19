@@ -704,6 +704,7 @@ def _age_txt(created: str | None) -> str:
         hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
     except ValueError:
         return "невідомо"
+    hours = max(0.0, hours)
     return f"{hours:.0f} год тому" if hours < 48 else f"{hours / 24:.0f} дн. тому"
 
 
@@ -889,6 +890,14 @@ def process_category(cat, summaries, store, liq, now, stats, quiet, *, strict=Tr
         stats["seeded_now"].append(query)
 
 
+def _age_days(created: str | None, now: datetime):
+    try:
+        dt = datetime.fromisoformat((created or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return max(0.0, (now - dt).total_seconds() / 86400)
+
+
 def _judge(item, tp, key, query, cat, ref, store, liq, now, stats, quiet, use_v2):
     """Повний вердикт для нового лота. Повертає dict; {'deliver_failed': True},
     якщо сповіщення не вдалося доставити (тоді лот лишається «новим» до наступного
@@ -900,7 +909,12 @@ def _judge(item, tp, key, query, cat, ref, store, liq, now, stats, quiet, use_v2
 
     reasons = list(v.reasons)
     report = None
+    age = _age_days(item.get("itemCreationDate"), now)
     if v.ok:
+        if age is None:
+            reasons.append("age-unknown")
+        elif age > config.ALERT_MAX_AGE_DAYS:
+            reasons.append("stale-listing")
         try:
             report = liq.assess(key, query, now, sold_url=_sold_url(item, query))
         except Exception as exc:  # noqa: BLE001
@@ -938,6 +952,7 @@ def _judge(item, tp, key, query, cat, ref, store, liq, now, stats, quiet, use_v2
             "seller": s.get("username"), "seller_score": s.get("feedbackScore"),
             "country": (item.get("itemLocation") or {}).get("country"),
             "created": item.get("itemCreationDate"),
+            "age_days": None if age is None else round(age, 1),
             "title": (item.get("title") or "")[:110],
             "url": item.get("itemWebUrl"),
         })
