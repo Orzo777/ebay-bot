@@ -1,16 +1,16 @@
 name: analyze
 
-# Запуск вручну: Actions → "analyze" → Run workflow (поле since — дата для B2).
+# Запуск вручну: Actions → "analyze" → Run workflow (поле days — за скільки днів shadow-вердикти).
 # READ-ONLY: відновлює кеш стану, запускає analyze.py, нічого не зберігає назад.
 # Артефакт analysis-report містить analysis_console.txt.
 
 on:
   workflow_dispatch:
     inputs:
-      since:
-        description: "Дата для фіксованого вікна (YYYY-MM-DD)"
+      days:
+        description: "За скільки днів показати shadow-вердикти"
         required: false
-        default: "2026-09-17"
+        default: "14"
 
 permissions:
   contents: read
@@ -38,8 +38,8 @@ jobs:
       - name: Analyze
         env:
           PYTHONIOENCODING: utf-8
-          SINCE: ${{ inputs.since }}
-        run: python analyze.py --since "${SINCE:-2026-09-17}" | tee analysis_console.txt
+          DAYS: ${{ inputs.days }}
+        run: python analyze.py --days "${DAYS:-14}" | tee analysis_console.txt
 
       - uses: actions/upload-artifact@v4
         with:

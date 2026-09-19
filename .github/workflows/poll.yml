@@ -34,6 +34,10 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # Запобіжник: зламаний фільтр не має шити сповіщення про гроші. Тести без мережі (~1 с).
+      - name: Self-check (unit tests)
+        run: python -m unittest test_identity test_pipeline
+
       - name: Restore state
         uses: actions/cache/restore@v4
         with:
@@ -45,7 +49,7 @@ jobs:
 
       - name: Ensure state files exist
         run: |
-          test -f price_history.json || printf '{"history":{},"listings":{},"alerted_item_ids":[],"discovery_seen":[],"key_map":{},"key_query":{},"key_conf":{}}\n' > price_history.json
+          test -f price_history.json || printf '{"schema":2,"history":{},"listings":{},"alerted_item_ids":[],"discovery_seen":[],"seeded":[],"key_map":{},"key_query":{},"key_conf":{},"legacy_v1":null}\n' > price_history.json
           test -f discovery_log.jsonl || : > discovery_log.jsonl
 
       - name: One pass
@@ -56,6 +60,9 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EBAY_MARKETPLACE_ID: ${{ vars.EBAY_MARKETPLACE_ID || 'EBAY_DE' }}
           DISCOVERY_MODE: ${{ vars.DISCOVERY_MODE || 'true' }}
+          # shadow = нові фільтри працюють, вердикти в лог, Telegram мовчить.
+          # live   = Telegram лише для знахідок, що пройшли ВСІ шари (див. КЕРУВАННЯ.md).
+          ALERT_MODE: ${{ vars.ALERT_MODE || 'shadow' }}
           PYTHONIOENCODING: utf-8
         run: python main.py --once
 

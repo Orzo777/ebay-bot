@@ -34,6 +34,8 @@ from urllib.parse import quote_plus
 import requests
 
 import config
+import identity
+import quality
 
 for _stream in (sys.stdout, sys.stderr):
     try:
@@ -183,25 +185,34 @@ class EbayClient:
             "Content-Type": "application/json",
         }
 
-    def search(self, query: str, min_price, sort: str | None = None) -> list:
-        params = {
-            "q": query,
-            "filter": config.search_filter(min_price),
-            "limit": config.SEARCH_LIMIT,
-        }
+    def search_ex(self, query: str, min_price, sort: str | None = None,
+                  country: str | None = None):
+        """(items, total). country → itemLocationCountry (одна країна на виклик)."""
+        flt = config.search_filter(min_price)
+        if country:
+            flt += f",itemLocationCountry:{country}"
+        params = {"q": query, "filter": flt, "limit": config.SEARCH_LIMIT}
         if sort:
             params["sort"] = sort
         data = _request_with_backoff(
             "GET", config.EBAY_BROWSE_SEARCH_URL, headers=self._headers(), params=params
         )
-        return data.get("itemSummaries") or []
+        return (data.get("itemSummaries") or []), int(data.get("total") or 0)
+
+    def search(self, query: str, min_price, sort: str | None = None) -> list:
+        return self.search_ex(query, min_price, sort)[0]
 
 
 def fetch_summaries(client, cat, now, day=0, total_days=1, force_mock=False):
-    """ПОДВІЙНИЙ запит на категорію:
-        A — best_match (без sort): репрезентативна популяція для медіани;
-        B — sort=price: найдешевший реальний лот (шум уже відсічено price:[min..]).
-    Обʼєднання за item_id. Повертає (merged_list, n_a, n_b, only_b)."""
+    """Знімок ринку ПОКУПЦЯ (config.MARKET_COUNTRIES) для категорії.
+
+    Для кожної країни: запит A (best_match); якщо лотів більше за сторінку
+    (total > 200) — додатково B (sort=price, найдешевші). Глобальний sort=price
+    давав у вибірці до 87% лотів із Великої Британії (найдешевші) і майже не бачив
+    німецьких; тепер запит іде по країні. Повертає
+    (merged_list, n_a, n_b, only_b, complete): complete=True, коли КОЖНА країна
+    отримана повністю (total <= отримано) — лише тоді зникнення лота можна
+    вважати продажем/зняттям."""
     query = cat["query"]
     mp = cat.get("min_price", config.MIN_PRICE)
     if force_mock or not config.EBAY_CREDS_OK or client is None:
@@ -209,18 +220,39 @@ def fetch_summaries(client, cat, now, day=0, total_days=1, force_mock=False):
 
         a = mock_search(query, now, day, total_days, sort=None, min_price=mp)
         b = mock_search(query, now, day, total_days, sort=config.SEARCH_SORT_B, min_price=mp)
-    else:
-        a = client.search(query, mp, sort=None)
-        b = client.search(query, mp, sort=config.SEARCH_SORT_B)
+        a_ids = {i.get("itemId") for i in a}
+        merged: dict[str, dict] = {}
+        for it in list(a) + list(b):
+            iid = it.get("itemId")
+            if iid and iid not in merged:
+                merged[iid] = it
+        only_b = sum(1 for iid in merged if iid not in a_ids)
+        return list(merged.values()), len(a), len(b), only_b, True
 
-    a_ids = {i.get("itemId") for i in a}
-    merged: dict[str, dict] = {}
-    for it in list(a) + list(b):
-        iid = it.get("itemId")
-        if iid and iid not in merged:
-            merged[iid] = it
-    only_b = sum(1 for iid in merged if iid not in a_ids)
-    return list(merged.values()), len(a), len(b), only_b
+    merged = {}
+    n_a = n_b = only_b = 0
+    complete = True
+    for cc in config.MARKET_COUNTRIES:
+        a, total = client.search_ex(query, mp, None, cc)
+        n_a += len(a)
+        got = {}
+        for it in a:
+            iid = it.get("itemId")
+            if iid:
+                got.setdefault(iid, it)
+        if total > len(a):
+            b, _ = client.search_ex(query, mp, config.SEARCH_SORT_B, cc)
+            n_b += len(b)
+            for it in b:
+                iid = it.get("itemId")
+                if iid and iid not in got:
+                    got[iid] = it
+                    only_b += 1
+        if total > len(got):
+            complete = False
+        for iid, it in got.items():
+            merged.setdefault(iid, it)
+    return list(merged.values()), n_a, n_b, only_b, complete
 
 
 # --------------------------------------------------------------------------- #
@@ -349,6 +381,10 @@ class HistoryStore:
         self.key_query: dict[str, str] = {}
         self.key_conf: dict[str, bool] = {}
         self._pindex: dict[str, set] = {}
+        self.seeded: set[str] = set()           # категорії з початковим знімком
+        self.legacy_v1 = None                   # копія стану до переходу на ідентифікацію v2
+        self.migrated = False
+        self._fam = None                        # кеш родин ключів (на прогін)
         self.load()
 
     def load(self):
@@ -360,10 +396,20 @@ class HistoryStore:
         except (OSError, ValueError):
             log("price_history.json пошкоджений — починаю з чистого стану")
             return
-        self.history = data.get("history", {}) or {}
-        self.listings = data.get("listings", {}) or {}
         self.alerted = set(data.get("alerted_item_ids", []) or [])
         self.discovery_seen = set(data.get("discovery_seen", []) or [])
+        self.seeded = set(data.get("seeded", []) or [])
+        self.legacy_v1 = data.get("legacy_v1")
+        if int(data.get("schema", 1)) < config.STATE_SCHEMA:
+            # Перехід на ідентифікацію v2: старі ключі змішували різні товари, а
+            # знімок ринку був неповним → «медіани» і «продажі» недостовірні.
+            # Стартуємо з чистої історії, стару зберігаємо як legacy_v1.
+            self.legacy_v1 = {k: data.get(k) for k in
+                              ("history", "listings", "key_map", "key_query", "key_conf")}
+            self.migrated = True
+            return
+        self.history = data.get("history", {}) or {}
+        self.listings = data.get("listings", {}) or {}
         self.key_map = data.get("key_map", {}) or {}
         self.key_query = data.get("key_query", {}) or {}
         self.key_conf = data.get("key_conf", {}) or {}
@@ -374,14 +420,17 @@ class HistoryStore:
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({
+                "schema": config.STATE_SCHEMA,
                 "history": self.history,
                 "listings": self.listings,
                 "alerted_item_ids": sorted(self.alerted),
                 "discovery_seen": sorted(self.discovery_seen),
+                "seeded": sorted(self.seeded),
                 "key_map": self.key_map,
                 "key_query": self.key_query,
                 "key_conf": self.key_conf,
-            }, f, indent=2, ensure_ascii=False)
+                "legacy_v1": self.legacy_v1,
+            }, f, ensure_ascii=False, separators=(",", ":"))
         os.replace(tmp, self.path)
 
     # --- цінова історія ---
@@ -392,7 +441,8 @@ class HistoryStore:
     def has_point(self, epid, item_id) -> bool:
         return item_id in self._pindex.get(epid, ())
 
-    def record_point(self, epid, item_id, price_total, currency, now) -> bool:
+    def record_point(self, epid, item_id, price_total, currency, now,
+                     seller=None, country=None) -> bool:
         if self.has_point(epid, item_id):
             return False
         self.history.setdefault(epid, []).append({
@@ -400,9 +450,19 @@ class HistoryStore:
             "price_total": round(price_total, 2),
             "item_id": item_id,
             "currency": currency,
+            "seller": seller,
+            "country": country,
         })
         self._pindex.setdefault(epid, set()).add(item_id)
         return True
+
+    def remove_point(self, epid, item_id) -> None:
+        pts = [p for p in self.history.get(epid, []) if p["item_id"] != item_id]
+        if pts:
+            self.history[epid] = pts
+        else:
+            self.history.pop(epid, None)
+        self._pindex.get(epid, set()).discard(item_id)
 
     # --- життєвий цикл лістингів ---
     def observe_listing(self, epid, item, now) -> bool:
@@ -432,10 +492,15 @@ class HistoryStore:
             ent["gone_date"] = None
         return False
 
-    def sweep_gone(self, now) -> int:
+    def sweep_gone(self, now, complete=None) -> int:
+        """Позначає зниклі лістинги. complete = {query: bool}: зникнення рахуємо
+        лише для категорій, знімок яких у цьому прогоні був ПОВНИМ (інакше лот міг
+        просто не потрапити у видачу → фальшивий «продаж»)."""
         today = now.date().isoformat()
         n = 0
-        for book in self.listings.values():
+        for key, book in self.listings.items():
+            if complete is not None and not complete.get(self.key_query.get(key)):
+                continue
             for ent in book.values():
                 if ent["status"] != "active":
                     continue
@@ -472,6 +537,24 @@ class HistoryStore:
 
     def query_for(self, key) -> str:
         return self.key_query.get(key, "?")
+
+    @staticmethod
+    def family_of(key: str) -> str:
+        """Родина ключа v2 = «категорія|тип|мова» (без назви сету/моделі)."""
+        return "|".join(key.split("|")[:3])
+
+    def family_book(self, key: str) -> dict:
+        """Обʼєднаний життєвий цикл усіх лістингів родини (для ліквідності, коли
+        у самого ключа замало завершених циклів)."""
+        if self._fam is None:
+            fam = {}
+            for k in self.listings:
+                fam.setdefault(self.family_of(k), []).append(k)
+            self._fam = fam
+        merged = {}
+        for k in self._fam.get(self.family_of(key), []):
+            merged.update(self.listings.get(k, {}))
+        return merged
 
 
 # --------------------------------------------------------------------------- #
@@ -513,9 +596,22 @@ class SelfTrackedLiquidity:
     def __init__(self, store: HistoryStore):
         self.store = store
 
-    def assess(self, epid: str, query: str, now: datetime) -> LiquidityReport:
-        url = sold_search_url(query)
+    def assess(self, epid: str, query: str, now: datetime,
+               sold_url: str | None = None) -> LiquidityReport:
+        url = sold_url or sold_search_url(query)
         book = self.store.listings.get(epid, {})
+        r = self._assess_book(book, url, now)
+        if r.tier == "UNKNOWN" and config.IDENTITY_V2 and "|" in epid:
+            fam = self.store.family_book(epid)
+            if fam and len(fam) > len(book):
+                r2 = self._assess_book(fam, url, now)
+                if r2.tier != "UNKNOWN":
+                    r2.note = (f"рівень РОДИНИ {self.store.family_of(epid)} "
+                               f"(у ключа замало даних): {r2.note}")
+                    return r2
+        return r
+
+    def _assess_book(self, book: dict, url: str, now: datetime) -> LiquidityReport:
         if not book:
             return LiquidityReport("UNKNOWN", "невідомо", None, None, 0, 0, 0, 0,
                                    "лістинги ще не відстежувались", url)
@@ -584,7 +680,8 @@ class MarketplaceInsightsLiquidity:
         self.store = store
         self.client = client
 
-    def assess(self, epid: str, query: str, now: datetime) -> LiquidityReport:
+    def assess(self, epid: str, query: str, now: datetime,
+               sold_url: str | None = None) -> LiquidityReport:
         raise NotImplementedError(
             "Marketplace Insights API не підключено. Коли eBay надасть доступ — "
             "реалізувати виклик item_sales/search за epid і зібрати LiquidityReport "
@@ -601,32 +698,51 @@ def build_liquidity_provider(store: HistoryStore, client):
 # --------------------------------------------------------------------------- #
 # Сповіщення
 # --------------------------------------------------------------------------- #
+def _age_txt(created: str | None) -> str:
+    try:
+        dt = datetime.fromisoformat((created or "").replace("Z", "+00:00"))
+        hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+    except ValueError:
+        return "невідомо"
+    return f"{hours:.0f} год тому" if hours < 48 else f"{hours / 24:.0f} дн. тому"
+
+
 def format_message(a: dict) -> str:
     item = a["item"]
-    seller = item.get("seller") or {}
+    v = a["v"]
     r: LiquidityReport = a["liq"]
+    idn = a.get("ident")
     cur = a["currency"]
-    conf = ("⚠ товар визначено ЗА НАЗВОЮ (немає epid) — нижча впевненість\n"
-            if a.get("lower_confidence") else "")
+    seller = item.get("seller") or {}
+    loc = (item.get("itemLocation") or {}).get("country", "?")
+    offer = " · Best Offer (можна торгуватись)" if "BEST_OFFER" in (item.get("buyingOptions") or []) else ""
+    what = ""
+    if idn is not None:
+        bits = [f"тип {idn.ptype}", f"мова {idn.lang}"]
+        if idn.packs:
+            bits.append(f"{idn.packs} паків")
+        if idn.code:
+            bits.append(f"код {idn.code}")
+        what = "Бот вважає товаром: " + ", ".join(bits) + "\n"
     return (
-        f"🔻 PRICE OK · LIQUIDITY {r.tier} — {a['query']}\n"
-        f"ключ: {a['key']}\n"
-        f"{conf}\n"
-        f"{item.get('title', '—')}\n"
-        f"Стан: {item.get('condition', '?')} (conditionId {item.get('conditionId', '?')})\n\n"
+        f"🔻 ЗНАХІДКА · {a['query']}\n"
+        f"{item.get('title', '—')}\n\n"
         f"Ціна з доставкою: {a['price_total']:.2f} {cur}\n"
-        f"Історична медіана ({a['hist_points']} спост. / {config.HISTORY_WINDOW_DAYS} дн.): "
-        f"{a['hist_median']:.2f} {cur}\n"
-        f"Нижче медіани на: {a['pct_below']:.0f}%\n"
-        f"Продавець: {seller.get('username', '—')} "
-        f"(score {seller.get('feedbackScore')}, {seller.get('feedbackPercentage')}%)\n\n"
-        f"Ліквідність ({a['liq_provider']}, вікно {config.LIQUIDITY_WINDOW_DAYS} дн.):\n"
-        f"  рівень: {r.tier} — {r.headline}\n"
-        f"  продажів-проксі: {r.sold_proxy}   relisted виключено: {r.relisted}\n"
-        f"  швидкість: {_fmt_v(r.velocity_per_week)}/тиждень   "
-        f"медіанний час до зникнення: {_fmt_d(r.median_days_to_sell)}\n"
-        f"  активних пропозицій зараз: {r.active_now}   відстеження: {r.track_days} дн.\n"
-        f"  ⚠ ПЕРЕВІР реальні продажі перед купівлею:\n  {r.sold_url}\n\n"
+        f"Еталон (ІНШІ лоти цього товару, ринок {'+'.join(config.MARKET_COUNTRIES)}): "
+        f"медіана {v.median:.2f} {cur} — {v.n_comps} лот. від {v.n_sellers} продавців, "
+        f"типовий діапазон {v.q1:.0f}–{v.q3:.0f}\n"
+        f"Нижче медіани на {(1 - v.ratio) * 100:.0f}% · економія {v.saving:.2f} {cur} · "
+        f"найдешевший інший лот: {v.lowest_other:.2f}\n"
+        f"{what}\n"
+        f"Ліквідність: {r.tier} — {r.headline}\n"
+        f"  {r.note}\n\n"
+        f"Продавець: {seller.get('username', '—')} (відгуків {seller.get('feedbackScore')}, "
+        f"{seller.get('feedbackPercentage')}%) · країна {loc} · "
+        f"лот створено {_age_txt(item.get('itemCreationDate'))}{offer}\n\n"
+        f"ПЕРЕВІР ПЕРЕД КУПІВЛЕЮ:\n"
+        f"  1) у назві/фото той самий сет, мова, видання, запечатано\n"
+        f"  2) реальні продажі цього товару: {r.sold_url}\n"
+        f"  3) немає «ohne/leer/nur Box», відгуки продавця\n\n"
         f"{item.get('itemWebUrl', '')}"
     )
 
@@ -654,6 +770,10 @@ def deliver(a: dict) -> None:
 # --------------------------------------------------------------------------- #
 # Обробка
 # --------------------------------------------------------------------------- #
+def _bump(d: dict, k: str, n: int = 1) -> None:
+    d[k] = d.get(k, 0) + n
+
+
 def new_stats() -> dict:
     return {
         "keys_seen": set(),
@@ -668,6 +788,13 @@ def new_stats() -> dict:
         "alerts": [],
         "discovery": [],
         "by_tier": {"OK": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0},
+        "skipped_flags": {},
+        "skipped_ident": {},
+        "verdicts": {"ALERT": 0, "HOLD": 0},
+        "hold_reasons": {},
+        "shadow_rows": 0,
+        "complete": {},
+        "seeded_now": [],
     }
 
 
@@ -675,12 +802,17 @@ def merge_stats(dst: dict, src: dict) -> None:
     dst["keys_seen"] |= src["keys_seen"]
     dst["keys_lowconf"] |= src["keys_lowconf"]
     for k in ("skipped_seller", "skipped_blocklist", "no_key", "only_b",
-              "new_listings", "gone", "relisted_now"):
+              "new_listings", "gone", "relisted_now", "shadow_rows"):
         dst[k] += src[k]
     dst["alerts"].extend(src["alerts"])
     dst["discovery"].extend(src["discovery"])
     for t, v in src["by_tier"].items():
         dst["by_tier"][t] += v
+    for name in ("skipped_flags", "skipped_ident", "verdicts", "hold_reasons"):
+        for k, v in src[name].items():
+            _bump(dst[name], k, v)
+    dst["complete"].update(src["complete"])
+    dst["seeded_now"].extend(src["seeded_now"])
 
 
 def append_discovery(record: dict) -> None:
@@ -688,23 +820,53 @@ def append_discovery(record: dict) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def process_category(cat, summaries, store, liq, now, stats, quiet) -> None:
+def _seller_name(item: dict) -> str:
+    return (item.get("seller") or {}).get("username") or "?"
+
+
+def seller_alert_ok(item: dict) -> bool:
+    s = item.get("seller") or {}
+    score = int(_to_float(s.get("feedbackScore")) or 0)
+    pct = _to_float(s.get("feedbackPercentage")) or 0.0
+    return score >= config.ALERT_MIN_SELLER_SCORE and pct >= config.ALERT_MIN_SELLER_PCT
+
+
+def _sold_url(item: dict, query: str) -> str:
+    """Пошук ПРОДАНИХ саме цього товару (за назвою лота), а не всієї категорії."""
+    words = re.findall(r"[\w'’-]+", item.get("title") or "")[:9]
+    return sold_search_url(" ".join(words) if words else query)
+
+
+def process_category(cat, summaries, store, liq, now, stats, quiet, *, strict=True) -> None:
     query = cat["query"]
     min_price = cat.get("min_price", config.MIN_PRICE)
+    use_v2 = config.IDENTITY_V2 and strict
+    store._fam = None                    # кеш родин ліквідності: знімок міг змінитись
 
     by_key: dict[str, list] = {}
     no_key = 0
     for item in summaries:
-        key, low_conf = product_key(item)
-        if key is None:
-            no_key += 1
-            continue
+        if use_v2:
+            fl = quality.listing_flags(item)
+            if fl:
+                for f in fl:
+                    _bump(stats["skipped_flags"], f.split(":")[0])
+                continue
+            idn = identity.describe(item.get("title"), cat)
+            if idn.exclude:
+                for e in idn.exclude:
+                    _bump(stats["skipped_ident"], e.split(":")[0])
+                continue
+            key, low_conf = idn.key, True
+        else:
+            key, low_conf = product_key(item)
+            if key is None:
+                no_key += 1
+                continue
         by_key.setdefault(key, []).append(item)
         store.key_conf[key] = low_conf
 
     stats["no_key"] += no_key
-    if no_key:
-        vlog(f"[{query}] {no_key} лот(ів) без розбірливого ключа — поза статистикою", quiet)
     if not by_key:
         vlog(f"[{query}] жодного придатного ключа — пропускаю", quiet)
         return
@@ -712,21 +874,106 @@ def process_category(cat, summaries, store, liq, now, stats, quiet) -> None:
     canonical = max(by_key, key=lambda k: len(by_key[k]))
     cat["key"] = canonical
     store.key_map[query] = canonical
-    n_lc = sum(1 for k in by_key if store.key_conf.get(k))
-    vlog(f"[{query}] ключів у видачі: {len(by_key)} ({n_lc} за назвою); "
-         f"канонічний {canonical} ({len(by_key[canonical])} лот.)", quiet)
+    vlog(f"[{query}] ключів у видачі: {len(by_key)}; канонічний {canonical} "
+         f"({len(by_key[canonical])} лот.)", quiet)
 
+    # Перший знімок категорії лише наповнює історію (усі лоти «нові» для нас, але не
+    # нові на ринку) — без оцінки, щоб не було вибуху фальшивих знахідок.
+    seeding = use_v2 and query not in store.seeded
     for key, items in by_key.items():
         store.key_query.setdefault(key, query)
-        _process_key(query, key, items, store, liq, now, stats, quiet, min_price)
+        _process_key(query, key, items, store, liq, now, stats, quiet, min_price,
+                     cat, seeding, use_v2)
+    if seeding:
+        store.seeded.add(query)
+        stats["seeded_now"].append(query)
 
 
-def _process_key(query, key, items, store, liq, now, stats, quiet, min_price):
+def _judge(item, tp, key, query, cat, ref, store, liq, now, stats, quiet, use_v2):
+    """Повний вердикт для нового лота. Повертає dict; {'deliver_failed': True},
+    якщо сповіщення не вдалося доставити (тоді лот лишається «новим» до наступного
+    прогону)."""
+    iid = item["itemId"]
+    comps = [(p, sel, i) for i, (p, sel) in ref.items() if i != iid]
+    v = quality.assess(tp, comps, _seller_name(item))
+    idn = identity.describe(item.get("title"), cat) if use_v2 else None
+
+    reasons = list(v.reasons)
+    report = None
+    if v.ok:
+        try:
+            report = liq.assess(key, query, now, sold_url=_sold_url(item, query))
+        except Exception as exc:  # noqa: BLE001
+            log(f"  ⚠ оцінка ліквідності не вдалась для {key}: {exc}")
+            report = LiquidityReport("UNKNOWN", "невідомо", None, None, 0, 0, 0, 0,
+                                     f"помилка провайдера: {exc}", _sold_url(item, query))
+        stats["by_tier"][report.tier] = stats["by_tier"].get(report.tier, 0) + 1
+        if report.tier not in config.ALERT_TIERS:
+            reasons.append(f"liq-{report.tier.lower()}")
+        if not seller_alert_ok(item):
+            reasons.append("seller")
+        if idn is not None and not idn.spec_ok:
+            reasons.append("spec-missing")             # у назві немає варіанта (MS/UC/Stereo…)
+    verdict = "ALERT" if (v.ok and not reasons) else "HOLD"
+    stats["verdicts"][verdict] += 1
+    for r_ in reasons:
+        _bump(stats["hold_reasons"], r_)
+
+    near_miss = (v.median is not None and v.ratio is not None
+                 and v.ratio <= config.ANOMALY_THRESHOLD * 1.25)
+    if v.ok or near_miss:
+        s = item.get("seller") or {}
+        append_discovery({
+            "ts": now.isoformat(), "date": now.date().isoformat(), "kind": "shadow",
+            "category": query, "product_key": key, "item_id": iid,
+            "verdict": verdict, "reasons": reasons,
+            "price_total": tp, "currency": item_currency(item),
+            "median": None if v.median is None else round(v.median, 2),
+            "n_comps": v.n_comps, "n_sellers": v.n_sellers,
+            "dispersion": None if v.dispersion is None else round(v.dispersion, 3),
+            "ratio": None if v.ratio is None else round(v.ratio, 3),
+            "saving": None if v.saving is None else round(v.saving, 2),
+            "near": v.near, "near_own": v.near_own, "lowest_other": v.lowest_other,
+            "liquidity_tier": None if report is None else report.tier,
+            "seller": s.get("username"), "seller_score": s.get("feedbackScore"),
+            "country": (item.get("itemLocation") or {}).get("country"),
+            "created": item.get("itemCreationDate"),
+            "title": (item.get("title") or "")[:110],
+            "url": item.get("itemWebUrl"),
+        })
+        stats["shadow_rows"] += 1
+
+    if verdict != "ALERT":
+        return {}
+
+    a = {"query": query, "key": key, "item": item, "price_total": tp,
+         "currency": item_currency(item), "v": v, "liq": report,
+         "ident": idn, "liq_provider": liq.label}
+    if config.ALERT_MODE == "live":
+        try:
+            deliver(a)
+        except Exception as exc:  # noqa: BLE001
+            log(f"  ✗ доставка сповіщення не вдалась ({iid}): {exc}")
+            return {"deliver_failed": True}
+        store.alerted.add(iid)
+        stats["alerts"].append(a)
+        log(f"  🔔 ЗНАХІДКА [{key}] {query}: {tp:.2f} vs медіана {v.median:.2f} "
+            f"(-{(1 - v.ratio) * 100:.0f}%, еталон {v.n_comps}/{v.n_sellers} прод.) "
+            f"| {report.tier}")
+    else:
+        store.discovery_seen.add(iid)
+        stats["discovery"].append(a)
+        vlog(f"  🔎 SHADOW ALERT [{key}] {query}: {tp:.2f} vs медіана {v.median:.2f} "
+             f"(-{(1 - v.ratio) * 100:.0f}%) | {report.tier}", quiet)
+    return {}
+
+
+def _process_key(query, key, items, store, liq, now, stats, quiet, min_price,
+                 cat, seeding, use_v2):
     stats["keys_seen"].add(key)
-    low_conf = store.key_conf.get(key, False)
-    if low_conf:
+    if store.key_conf.get(key):
         stats["keys_lowconf"].add(key)
-    tag = f"{key}" + ("~назва" if low_conf else "")
+    tag = key
 
     valid = []
     for item in items:
@@ -757,86 +1004,55 @@ def _process_key(query, key, items, store, liq, now, stats, quiet, min_price):
     if not valid:
         return
 
-    window = store.points_in_window(key, now, config.HISTORY_WINDOW_DAYS)
-    have = len(window)
-
-    if have < config.MIN_HISTORY_POINTS:
-        added = sum(store.record_point(key, it["itemId"], tp, item_currency(it), now)
-                    for it, tp in valid)
-        vlog(f"  Накопичення історії {key} ({query}): "
-             f"{have + added}/{config.MIN_HISTORY_POINTS} (+{added})", quiet)
+    if not use_v2:
+        _process_key_legacy(query, key, valid, store, liq, now, stats, quiet)
         return
 
-    hist_median = statistics.median(p["price_total"] for p in window)
-    vlog(f"  {key} ({query}): історична медіана {hist_median:.2f} "
-         f"за {have} спост. / {config.HISTORY_WINDOW_DAYS} дн.", quiet)
-
-    seen_set = store.discovery_seen if config.DISCOVERY_MODE else store.alerted
+    # Еталон = історія ключа у вікні + актуальні ціни поточного знімка (кандидат
+    # виключається на етапі оцінки).
+    window = store.points_in_window(key, now, config.HISTORY_WINDOW_DAYS)
+    ref = {p["item_id"]: (p["price_total"], p.get("seller") or "?") for p in window}
+    for it, tp in valid:
+        ref[it["itemId"]] = (tp, _seller_name(it))
+    seen_set = store.discovery_seen if config.ALERT_MODE == "shadow" else store.alerted
 
     for item, tp in valid:
         item_id = item["itemId"]
         is_new = not store.has_point(key, item_id)
-        store.record_point(key, item_id, tp, item_currency(item), now)
+        res = {}
+        if is_new and not seeding and item_id not in seen_set:
+            res = _judge(item, tp, key, query, cat, ref, store, liq, now, stats,
+                         quiet, use_v2)
+        if res.get("deliver_failed"):
+            continue                                   # лишаємо «новим» → повтор наступного прогону
+        store.record_point(key, item_id, tp, item_currency(item), now,
+                           seller=_seller_name(item),
+                           country=(item.get("itemLocation") or {}).get("country"))
+
+
+def _process_key_legacy(query, key, valid, store, liq, now, stats, quiet):
+    """Старий шлях (IDENTITY_V2=false / mock): медіана вікна, поріг ANOMALY_THRESHOLD."""
+    window = store.points_in_window(key, now, config.HISTORY_WINDOW_DAYS)
+    have = len(window)
+    if have < config.MIN_HISTORY_POINTS:
+        for it, tp in valid:
+            store.record_point(key, it["itemId"], tp, item_currency(it), now,
+                               seller=_seller_name(it))
+        return
+    hist_median = statistics.median(p["price_total"] for p in window)
+    seen_set = store.discovery_seen if config.ALERT_MODE == "shadow" else store.alerted
+    for item, tp in valid:
+        item_id = item["itemId"]
+        is_new = not store.has_point(key, item_id)
+        store.record_point(key, item_id, tp, item_currency(item), now,
+                           seller=_seller_name(item))
         if not is_new or item_id in seen_set:
             continue
         ratio = tp / hist_median if hist_median else 1.0
         if ratio >= config.ANOMALY_THRESHOLD:
             continue
-
-        try:
-            report = liq.assess(key, query, now)
-        except Exception as exc:  # noqa: BLE001
-            log(f"  ⚠ оцінка ліквідності не вдалась для {key}: {exc}")
-            report = LiquidityReport("UNKNOWN", "невідомо", None, None, 0, 0, 0, 0,
-                                     f"помилка провайдера: {exc}", sold_search_url(query))
-
-        a = {
-            "query": query, "key": key, "lower_confidence": low_conf, "item": item,
-            "price_total": tp, "currency": item_currency(item),
-            "hist_median": hist_median, "hist_points": have,
-            "pct_below": (1 - ratio) * 100,
-            "liq": report, "liq_provider": liq.label,
-        }
-        stats["by_tier"][report.tier] = stats["by_tier"].get(report.tier, 0) + 1
-
-        if config.DISCOVERY_MODE:
-            append_discovery({
-                "ts": now.isoformat(),
-                "date": now.date().isoformat(),
-                "category": query,
-                "product_key": key,
-                "lower_confidence": low_conf,
-                "item_id": item_id,
-                "price_total": tp,
-                "currency": a["currency"],
-                "hist_median": round(hist_median, 2),
-                "hist_points": have,
-                "pct_below": round(a["pct_below"], 1),
-                "liquidity_tier": report.tier,
-                "liquidity_velocity": (None if report.velocity_per_week is None
-                                       else round(report.velocity_per_week, 2)),
-                "liquidity_days_to_sell": (None if report.median_days_to_sell is None
-                                           else round(report.median_days_to_sell, 1)),
-                "liquidity_active": report.active_now,
-                "liquidity_note": report.note,
-            })
-            store.discovery_seen.add(item_id)
-            stats["discovery"].append(a)
-            vlog(f"  🔎 DISCOVERY [{report.tier}]{'·LC' if low_conf else ''} "
-                 f"{query} [{key}]: {tp:.2f} {a['currency']} "
-                 f"(-{a['pct_below']:.0f}%, медіана {hist_median:.2f})", quiet)
-            continue
-
-        try:
-            deliver(a)
-        except Exception as exc:  # noqa: BLE001
-            log(f"  ✗ доставка сповіщення не вдалась ({item_id}): {exc}")
-            continue
-        store.alerted.add(item_id)
-        stats["alerts"].append(a)
-        log(f"  🔔 PRICE OK · LIQUIDITY {report.tier}{'·LC' if low_conf else ''} "
-            f"[{key}] {query}: {tp:.2f} {a['currency']} vs медіана {hist_median:.2f} "
-            f"(-{a['pct_below']:.0f}%) | {report.headline}")
+        stats["verdicts"]["HOLD"] += 1
+        _bump(stats["hold_reasons"], "legacy-mode")
 
 
 # --------------------------------------------------------------------------- #
@@ -845,24 +1061,26 @@ def _process_key(query, key, items, store, liq, now, stats, quiet, min_price):
 def run_pass(client, cats, store, liq, now, *, day=0, total_days=1,
              force_mock=False, quiet=False) -> dict:
     stats = new_stats()
+    store._fam = None
     for cat in cats:
         try:
-            summaries, n_a, n_b, only_b = fetch_summaries(
+            summaries, n_a, n_b, only_b, complete = fetch_summaries(
                 client, cat, now, day, total_days, force_mock)
             stats["only_b"] += only_b
         except Exception as exc:  # noqa: BLE001
             log(f"[{cat['query']}] запит не вдався: {exc}")
             continue
         try:
-            process_category(cat, summaries, store, liq, now, stats, quiet)
+            process_category(cat, summaries, store, liq, now, stats, quiet,
+                             strict=not force_mock)
+            stats["complete"][cat["query"]] = bool(complete)
             if only_b:
-                vlog(f"[{cat['query']}] запит B (price-asc) додав {only_b} "
-                     f"лот(ів) поза топ-50 best_match", quiet)
+                vlog(f"[{cat['query']}] запит B (price-asc) додав {only_b} лот(ів)", quiet)
         except Exception as exc:  # noqa: BLE001
             log(f"[{cat['query']}] обробка не вдалась: {exc}")
             continue
 
-    stats["gone"] = store.sweep_gone(now)
+    stats["gone"] = store.sweep_gone(now, None if force_mock else stats["complete"])
     stats["relisted_now"] = store.match_relists(quiet)
     store.save()
     return stats
@@ -902,72 +1120,71 @@ def _key_kind(key: str) -> str:
 
 
 def print_summary(store: HistoryStore, liq, now: datetime, agg: dict) -> None:
-    ready, accumulating = [], []
-    for key in sorted(store.history):
-        n = len(store.points_in_window(key, now, config.HISTORY_WINDOW_DAYS))
-        (ready if n >= config.MIN_HISTORY_POINTS else accumulating).append((key, n))
-
     n_epid = sum(1 for k in store.history if k.startswith("epid:"))
     n_title = len(store.history) - n_epid
+    W = config.HISTORY_WINDOW_DAYS
+    ready = 0                                   # ключі, для яких можлива оцінка
+    for key in store.history:
+        pts = store.points_in_window(key, now, W)
+        if (len(pts) >= config.QUALITY_MIN_COMPS + 1 and
+                len({p.get("seller") or "?" for p in pts}) >= config.QUALITY_MIN_SELLERS + 1):
+            ready += 1
 
     log()
     log("═════════════════════════ ПІДСУМОК ═════════════════════════")
-    log(f"Маркетплейс: {config.EBAY_MARKETPLACE_ID}   поріг ціни: "
-        f"{config.ANOMALY_THRESHOLD:.2f} × історична медіана")
-    log(f"Провайдер ліквідності: {liq.label}   вікно: {config.LIQUIDITY_WINDOW_DAYS} дн.")
+    log(f"Маркетплейс: {config.EBAY_MARKETPLACE_ID}   ринок покупця: "
+        f"{'+'.join(config.MARKET_COUNTRIES)}   ALERT_MODE={config.ALERT_MODE}")
     log(f"Унікальних ключів товару: {len(store.history)}  "
         f"(epid: {n_epid}, за назвою: {n_title})   "
-        f"готові: {len(ready)}   накопичують: {len(accumulating)}")
-    log(f"Запит B (price-asc) додав лотів поза топ-50 best_match: {agg['only_b']}")
-    if accumulating:
-        for key, n in accumulating[:12]:
-            log(f"    накопичення  {key:<26.26} {store.query_for(key):<28} "
-                f"{n}/{config.MIN_HISTORY_POINTS}")
+        f"готові: {ready}   накопичують: {len(store.history) - ready}")
+    log(f"Запит B (price-asc) додав лотів: {agg['only_b']}")
+    if store.migrated:
+        log("Стан переведено на схему v2: стару історію збережено в legacy_v1, "
+            "історія й ліквідність рахуються заново (повний знімок ринку).")
+    if agg["seeded_now"]:
+        log(f"Початковий знімок (без оцінки) зроблено для: {len(agg['seeded_now'])} категорій")
 
-    log()
-    log("Ліквідність по всіх відстежених ключах:")
-    log(f"    {'kind':<6} {'ключ':<28.28} {'категорія':<26} {'LIQ':<8} "
-        f"vel/тижд  ~днів  актив  прод  relist")
-    for key in sorted(set(store.history) | set(store.listings)):
+    tiers_now = {}
+    for key in store.listings:
         try:
-            r = liq.assess(key, store.query_for(key), now)
-        except Exception as exc:  # noqa: BLE001
-            log(f"    {_key_kind(key):<6} {key:<28.28} {store.query_for(key):<26} ПОМИЛКА ({exc})")
-            continue
-        log(f"    {_key_kind(key):<6} {key:<28.28} {store.query_for(key):<26} {r.tier:<8} "
-            f"{_fmt_v(r.velocity_per_week):>7}  {_fmt_d(r.median_days_to_sell):>6}  "
-            f"{r.active_now:>5}  {r.sold_proxy:>4}  {r.relisted:>5}")
+            t = liq.assess(key, store.query_for(key), now).tier
+        except Exception:  # noqa: BLE001
+            t = "ERR"
+        tiers_now[t] = tiers_now.get(t, 0) + 1
+    log(f"Ліквідність по відстежених ключах: {dict(sorted(tiers_now.items()))}")
 
     log()
-    log(f"Відсіяно за репутацією продавця: {agg['skipped_seller']}   "
-        f"стоп-листом стану: {agg['skipped_blocklist']}   "
-        f"лотів без ключа: {agg['no_key']}")
-    log(f"Життєвий цикл: relist-подій виявлено (виключено з velocity): "
+    log(f"Відсів лотів ДО аналізу — поля eBay: {agg['skipped_flags']}")
+    log(f"Відсів лотів ДО аналізу — назва/ідентичність: {agg['skipped_ident']}")
+    log(f"Репутація продавця: {agg['skipped_seller']}   стоп-лист стану: "
+        f"{agg['skipped_blocklist']}   без ключа: {agg['no_key']}")
+    n_c = sum(1 for v in agg["complete"].values() if v)
+    log(f"Повний знімок ринку: {n_c}/{len(agg['complete'])} категорій "
+        f"(зникнення рахуються продажем лише для повних)")
+    log(f"Життєвий цикл: relist-подій (виключено з velocity): "
         f"{sum(1 for b in store.listings.values() for e in b.values() if e['status'] == 'relisted')}")
 
     log()
-    tiers = agg["by_tier"]
-    lc_cand = sum(1 for a in (agg["discovery"] + agg["alerts"]) if a.get("lower_confidence"))
-    if config.DISCOVERY_MODE:
-        d = agg["discovery"]
-        log(f"РЕЖИМ РОЗВІДКИ (DISCOVERY_MODE=true) — Telegram-сповіщення вимкнені.")
-        log(f"Кандидатів дописано в {config.DISCOVERY_LOG_FILE}: {len(d)}  "
-            f"(OK×{tiers['OK']}  MEDIUM×{tiers['MEDIUM']}  LOW×{tiers['LOW']}  "
-            f"UNKNOWN×{tiers['UNKNOWN']};  за назвою/нижча впевненість: {lc_cand})")
-        log(f"Аналіз за весь період: python main.py --discovery-report")
-    else:
-        log(f"СПОВІЩЕНЬ: {len(agg['alerts'])}  "
-            f"(OK×{tiers['OK']}  MEDIUM×{tiers['MEDIUM']}  LOW×{tiers['LOW']}  "
-            f"UNKNOWN×{tiers['UNKNOWN']};  нижча впевненість: {lc_cand})")
-        for a in agg["alerts"]:
-            r = a["liq"]
-            mark = " ·LC(назва)" if a.get("lower_confidence") else ""
-            log(f"  🔔 {a['query']} [{a['key']}]{mark}  {a['price_total']:.2f} {a['currency']}  "
-                f"vs медіана {a['hist_median']:.2f}  (-{a['pct_below']:.0f}%)")
-            log(f"       ЦІНА: {a['hist_points']} спост. / {config.HISTORY_WINDOW_DAYS} дн.   "
-                f"ЛІКВІДНІСТЬ: {r.tier} — {r.note}")
+    vd = agg["verdicts"]
+    log(f"Вердикти для НОВИХ лотів: ALERT {vd['ALERT']}   HOLD {vd['HOLD']}   "
+        f"(рядків у shadow-лозі: {agg['shadow_rows']})")
+    if agg["hold_reasons"]:
+        log(f"Причини HOLD: {dict(sorted(agg['hold_reasons'].items(), key=lambda x: -x[1]))}")
+    if config.ALERT_MODE == "shadow":
+        log("РЕЖИМ SHADOW — Telegram-сповіщення вимкнені; знахідки → discovery_log.jsonl (kind=shadow).")
+        for a in agg["discovery"]:
+            v = a["v"]
+            log(f"  🔎 {a['query']} [{a['key']}]  {a['price_total']:.2f} {a['currency']} "
+                f"vs медіана {v.median:.2f} (-{(1 - v.ratio) * 100:.0f}%, еталон "
+                f"{v.n_comps}/{v.n_sellers} прод.)  {a['liq'].tier}")
             log(f"       {a['item'].get('title', '')}")
-            log(f"       перевірка продажів: {r.sold_url}")
+    else:
+        log(f"СПОВІЩЕНЬ НАДІСЛАНО: {len(agg['alerts'])}")
+        for a in agg["alerts"]:
+            v = a["v"]
+            log(f"  🔔 {a['query']} [{a['key']}]  {a['price_total']:.2f} {a['currency']}  "
+                f"vs медіана {v.median:.2f}  (-{(1 - v.ratio) * 100:.0f}%)")
+            log(f"       {a['item'].get('title', '')}")
     log("═══════════════════════════════════════════════════════════")
 
 
@@ -984,9 +1201,12 @@ def _load_discovery_rows():
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                r = json.loads(line)
             except ValueError:
-                pass
+                continue
+            if r.get("kind") == "shadow":
+                continue                         # shadow-вердикти — окремий аналіз (analyze.py)
+            rows.append(r)
     return rows
 
 
@@ -1172,8 +1392,8 @@ def main() -> int:
     if args.discovery_report:
         return discovery_report()
 
-    mode = ("РОЗВІДКА → discovery_log.jsonl" if config.DISCOVERY_MODE
-            else "БОЙОВИЙ → Telegram")
+    mode = ("SHADOW → discovery_log.jsonl (без Telegram)" if config.ALERT_MODE == "shadow"
+            else "LIVE → Telegram")
     log(f"Маркетплейс: {config.EBAY_MARKETPLACE_ID} ({config.CURRENCY}) | "
         f"{describe_mode()} | режим: {mode}")
     store = HistoryStore(config.PRICE_HISTORY_FILE)
@@ -1183,7 +1403,7 @@ def main() -> int:
     log(f"Категорій: {len(cats)} | ключів товару в базі: {len(store.history)} | "
         f"відстежується лістингів: {sum(len(b) for b in store.listings.values())} | "
         f"надісланих сповіщень: {len(store.alerted)} | "
-        f"кандидатів у розвідці: {len(store.discovery_seen)}")
+        f"оцінених у shadow: {len(store.discovery_seen)}")
 
     if args.simulate_days:
         now = datetime.now(timezone.utc)

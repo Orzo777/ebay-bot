@@ -138,6 +138,27 @@ MIN_HISTORY_POINTS = int(_get("MIN_HISTORY_POINTS", "3"))
 # органічні точки (≈ жовтень 2026).
 HISTORY_WINDOW_DAYS = int(_get("HISTORY_WINDOW_DAYS", "30"))
 
+# --- Шар якості знахідки (quality.py) --------------------------------------
+# Еталон = ІНШІ порівнянні лоти того ж ключа (identity.py), по продавцю. Знахідка
+# лише якщо: достатньо еталона, він однорідний, ціна помітно нижча, не «ринковий
+# кластер», економія не смішна. Поріг ANOMALY_THRESHOLD (вище) лишається.
+# Еталон «сильний»: >= STRONG_COMPS лотів від >= STRONG_SELLERS продавців → допустимий розкид
+# до QUALITY_MAX_DISPERSION. «Слабкий» (але не менше MIN_*): лише якщо ринок майже однорідний
+# (розкид <= QUALITY_TIGHT_DISPERSION) — 4 лоти по €200±5 переконливіші за 5 лотів по €120-280.
+QUALITY_MIN_COMPS = int(_get("QUALITY_MIN_COMPS", "4"))          # інших лотів у ключі (мінімум)
+QUALITY_MIN_SELLERS = int(_get("QUALITY_MIN_SELLERS", "3"))      # різних продавців (мінімум)
+QUALITY_STRONG_COMPS = int(_get("QUALITY_STRONG_COMPS", "5"))
+QUALITY_STRONG_SELLERS = int(_get("QUALITY_STRONG_SELLERS", "4"))
+QUALITY_TIGHT_DISPERSION = float(_get("QUALITY_TIGHT_DISPERSION", "0.12"))
+QUALITY_MAX_DISPERSION = float(_get("QUALITY_MAX_DISPERSION", "0.35"))  # (Q3-Q1)/медіана
+QUALITY_MIN_RATIO = float(_get("QUALITY_MIN_RATIO", "0.30"))     # глибше = підозра (не той товар/скам)
+QUALITY_MIN_SAVING = float(_get("QUALITY_MIN_SAVING", "25"))     # EUR, абсолютна економія
+QUALITY_CLUSTER_PCT = float(_get("QUALITY_CLUSTER_PCT", "0.12")) # ±12% ціни кандидата
+QUALITY_CLUSTER_MAX = int(_get("QUALITY_CLUSTER_MAX", "2"))      # >=2 інших поруч = ринкова ціна
+
+# Ринок покупця: приймаємо лише лоти з цих країн (митниця/ПДВ/повернення поза ЄС).
+MARKET_COUNTRIES = [c for c in _get("MARKET_COUNTRIES", "DE,AT").split(",") if c]
+
 # Ігнорувати лоти дешевші за MIN_PRICE (захист від сміттєвих цін / аксесуарів).
 MIN_PRICE = float(_get("MIN_PRICE", "5.0"))
 
@@ -153,7 +174,7 @@ MIN_SELLER_FEEDBACK_PCT = float(_get("MIN_SELLER_FEEDBACK_PCT", "95.0"))
 # обмежена без Marketplace Insights API — тому передбачено явний стан UNKNOWN.
 LIQUIDITY_WINDOW_DAYS = int(_get("LIQUIDITY_WINDOW_DAYS", "30"))
 # Скільки днів треба відстежувати epid, перш ніж узагалі виносити вердикт.
-MIN_LIQUIDITY_TRACK_DAYS = int(_get("MIN_LIQUIDITY_TRACK_DAYS", "10"))
+MIN_LIQUIDITY_TRACK_DAYS = int(_get("MIN_LIQUIDITY_TRACK_DAYS", "7"))
 # Скільки завершень циклу (зникнень + relist) треба, щоб вийти зі стану UNKNOWN.
 MIN_LIQUIDITY_EVENTS = int(_get("MIN_LIQUIDITY_EVENTS", "3"))
 LIQ_HIGH_PER_WEEK = float(_get("LIQ_HIGH_PER_WEEK", "1.5"))  # ≥ цього → швидко
@@ -197,6 +218,22 @@ BACKOFF_BASE = float(_get("BACKOFF_BASE", "2.0"))
 #                 циклів), score стає надійним — тоді й звужувати CATEGORIES
 #                 та ставити DISCOVERY_MODE=false.
 DISCOVERY_MODE = _get("DISCOVERY_MODE", "true").lower() in ("1", "true", "yes", "on")
+
+# ALERT_MODE (нова система фільтрів: identity.py + quality.py):
+#   shadow — усе працює як у бою, але вердикти пишуться в discovery_log.jsonl
+#            (kind="shadow"), Telegram НЕ шле;
+#   live   — Telegram лише для знахідок, що пройшли ВСІ шари.
+# Якщо ALERT_MODE не задано: DISCOVERY_MODE=true → shadow, інакше → live.
+_am = _get("ALERT_MODE", "").lower()
+ALERT_MODE = _am if _am in ("shadow", "live") else ("shadow" if DISCOVERY_MODE else "live")
+# Аварійний вимикач нової ідентифікації (повернення до старого ключа product_key).
+IDENTITY_V2 = _get("IDENTITY_V2", "true").lower() in ("1", "true", "yes", "on")
+# У Telegram лише ці рівні ліквідності (UNKNOWN/LOW → у shadow-лог із причиною).
+ALERT_TIERS = [t for t in _get("ALERT_TIERS", "OK,MEDIUM").split(",") if t]
+# Суворіший продавець для СПОВІЩЕННЯ (еталон рахується за базовим MIN_SELLER_*).
+ALERT_MIN_SELLER_SCORE = int(_get("ALERT_MIN_SELLER_SCORE", "25"))
+ALERT_MIN_SELLER_PCT = float(_get("ALERT_MIN_SELLER_PCT", "97.0"))
+STATE_SCHEMA = 2
 DISCOVERY_PERIOD_DAYS = int(_get("DISCOVERY_PERIOD_DAYS", "7"))
 DISCOVERY_LOG_FILE = _get("DISCOVERY_LOG_FILE", "discovery_log.jsonl")
 DISCOVERY_REPORT_FILE = _get("DISCOVERY_REPORT_FILE", "discovery_report.md")
