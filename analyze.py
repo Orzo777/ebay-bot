@@ -207,10 +207,44 @@ def part_b(store, today, since):
                   f"{t['UNKNOWN']:>4}")
 
 
+def part_c(store, cats, since):
+    """Аудит: чи кандидати — порівнювані товари (а не суміш сетів/мов/форматів)."""
+    rows = [r for r in _load_discovery_rows()
+            if r.get("category") in cats and r.get("date", "") >= since]
+    rows.sort(key=lambda r: r.get("ts", ""), reverse=True)
+    print(f"\n═══ C. АУДИТ КАНДИДАТІВ (з {since}) ═══")
+    for cat in cats:
+        sel = [r for r in rows if r["category"] == cat]
+        ks = Counter(r["product_key"] for r in sel)
+        pcts = sorted(r.get("pct_below", 0) for r in sel)
+        med = pcts[len(pcts) // 2] if pcts else 0
+        print(f"\n{cat}: кандидатів {len(sel)}, унікальних ключів {len(ks)}, "
+              f"медіана «нижче медіани» {med:.0f}%")
+        for r in sel[:14]:
+            ent = store.listings.get(r["product_key"], {}).get(r["item_id"], {})
+            print(f"  {r['date']} {r.get('liquidity_tier', '?')[:3]:<3} "
+                  f"{r['price_total']:>7.2f} vs мед {r['hist_median']:>7.2f} "
+                  f"(-{r['pct_below']:.0f}%, n={r['hist_points']}) "
+                  f"{(ent.get('seller') or '?')[:12]:<12} "
+                  f"{(ent.get('title') or '?')[:64]}  [{r['product_key'][:34]}]")
+        print("  ключі кандидатів: розкид цін по всій історії ключа + 2 назви")
+        for k, n in ks.most_common(5):
+            pr = sorted(p["price_total"] for p in store.history.get(k, []))
+            if not pr:
+                continue
+            titles = [(e.get("title") or "?")[:52]
+                      for e in list(store.listings.get(k, {}).values())[:2]]
+            print(f"    {k[:40]:<40} канд {n:>2} точок {len(pr):>3} "
+                  f"мін {pr[0]:>7.2f} мед {pr[len(pr) // 2]:>7.2f} "
+                  f"макс {pr[-1]:>7.2f}  | " + " / ".join(titles))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="2026-09-17",
                     help="фіксована дата для B2 (YYYY-MM-DD)")
+    ap.add_argument("--audit-since", default="2026-09-13",
+                    help="від якої дати аудит кандидатів (частина C)")
     args = ap.parse_args()
     today = datetime.now(timezone.utc).date()
     store = HistoryStore(config.PRICE_HISTORY_FILE)
@@ -218,6 +252,8 @@ def main():
           f"{len(store.history)} | категорій у конфізі: {len(config.CATEGORIES)}\n")
     part_a(store, today)
     part_b(store, today, date.fromisoformat(args.since))
+    part_c(store, ["Pokemon Booster Box versiegelt",
+                   "Magic The Gathering Booster Box sealed"], args.audit_since)
 
 
 if __name__ == "__main__":
