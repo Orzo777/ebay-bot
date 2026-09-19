@@ -239,6 +239,45 @@ def part_c(store, cats, since):
                   f"макс {pr[-1]:>7.2f}  | " + " / ".join(titles))
 
 
+def part_d(store, cats, since):
+    """Симуляція «фільтра якості»: скільки кандидатів переживе перевірки.
+    R1 кластер: >=2 ІНШИХ лістинги того ж ключа в межах ±12% ціни кандидата
+        (за ±5 днів) → це ринкова ціна, а не знахідка.
+    R2 реалістичність: знижка 25-65% (глибше -> підозра на змішаний ключ/фейк).
+    R3 база: у ключа >=5 точок."""
+    rows = [r for r in _load_discovery_rows()
+            if r.get("category") in cats and r.get("date", "") >= since]
+    print(f"\n═══ D. СИМУЛЯЦІЯ ФІЛЬТРА ЯКОСТІ (кандидати з {since}) ═══")
+    keep_all = []
+    for cat in cats:
+        sel = [r for r in rows if r["category"] == cat]
+        c1 = c2 = c3 = 0
+        keep = []
+        for r in sel:
+            k, p0, d0 = r["product_key"], r["price_total"], _d(r["date"])
+            near = 0
+            for p in store.history.get(k, []):
+                if p["item_id"] == r["item_id"]:
+                    continue
+                if abs((_d(p["date"]) - d0).days) <= 5 and abs(p["price_total"] - p0) / p0 <= 0.12:
+                    near += 1
+            f1 = near >= 2
+            f2 = not (25 <= r["pct_below"] <= 65)
+            f3 = r["hist_points"] < 5
+            c1 += f1; c2 += f2; c3 += f3
+            if not (f1 or f2 or f3):
+                keep.append(r)
+        keep_all += keep
+        print(f"  {cat:<40} кандидатів {len(sel):>3} | відсіє R1 кластер {c1:>3}, "
+              f"R2 глибина {c2:>3}, R3 база {c3:>3} | ПЕРЕЖИВАЮТЬ усі: {len(keep)}")
+    print("  Що лишилось (для очної перевірки):")
+    for r in sorted(keep_all, key=lambda r: r.get("ts", ""), reverse=True)[:20]:
+        ent = store.listings.get(r["product_key"], {}).get(r["item_id"], {})
+        print(f"    {r['date']} {r.get('liquidity_tier', '?')[:3]:<3} {r['price_total']:>7.2f} vs мед "
+              f"{r['hist_median']:>7.2f} (-{r['pct_below']:.0f}%) "
+              f"{(ent.get('title') or '?')[:70]}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="2026-09-17",
@@ -253,6 +292,8 @@ def main():
     part_a(store, today)
     part_b(store, today, date.fromisoformat(args.since))
     part_c(store, ["Pokemon Booster Box versiegelt",
+                   "Magic The Gathering Booster Box sealed"], args.audit_since)
+    part_d(store, ["Pokemon Booster Box versiegelt",
                    "Magic The Gathering Booster Box sealed"], args.audit_since)
 
 
