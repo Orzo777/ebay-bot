@@ -11,3 +11,5 @@ price_history.json
 price_history.json.tmp
 discovery_report.md
 report_console.txt
+feed_state.json
+feed_log.jsonl
