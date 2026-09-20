@@ -8,5 +8,6 @@
 - tech_probe.py / tech_probe_used.py — потік і «знахідки» для 36 моделей техніки (нове/уживане)
 - xmarket.py, xmarket_an.py — різниця цін між eBay DE/FR/IT/ES/NL/IE (висновок: арбітражу немає)
 - econ.py — таблиця чистого прибутку з комісіями; thr_sim.py — симуляція порогів знижки
+- check_audit.py — приймальна перевірка check.py на 20 реальних SKU (~210 викликів)
 - niche_probe.py, lego_census.py, flow_now.py — потік лотів по нішах / LEGO / поточні категорії
 Висновки: див. СТРАТЕГІЯ.md (розділи 9–10).
