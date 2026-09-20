@@ -93,6 +93,15 @@ def parse_rss(xml: str) -> list:
     return out
 
 
+def feed_urls(groups=(), hot=False) -> tuple:
+    """Стрічки: загальна `new` + (опційно) `hot` + тематичні групи (`/rss/gruppe/<slug>`, по 30 останніх)."""
+    urls = list(RSS_URLS)
+    if hot:
+        urls.append("https://www.mydealz.de/rss/hot")
+    urls += [f"https://www.mydealz.de/rss/gruppe/{g.strip()}" for g in groups if g.strip()]
+    return tuple(urls)
+
+
 def fetch_deals(urls=RSS_URLS) -> list:
     deals, seen = [], set()
     for u in urls:
@@ -108,13 +117,13 @@ def fetch_deals(urls=RSS_URLS) -> list:
 # --------------------------------------------------------------------------- #
 # Фільтр і запит
 # --------------------------------------------------------------------------- #
-def prefilter(d: dict):
+def prefilter(d: dict, pmin: float = PRICE_MIN, pmax: float = PRICE_MAX):
     """None = пропозиція придатна; інакше — причина відсіву (для звіту)."""
     if not d.get("price"):
         return "без ціни"
     if d["cat"] in SKIP_CATEGORIES:
         return "категорія: подорожі"
-    if not (PRICE_MIN <= d["price"] <= PRICE_MAX):
+    if not (pmin <= d["price"] <= pmax):
         return "ціна поза межами"
     if DENY_TITLE.search(d["title"]):
         return "не нове/не фізичне/локальне"
@@ -207,9 +216,10 @@ def score(net, weeks):
 # --------------------------------------------------------------------------- #
 # Обробка
 # --------------------------------------------------------------------------- #
-def process(deal: dict, fetcher, *, stage2_left: list) -> dict:
+def process(deal: dict, fetcher, *, stage2_left: list, pmin: float = PRICE_MIN, pmax: float = PRICE_MAX,
+            min_profit: float = check.MIN_PROFIT, min_roi: float = check.MIN_ROI) -> dict:
     row = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), **deal}
-    why = prefilter(deal)
+    why = prefilter(deal, pmin, pmax)
     if why:
         row.update(outcome="filtered", reason=why)
         return row
@@ -226,7 +236,7 @@ def process(deal: dict, fetcher, *, stage2_left: list) -> dict:
     except Exception as exc:                                    # noqa: BLE001
         row.update(outcome="error", reason=str(exc)[:160])
         return row
-    out = classify(res)
+    out = classify(res, min_profit=min_profit, min_roi=min_roi)
     e = res.deals.get("ebay")
     row.update(outcome=out, market=dict(n=res.market.n_kept, sellers=res.market.n_sellers,
                fast=res.market.low5, median=res.market.median, disp=res.market.dispersion,
@@ -242,7 +252,7 @@ def process(deal: dict, fetcher, *, stage2_left: list) -> dict:
             except Exception:                                    # noqa: BLE001
                 pass
         vel = check.build_velocity(details, n_market_lots=res.market.n_kept)
-        res2 = check.evaluate(product, res.market, vel, buy_price=buy)
+        res2 = check.evaluate(product, res.market, vel, buy_price=buy, min_profit=min_profit, min_roi=min_roi)
         row.update(verdict=res2.verdict, weeks=vel.weeks_to_sell, vconf=vel.confidence,
                    reasons=res2.reasons[:2],
                    score=score(row["net"], vel.weeks_to_sell))
@@ -265,8 +275,10 @@ def save_seen(seen: set, path=STATE_FILE, keep=5000):
         json.dump({"seen": sorted(seen)[-keep:]}, f)
 
 
-def run_once(max_stage1=MAX_STAGE1, max_stage2=MAX_STAGE2, dry=False, log_path=LOG_FILE):
-    deals = fetch_deals()
+def run_once(max_stage1=MAX_STAGE1, max_stage2=MAX_STAGE2, dry=False, log_path=LOG_FILE, *,
+             groups=(), hot=False, pmin=PRICE_MIN, pmax=PRICE_MAX,
+             min_profit=check.MIN_PROFIT, min_roi=check.MIN_ROI):
+    deals = fetch_deals(feed_urls(groups, hot))
     seen = load_seen()
     fresh = [d for d in deals if d["link"] not in seen]
     print(f"RSS: {len(deals)} пропозицій, нових {len(fresh)}", file=sys.stderr)
@@ -276,10 +288,12 @@ def run_once(max_stage1=MAX_STAGE1, max_stage2=MAX_STAGE2, dry=False, log_path=L
     stage1 = 0
     rows = []
     for d in fresh:
-        pre = prefilter(d)
+        pre = prefilter(d, pmin, pmax)
         if not pre and stage1 >= max_stage1:
             continue                      # відкладено до наступного запуску (не позначаємо seen)
-        row = process(d, fetcher, stage2_left=stage2_left) if not dry else {**d, "outcome": pre or "dry"}
+        row = (process(d, fetcher, stage2_left=stage2_left, pmin=pmin, pmax=pmax,
+                       min_profit=min_profit, min_roi=min_roi)
+               if not dry else {**d, "outcome": pre or "dry"})
         if not pre and not dry:
             stage1 += 1
         rows.append(row)
@@ -334,9 +348,16 @@ def main(argv=None) -> int:
     ap.add_argument("--max", type=int, default=MAX_STAGE1, help="макс. перевірок ринку за запуск")
     ap.add_argument("--max2", type=int, default=MAX_STAGE2, help="макс. вимірів швидкості за запуск")
     ap.add_argument("--dry", action="store_true", help="лише фільтр, без викликів eBay")
+    ap.add_argument("--groups", default="", help="тематичні групи mydealz через кому (elektronik,gaming,…)")
+    ap.add_argument("--hot", action="store_true", help="додати /rss/hot")
+    ap.add_argument("--pmin", type=float, default=PRICE_MIN, help="мін. ціна акції, €")
+    ap.add_argument("--pmax", type=float, default=PRICE_MAX, help="макс. ціна акції, €")
+    ap.add_argument("--min-profit", type=float, default=check.MIN_PROFIT, help="мін. чистий прибуток, €")
+    ap.add_argument("--min-roi", type=float, default=check.MIN_ROI, help="мін. ROI (0.20 = 20%%)")
     a = ap.parse_args(argv)
     if a.once:
-        run_once(a.max, a.max2, dry=a.dry)
+        run_once(a.max, a.max2, dry=a.dry, groups=a.groups.split(","), hot=a.hot, pmin=a.pmin, pmax=a.pmax,
+                 min_profit=a.min_profit, min_roi=a.min_roi)
     if a.report or not a.once:
         print(report())
     return 0

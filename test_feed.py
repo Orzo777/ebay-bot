@@ -80,6 +80,16 @@ class FilterTests(unittest.TestCase):
         # без моделі — стандартна логіка check, а не порожній must
         self.assertTrue(F.build_product("Birkenstock Arizona Taupe").must)
 
+    def test_price_band_and_feed_urls_are_configurable(self):
+        d = {"title": "Sony WH-1000XM5", "price": 90.0, "cat": "Elektronik", "merchant": "Amazon"}
+        self.assertIsNone(F.prefilter(d))                                  # у стандартній смузі €12–450
+        self.assertIn("ціна поза", F.prefilter(d, pmin=100, pmax=450))     # у смузі «крупні угоди» — ні
+        self.assertIsNone(F.prefilter({**d, "price": 150.0}, pmin=100, pmax=450))
+        urls = F.feed_urls(["elektronik", " gaming ", ""], hot=True)
+        self.assertIn("https://www.mydealz.de/rss/hot", urls)
+        self.assertIn("https://www.mydealz.de/rss/gruppe/gaming", urls)
+        self.assertEqual(sum(1 for u in urls if u.endswith("/rss/new")), 1)
+
     def test_inbound_shipping_assumption(self):
         self.assertEqual(F.inbound_ship("Amazon"), 0.0)
         self.assertEqual(F.inbound_ship("MediaMarkt"), F.INBOUND_SHIP)
@@ -137,6 +147,15 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(row["outcome"], "candidate")
         self.assertEqual(row["verdict"], "PENDING")
         self.assertEqual(f.calls, 1)
+
+    def test_min_profit_threshold_changes_classification(self):
+        its = market_items([125, 128, 130, 132, 135, 138, 140, 142])
+        f = FakeFetcher(search_results=its)
+        loose = F.process(self.D, f, stage2_left=[0], min_profit=15)
+        self.assertEqual(loose["outcome"], "candidate")
+        f2 = FakeFetcher(search_results=its)
+        strict = F.process(self.D, f2, stage2_left=[0], min_profit=60)       # «крупні угоди»: ≥€60 чистими
+        self.assertEqual(strict["outcome"], "uneconomic")
 
     def test_thin_market_never_candidate(self):
         f = FakeFetcher(search_results=market_items([140, 150]))
