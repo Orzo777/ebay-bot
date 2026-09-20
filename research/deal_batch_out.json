@@ -1,0 +1,915 @@
+[
+ [
+  "Sonicare DiamondClean 9000 iBOOD",
+  95.9,
+  {
+   "verdict": "SKIP",
+   "label": "Philips Sonicare DiamondClean 9000 HX9913",
+   "query": "Philips Sonicare DiamondClean 9000 HX9913",
+   "identified_by": "назва",
+   "market": {
+    "kept": 27,
+    "seen": 32,
+    "sellers": 22,
+    "total_reported": 32,
+    "min": 113.99,
+    "fast_price": 125.19,
+    "median": 142.535,
+    "dispersion": 0.203,
+    "dropped": {
+     "немає:9000": 2,
+     "cond:1500": 2,
+     "ціна поза діапазоном ринку": 1
+    },
+    "category_path": "Elektrische Zahnbürsten|Beauty & Gesundheit|Mund- & Zahnpflege|Elektrische Mund- & Zahnpflege"
+   },
+   "velocity": {
+    "weeks_to_sell": 11.2,
+    "per_listing_week": 0.089,
+    "market_week": 2.4,
+    "per_week_sampled": 0.7,
+    "confidence": "низька",
+    "lots": 10,
+    "with_data": 8,
+    "sold_total": 5,
+    "note": "лише 8 лот(и) з даними, продано 5; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "beauty"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 125.19,
+     "fee": 17.98,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 5.12,
+     "roi": 0.0534,
+     "max_buy": 84.18,
+     "breakeven_buy": 101.02,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 112.67,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 14.77,
+     "roi": 0.154,
+     "max_buy": 92.23,
+     "breakeven_buy": 110.67,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 112.67,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 16.77,
+     "roi": 0.1749,
+     "max_buy": 93.89,
+     "breakeven_buy": 112.67,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 142.53,
+    "net": 20.04,
+    "roi": 0.209,
+    "max_buy": 96.62
+   },
+   "reasons": [
+    "eBay: чистими €5.12 (5%) — прибуток €5.12 < €15; ROI 5% < 15%"
+   ],
+   "warnings": [
+    "поза eBay було б краще (vinted: €16.77), але ціна того каналу — припущення, не вимір"
+   ],
+   "api_calls": 11
+  }
+ ],
+ [
+  "DualSense Midnight Black Joybuy",
+  53.49,
+  {
+   "verdict": "SKIP",
+   "label": "Sony DualSense Wireless Controller Midnight Black",
+   "query": "Sony DualSense Wireless Controller Midnight Black",
+   "identified_by": "назва",
+   "market": {
+    "kept": 23,
+    "seen": 37,
+    "sellers": 19,
+    "total_reported": 37,
+    "min": 69.0,
+    "fast_price": 75.0,
+    "median": 79.99,
+    "dispersion": 0.143,
+    "dropped": {
+     "немає:sony": 5,
+     "виключено:edge": 4,
+     "cond:1500": 2,
+     "кілька штук у лоті": 1,
+     "variation-group": 2
+    },
+    "category_path": "Controller|PC- & Videospiele|Zubehör"
+   },
+   "velocity": {
+    "weeks_to_sell": 16.9,
+    "per_listing_week": 0.059,
+    "market_week": 1.4,
+    "per_week_sampled": 0.4,
+    "confidence": "низька",
+    "lots": 10,
+    "with_data": 7,
+    "sold_total": 9,
+    "note": "лише 7 лот(и) з даними, продано 9; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.12,
+    "group": "games",
+    "known": true,
+    "source": "відеоігри"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 75.0,
+     "fee": 9.45,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 5.87,
+     "roi": 0.1097,
+     "max_buy": 49.47,
+     "breakeven_buy": 59.36,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 67.5,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 12.01,
+     "roi": 0.2245,
+     "max_buy": 54.58,
+     "breakeven_buy": 65.5,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 67.5,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 14.01,
+     "roi": 0.2619,
+     "max_buy": 56.25,
+     "breakeven_buy": 67.5,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 79.99,
+    "net": 10.26,
+    "roi": 0.1918,
+    "max_buy": 53.12
+   },
+   "reasons": [
+    "eBay: чистими €5.87 (11%) — прибуток €5.87 < €15; ROI 11% < 15%"
+   ],
+   "warnings": [],
+   "api_calls": 11
+  }
+ ],
+ [
+  "LEGO 10300 Zeitmaschine Cdiscount",
+  142.98,
+  {
+   "verdict": "SKIP",
+   "label": "LEGO 10300",
+   "query": "LEGO 10300",
+   "identified_by": "номер набору",
+   "market": {
+    "kept": 43,
+    "seen": 76,
+    "sellers": 42,
+    "total_reported": 76,
+    "min": 166.69,
+    "fast_price": 166.69,
+    "median": 204.685,
+    "dispersion": 0.276,
+    "dropped": {
+     "аксесуар-für": 4,
+     "cond:1500": 2,
+     "variation-group": 16,
+     "damaged": 1,
+     "лише фігурка": 3,
+     "лише інструкція": 1,
+     "кілька штук у лоті": 1,
+     "немає:10300": 1,
+     "ціна поза діапазоном ринку": 4
+    },
+    "category_path": "LEGO (R) Komplette Sets & Packs|Spielzeug|Bausets & Konstruktion|LEGO (R) Konstruktionsspielzeuge"
+   },
+   "velocity": {
+    "weeks_to_sell": 200.0,
+    "per_listing_week": 0.005,
+    "market_week": 0.2,
+    "per_week_sampled": 0.0,
+    "confidence": "низька",
+    "lots": 10,
+    "with_data": 1,
+    "sold_total": 1,
+    "note": "лише 1 лот(и) з даними, продано 1; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "іграшки"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 166.69,
+     "fee": 23.79,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": -6.27,
+     "roi": -0.0439,
+     "max_buy": 113.93,
+     "breakeven_buy": 136.71,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 150.02,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 5.04,
+     "roi": 0.0352,
+     "max_buy": 123.35,
+     "breakeven_buy": 148.02,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 150.02,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 7.04,
+     "roi": 0.0492,
+     "max_buy": 125.02,
+     "breakeven_buy": 150.02,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 204.69,
+    "net": 26.41,
+    "roi": 0.1847,
+    "max_buy": 141.16
+   },
+   "reasons": [
+    "eBay: чистими €-6.27 (-4%) — прибуток €-6.27 < €15; ROI -4% < 15%"
+   ],
+   "warnings": [],
+   "api_calls": 11
+  }
+ ],
+ [
+  "LEGO 10318 Concorde Cdiscount",
+  142.98,
+  {
+   "verdict": "SKIP",
+   "label": "LEGO 10318",
+   "query": "LEGO 10318",
+   "identified_by": "номер набору",
+   "market": {
+    "kept": 22,
+    "seen": 45,
+    "sellers": 22,
+    "total_reported": 45,
+    "min": 182.64,
+    "fast_price": 188.0,
+    "median": 233.485,
+    "dispersion": 0.236,
+    "dropped": {
+     "variation-group": 8,
+     "accessory": 3,
+     "лише коробка": 1,
+     "немає:10318": 3,
+     "cond:1500": 1,
+     "аксесуар-für": 5,
+     "ціна поза діапазоном ринку": 2
+    },
+    "category_path": "LEGO (R) Komplette Sets & Packs|Spielzeug|Bausets & Konstruktion|LEGO (R) Konstruktionsspielzeuge"
+   },
+   "velocity": {
+    "weeks_to_sell": 0.5,
+    "per_listing_week": 1.952,
+    "market_week": 42.9,
+    "per_week_sampled": 7.8,
+    "confidence": "висока",
+    "lots": 10,
+    "with_data": 4,
+    "sold_total": 1190,
+    "note": "міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "іграшки"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 188.0,
+     "fee": 26.77,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 12.06,
+     "roi": 0.0843,
+     "max_buy": 129.2,
+     "breakeven_buy": 155.04,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 169.2,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 24.22,
+     "roi": 0.1694,
+     "max_buy": 139.33,
+     "breakeven_buy": 167.2,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 169.2,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 26.22,
+     "roi": 0.1834,
+     "max_buy": 141.0,
+     "breakeven_buy": 169.2,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 233.49,
+    "net": 51.18,
+    "roi": 0.358,
+    "max_buy": 161.8
+   },
+   "reasons": [
+    "eBay: чистими €12.06 (8%) — прибуток €12.06 < €15; ROI 8% < 15%"
+   ],
+   "warnings": [
+    "поза eBay було б краще (vinted: €26.22), але ціна того каналу — припущення, не вимір"
+   ],
+   "api_calls": 11
+  }
+ ],
+ [
+  "LEGO 11380 Rennrad Amazon",
+  80.99,
+  {
+   "verdict": "SKIP",
+   "label": "LEGO 11380",
+   "query": "LEGO 11380",
+   "identified_by": "номер набору",
+   "market": {
+    "kept": 30,
+    "seen": 33,
+    "sellers": 30,
+    "total_reported": 33,
+    "min": 109.95,
+    "fast_price": 110.99,
+    "median": 125.89,
+    "dispersion": 0.085,
+    "dropped": {
+     "лише інструкція": 1,
+     "variation-group": 1,
+     "no-shipping": 1
+    },
+    "category_path": "LEGO (R) Komplette Sets & Packs|Spielzeug|Bausets & Konstruktion|LEGO (R) Konstruktionsspielzeuge"
+   },
+   "velocity": {
+    "weeks_to_sell": 10.5,
+    "per_listing_week": 0.095,
+    "market_week": 2.9,
+    "per_week_sampled": 0.7,
+    "confidence": "низька",
+    "lots": 10,
+    "with_data": 7,
+    "sold_total": 5,
+    "note": "лише 7 лот(и) з даними, продано 5; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "іграшки"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 110.99,
+     "fee": 15.99,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 7.82,
+     "roi": 0.0966,
+     "max_buy": 74.01,
+     "breakeven_buy": 88.81,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 99.89,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 16.9,
+     "roi": 0.2087,
+     "max_buy": 81.58,
+     "breakeven_buy": 97.89,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 99.89,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 18.9,
+     "roi": 0.2334,
+     "max_buy": 83.24,
+     "breakeven_buy": 99.89,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 125.89,
+    "net": 20.64,
+    "roi": 0.2548,
+    "max_buy": 84.69
+   },
+   "reasons": [
+    "eBay: чистими €7.82 (10%) — прибуток €7.82 < €15; ROI 10% < 15%"
+   ],
+   "warnings": [
+    "поза eBay було б краще (vinted: €18.9), але ціна того каналу — припущення, не вимір"
+   ],
+   "api_calls": 11
+  }
+ ],
+ [
+  "Toniebox 2 Paw Patrol MM Chemnitz",
+  84.99,
+  {
+   "verdict": "BUY",
+   "label": "Toniebox 2 Paw Patrol Starterset",
+   "query": "Toniebox 2 Paw Patrol Starterset",
+   "identified_by": "назва",
+   "market": {
+    "kept": 20,
+    "seen": 22,
+    "sellers": 10,
+    "total_reported": 22,
+    "min": 124.94,
+    "fast_price": 127.99,
+    "median": 140.385,
+    "dispersion": 0.128,
+    "dropped": {
+     "variation-group": 1,
+     "немає:patrol": 1
+    },
+    "category_path": "Kinder-Kassettenrecorder|Spielzeug|Elektrisches Spielzeug"
+   },
+   "velocity": {
+    "weeks_to_sell": 4.7,
+    "per_listing_week": 0.213,
+    "market_week": 4.3,
+    "per_week_sampled": 0.9,
+    "confidence": "низька",
+    "lots": 10,
+    "with_data": 4,
+    "sold_total": 4,
+    "note": "лише 4 лот(и) з даними, продано 4; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "іграшки"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 127.99,
+     "fee": 18.37,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 18.44,
+     "roi": 0.217,
+     "max_buy": 86.19,
+     "breakeven_buy": 103.43,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 115.19,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 28.2,
+     "roi": 0.3318,
+     "max_buy": 94.33,
+     "breakeven_buy": 113.19,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 115.19,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 30.2,
+     "roi": 0.3553,
+     "max_buy": 95.99,
+     "breakeven_buy": 115.19,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 140.38,
+    "net": 29.1,
+    "roi": 0.3424,
+    "max_buy": 95.08
+   },
+   "reasons": [
+    "eBay: чистими €18.44 (22%), ~4.7 тиж до продажу"
+   ],
+   "warnings": [],
+   "api_calls": 11
+  }
+ ],
+ [
+  "Toniebox 2 Pikachu VEDES",
+  109.0,
+  {
+   "verdict": "UNKNOWN",
+   "label": "Toniebox 2 Pikachu Starterset",
+   "query": "Toniebox 2 Pikachu Starterset",
+   "identified_by": "назва",
+   "market": {
+    "kept": 7,
+    "seen": 70,
+    "sellers": 7,
+    "total_reported": 70,
+    "min": 166.95,
+    "fast_price": 168.9,
+    "median": 169.95,
+    "dispersion": 0.011,
+    "dropped": {
+     "немає:starterset": 52,
+     "cond:1500": 2,
+     "кілька штук у лоті": 2,
+     "variation-group": 2,
+     "preorder": 4,
+     "запчастина/зарядка": 1
+    },
+    "category_path": "Kinder-Kassettenrecorder|Spielzeug|Elektrisches Spielzeug"
+   },
+   "velocity": {
+    "weeks_to_sell": null,
+    "per_listing_week": null,
+    "market_week": null,
+    "per_week_sampled": null,
+    "confidence": "не виміряно",
+    "lots": 7,
+    "with_data": 0,
+    "sold_total": 0,
+    "note": "усі опитані лоти — поштучні (кількість 1), eBay не показує проданих"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "іграшки"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 168.9,
+     "fee": 24.1,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 29.61,
+     "roi": 0.2717,
+     "max_buy": 115.51,
+     "breakeven_buy": 138.61,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 152.01,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 41.01,
+     "roi": 0.3762,
+     "max_buy": 125.01,
+     "breakeven_buy": 150.01,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 152.01,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 43.01,
+     "roi": 0.3946,
+     "max_buy": 126.67,
+     "breakeven_buy": 152.01,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 169.95,
+    "net": 30.52,
+    "roi": 0.28,
+    "max_buy": 116.27
+   },
+   "reasons": [
+    "економіка сходиться, але швидкість продажів не виміряна"
+   ],
+   "warnings": [],
+   "api_calls": 8
+  }
+ ],
+ [
+  "Braun 9660cc Shoop",
+  159.99,
+  {
+   "verdict": "UNKNOWN",
+   "label": "Braun Series 9 9660cc Rasierer",
+   "query": "Braun Series 9 9660cc Rasierer",
+   "identified_by": "назва",
+   "market": {
+    "kept": 16,
+    "seen": 19,
+    "sellers": 14,
+    "total_reported": 19,
+    "min": 306.0,
+    "fast_price": 330.33,
+    "median": 353.6975,
+    "dispersion": 0.129,
+    "dropped": {
+     "cond:1500": 2,
+     "немає:series": 1
+    },
+    "category_path": "Herrenrasierer|Beauty & Gesundheit|Enthaarung & Rasur|Rasierapparate|Elektrische Geräte Enthaarung & Rasur"
+   },
+   "velocity": {
+    "weeks_to_sell": null,
+    "per_listing_week": 0.0,
+    "market_week": 0.0,
+    "per_week_sampled": 0.0,
+    "confidence": "низька",
+    "lots": 10,
+    "with_data": 4,
+    "sold_total": 0,
+    "note": "4 лот(и) із запасом, але жодного продажу; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "beauty"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 330.33,
+     "fee": 46.7,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 117.45,
+     "roi": 0.7341,
+     "max_buy": 231.2,
+     "breakeven_buy": 277.44,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 297.3,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 135.31,
+     "roi": 0.8457,
+     "max_buy": 246.08,
+     "breakeven_buy": 295.3,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 297.3,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 137.31,
+     "roi": 0.8582,
+     "max_buy": 247.75,
+     "breakeven_buy": 297.3,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 353.7,
+    "net": 137.55,
+    "roi": 0.8597,
+    "max_buy": 247.95
+   },
+   "reasons": [
+    "економіка сходиться, але швидкість продажів не виміряна"
+   ],
+   "warnings": [],
+   "api_calls": 11
+  }
+ ],
+ [
+  "Braun 9517s Primedeals",
+  159.99,
+  {
+   "verdict": "UNKNOWN",
+   "label": "Braun Series 9 9517s Rasierer",
+   "query": "Braun Series 9 9517s Rasierer",
+   "identified_by": "назва",
+   "market": {
+    "kept": 4,
+    "seen": 7,
+    "sellers": 4,
+    "total_reported": 7,
+    "min": 271.48,
+    "fast_price": 286.45,
+    "median": 286.45,
+    "dispersion": 0.089,
+    "dropped": {
+     "запчастина/зарядка": 2,
+     "cond:1500": 1
+    },
+    "category_path": "Herrenrasierer|Beauty & Gesundheit|Enthaarung & Rasur|Rasierapparate|Elektrische Geräte Enthaarung & Rasur"
+   },
+   "velocity": {
+    "weeks_to_sell": 1.7,
+    "per_listing_week": 0.578,
+    "market_week": 2.3,
+    "per_week_sampled": 1.7,
+    "confidence": "низька",
+    "lots": 4,
+    "with_data": 3,
+    "sold_total": 159,
+    "note": "лише 3 лот(и) з даними, продано 159; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.14,
+    "group": "toys",
+    "known": true,
+    "source": "beauty"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 286.45,
+     "fee": 40.55,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 79.72,
+     "roi": 0.4983,
+     "max_buy": 199.76,
+     "breakeven_buy": 239.71,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 257.81,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 95.82,
+     "roi": 0.5989,
+     "max_buy": 213.18,
+     "breakeven_buy": 255.81,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 257.81,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 97.82,
+     "roi": 0.6114,
+     "max_buy": 214.84,
+     "breakeven_buy": 257.81,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 286.45,
+    "net": 79.72,
+    "roi": 0.4983,
+    "max_buy": 199.76
+   },
+   "reasons": [
+    "мало лотів: 4 < 5"
+   ],
+   "warnings": [],
+   "api_calls": 5
+  }
+ ],
+ [
+  "Pokemon TTB Fatale Flammen Kaufland",
+  44.99,
+  {
+   "verdict": "SKIP",
+   "label": "Pokemon Top Trainer Box Fatale Flammen",
+   "query": "Pokemon Top Trainer Box Fatale Flammen",
+   "identified_by": "назва",
+   "market": {
+    "kept": 168,
+    "seen": 200,
+    "sellers": 157,
+    "total_reported": 350,
+    "min": 86.18,
+    "fast_price": 87.18,
+    "median": 114.46,
+    "dispersion": 0.196,
+    "dropped": {
+     "кілька штук у лоті": 16,
+     "немає:flammen": 1,
+     "accessory": 3,
+     "немає:pokemon": 4,
+     "немає:trainer": 1,
+     "ціна поза діапазоном ринку": 7
+    },
+    "category_path": "TCG OVP Displays|Sammeln & Seltenes|Sammelkartenspiele/TCGs"
+   },
+   "velocity": {
+    "weeks_to_sell": 25.0,
+    "per_listing_week": 0.04,
+    "market_week": 6.7,
+    "per_week_sampled": 0.2,
+    "confidence": "низька",
+    "lots": 10,
+    "with_data": 4,
+    "sold_total": 1,
+    "note": "лише 4 лот(и) з даними, продано 1; міряно по лотах дилерів із запасом — поштучний лот буде повільнішим"
+   },
+   "fee": {
+    "rate": 0.11,
+    "group": "tcg",
+    "known": true,
+    "source": "TCG"
+   },
+   "channels": {
+    "ebay": {
+     "sale": 87.18,
+     "fee": 10.04,
+     "shipping": 6.19,
+     "listing": 0.0,
+     "net": 25.96,
+     "roi": 0.577,
+     "max_buy": 59.13,
+     "breakeven_buy": 70.95,
+     "price_measured": true
+    },
+    "kleinanzeigen": {
+     "sale": 78.46,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 2.0,
+     "net": 31.47,
+     "roi": 0.6995,
+     "max_buy": 63.72,
+     "breakeven_buy": 76.46,
+     "price_measured": false
+    },
+    "vinted": {
+     "sale": 78.46,
+     "fee": 0.0,
+     "shipping": 0.0,
+     "listing": 0.0,
+     "net": 33.47,
+     "roi": 0.7439,
+     "max_buy": 65.38,
+     "breakeven_buy": 78.46,
+     "price_measured": false
+    }
+   },
+   "patient_ebay": {
+    "sale": 114.46,
+    "net": 50.24,
+    "roi": 1.1167,
+    "max_buy": 79.36
+   },
+   "reasons": [
+    "повільно: ~25.0 тиж до продажу (> 6) — капітал стоятиме"
+   ],
+   "warnings": [
+    "eBay повідомляє 350 лотів за запитом, ми бачили 200 — запит завеликий, звузь його (--must / точніша назва)"
+   ],
+   "api_calls": 11
+  }
+ ]
+]
