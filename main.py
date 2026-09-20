@@ -111,10 +111,21 @@ def _fmt_d(d):
     return "—" if d is None else f"{d:.0f} дн."
 
 
+# Лічильник викликів Browse API (квота eBay 5000/добу спільна для бота, ноутбука і зондів).
+# Рахуємо кожну спробу HTTP, включно з повторами після 429/5xx.
+API_USAGE = {"browse": 0, "429": 0, "5xx": 0}
+
+
+def _count_call(url: str, kind: str = "browse") -> None:
+    if "/buy/browse/" in url:
+        API_USAGE[kind] += 1
+
+
 def _request_with_backoff(method: str, url: str, **kwargs):
     delay = config.BACKOFF_BASE
     last_err = None
     for attempt in range(1, config.MAX_RETRIES + 1):
+        _count_call(url)
         try:
             resp = requests.request(method, url, timeout=config.HTTP_TIMEOUT, **kwargs)
         except (requests.Timeout, requests.ConnectionError) as exc:
@@ -128,6 +139,7 @@ def _request_with_backoff(method: str, url: str, **kwargs):
         if resp.status_code == 429:
             retry_after = _to_float(resp.headers.get("Retry-After")) or delay
             last_err = RuntimeError("429 Too Many Requests")
+            _count_call(url, "429")
             log(f"  429 rate limit — пауза {retry_after:.0f}s "
                 f"({attempt}/{config.MAX_RETRIES})")
             time.sleep(retry_after)
@@ -136,6 +148,7 @@ def _request_with_backoff(method: str, url: str, **kwargs):
 
         if resp.status_code >= 500:
             last_err = RuntimeError(f"{resp.status_code} {resp.reason}")
+            _count_call(url, "5xx")
             log(f"  eBay {resp.status_code} — пауза {delay:.0f}s "
                 f"({attempt}/{config.MAX_RETRIES})")
             time.sleep(delay)
@@ -383,6 +396,8 @@ class HistoryStore:
         self._pindex: dict[str, set] = {}
         self.seeded: set[str] = set()           # категорії з початковим знімком
         self.legacy_v1 = None                   # копія стану до переходу на ідентифікацію v2
+        self.api_usage: dict[str, int] = {}     # {дата UTC: викликів Browse API ботом}
+        self.last_run_api = (0, 0, 0)           # (виклики, 429, 5xx) останнього прогону
         self.migrated = False
         self._fam = None                        # кеш родин ключів (на прогін)
         self.load()
@@ -400,6 +415,7 @@ class HistoryStore:
         self.discovery_seen = set(data.get("discovery_seen", []) or [])
         self.seeded = set(data.get("seeded", []) or [])
         self.legacy_v1 = data.get("legacy_v1")
+        self.api_usage = {str(k): int(v) for k, v in (data.get("api_usage") or {}).items()}
         if int(data.get("schema", 1)) < config.STATE_SCHEMA:
             # Перехід на ідентифікацію v2: старі ключі змішували різні товари, а
             # знімок ринку був неповним → «медіани» і «продажі» недостовірні.
@@ -430,8 +446,15 @@ class HistoryStore:
                 "key_query": self.key_query,
                 "key_conf": self.key_conf,
                 "legacy_v1": self.legacy_v1,
+                "api_usage": self.api_usage,
             }, f, ensure_ascii=False, separators=(",", ":"))
         os.replace(tmp, self.path)
+
+    def record_api_usage(self, now, calls: int, keep_days: int = 14) -> None:
+        day = now.astimezone(timezone.utc).date().isoformat()
+        self.api_usage[day] = self.api_usage.get(day, 0) + int(calls)
+        cutoff = (now - timedelta(days=keep_days)).astimezone(timezone.utc).date().isoformat()
+        self.api_usage = {d: n for d, n in self.api_usage.items() if d >= cutoff}
 
     # --- цінова історія ---
     def points_in_window(self, epid, now, days) -> list:
@@ -1077,6 +1100,7 @@ def run_pass(client, cats, store, liq, now, *, day=0, total_days=1,
              force_mock=False, quiet=False) -> dict:
     stats = new_stats()
     store._fam = None
+    api0 = (API_USAGE["browse"], API_USAGE["429"], API_USAGE["5xx"])
     for cat in cats:
         try:
             summaries, n_a, n_b, only_b, complete = fetch_summaries(
@@ -1097,6 +1121,9 @@ def run_pass(client, cats, store, liq, now, *, day=0, total_days=1,
 
     stats["gone"] = store.sweep_gone(now, None if force_mock else stats["complete"])
     stats["relisted_now"] = store.match_relists(quiet)
+    store.last_run_api = tuple(API_USAGE[k] - a for k, a in zip(("browse", "429", "5xx"), api0))
+    if not force_mock:
+        store.record_api_usage(now, store.last_run_api[0])
     store.save()
     return stats
 
@@ -1178,6 +1205,17 @@ def print_summary(store: HistoryStore, liq, now: datetime, agg: dict) -> None:
         f"(зникнення рахуються продажем лише для повних)")
     log(f"Життєвий цикл: relist-подій (виключено з velocity): "
         f"{sum(1 for b in store.listings.values() for e in b.values() if e['status'] == 'relisted')}")
+
+    calls, n429, n5xx = store.last_run_api
+    today = now.astimezone(timezone.utc).date().isoformat()
+    used = store.api_usage.get(today, 0)
+    pct = used / 5000 * 100
+    warn = "  ⚠ близько до ліміту 5000/добу!" if pct >= 70 else ""
+    log(f"Виклики Browse API: цей прогін {calls} (429: {n429}, 5xx: {n5xx}); "
+        f"бот сьогодні (UTC) ≈ {used} із 5000 ({pct:.0f}%){warn}")
+    if store.api_usage:
+        log("  за днями (UTC): " + ", ".join(f"{d[5:]}={n}" for d, n in sorted(store.api_usage.items())[-7:])
+            + "   [лише виклики бота; ліміт eBay скидається ~07:00 UTC, дослідження не входять]")
 
     log()
     vd = agg["verdicts"]

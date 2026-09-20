@@ -36,7 +36,7 @@ jobs:
 
       # Запобіжник: зламаний фільтр не має шити сповіщення про гроші. Тести без мережі (~1 с).
       - name: Self-check (unit tests)
-        run: python -m unittest test_identity test_pipeline
+        run: python -m unittest test_identity test_pipeline test_apiusage
 
       - name: Restore state
         uses: actions/cache/restore@v4
