@@ -1,0 +1,90 @@
+{
+ "DDR5 UDIMM 32 ГБ (2×16) кіт": {
+  "listings": 126,
+  "units": 153,
+  "avg": 336,
+  "p25": 299,
+  "med": 335,
+  "p75": 366,
+  "st": 45.85,
+  "sellers": 113,
+  "freeship": 43
+ },
+ "DDR5 UDIMM 64 ГБ (2×32) кіт": {
+  "listings": 47,
+  "units": 59,
+  "avg": 609,
+  "p25": 516,
+  "med": 602,
+  "p75": 710,
+  "st": 19.08,
+  "sellers": 41,
+  "freeship": 43
+ },
+ "DDR5 SO-DIMM 32 ГБ": {
+  "listings": 95,
+  "units": 133,
+  "avg": 304,
+  "p25": 210,
+  "med": 249,
+  "p75": 285,
+  "st": 16.24,
+  "sellers": 169,
+  "freeship": 40
+ },
+ "DDR5 SO-DIMM 16 ГБ": {
+  "listings": 139,
+  "units": 236,
+  "avg": 175,
+  "p25": 120,
+  "med": 149,
+  "p75": 174,
+  "st": 17.88,
+  "sellers": 200,
+  "freeship": 37
+ },
+ "DDR4 UDIMM 32 ГБ (2×16) кіт": {
+  "listings": 103,
+  "units": 132,
+  "avg": 136,
+  "p25": 107,
+  "med": 137,
+  "p75": 159,
+  "st": 20.59,
+  "sellers": 94,
+  "freeship": 32
+ },
+ "DDR4 UDIMM 64 ГБ (2×32) кіт": {
+  "listings": 19,
+  "units": 21,
+  "avg": 292,
+  "p25": 241,
+  "med": 293,
+  "p75": 309,
+  "st": 6.13,
+  "sellers": 14,
+  "freeship": 40
+ },
+ "DDR4 SO-DIMM 32 ГБ": {
+  "listings": 88,
+  "units": 167,
+  "avg": 144,
+  "p25": 122,
+  "med": 149,
+  "p75": 161,
+  "st": 15.03,
+  "sellers": 156,
+  "freeship": 44
+ },
+ "DDR4 SO-DIMM 64 ГБ (2×32) кіт": {
+  "listings": 24,
+  "units": 26,
+  "avg": 306,
+  "p25": 264,
+  "med": 298,
+  "p75": 354,
+  "st": 2.49,
+  "sellers": 24,
+  "freeship": 50
+ }
+}
