@@ -18,4 +18,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python -m unittest test_identity test_pipeline test_econ test_check test_apiusage test_feed test_ram -v
+      - run: python -m unittest test_identity test_pipeline test_econ test_check test_apiusage test_feed test_ram test_ram_parse -v
