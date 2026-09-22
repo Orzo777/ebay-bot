@@ -1,0 +1,64 @@
+name: ram-mail-alert
+
+# Читає нові листи Kleinanzeigen (Suchauftrag) кожні ~15 хв, оцінює через
+# research/ram_alert.py і шле в Telegram (той самий бот, що й основний бот)
+# картку з вердиктом + кнопкою-посиланням на оголошення. Повідомлення
+# продавцю НЕ надсилається автоматично — лише сам користувач з телефону.
+#
+# Розклад cron — best effort (як і в poll.yml): реальні запуски бувають на
+# 5-20 хв пізніше. Для оголошень, що резервують за хвилини, це не панацея —
+# цінність у тому, щоб нічого не пропустити й одразу мати готовий вердикт.
+#
+# УВАГА: research/ram_mail_check.py::extract_listings() поки чорновий парсер —
+# доробити після першого реального листа-зразка.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ram-mail-alert
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: ram_mail_state.json
+          key: rammailstate-${{ github.run_id }}
+          restore-keys: rammailstate-
+
+      - name: Ensure state file exists
+        run: test -f ram_mail_state.json || printf '{"seen_ids": []}' > ram_mail_state.json
+
+      - name: Check mail
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
+        run: python research/ram_mail_check.py --state ram_mail_state.json
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ram_mail_state.json
+          key: rammailstate-${{ github.run_id }}
