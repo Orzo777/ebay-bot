@@ -60,34 +60,49 @@ def _body_text(msg):
         return ""
 
 
-_PRICE_RE = re.compile(r"(\d{1,4}(?:[.,]\d{2})?)\s?€")
-_LINK_RE = re.compile(r"https?://(?:www\.)?kleinanzeigen\.de/s-anzeige/[^\s\"'<>]+")
-_TAG_RE = re.compile(r"<[^>]+>")
+# Реальний формат листа-сповіщення Kleinanzeigen (Suchauftrag), звірено на живому
+# зразку 22.09.2026: одна email може містити КІЛЬКА нових оголошень підряд, кожне —
+# один блок виду: <img alt="Bild zur Anzeige <НАЗВА>"> ... "<ЦІНА> €" ... "Von Privat"
+# / "Von Gewerblich" ... <a href="…/s-anzeige/<ID>?…" title="Anzeige ansehen">.
+_TITLE_RE = re.compile(r'alt="Bild zur Anzeige ([^"]+)"')
+_ADLINK_RE = re.compile(r'href="(https://www\.kleinanzeigen\.de/s-anzeige/\d+)[^"]*"[^>]*title="Anzeige ansehen"')
+_PRICE_RE = re.compile(r"([\d.,]+)\s?€")
+_GEWERBLICH_RE = re.compile(r"Von Gewerblich")
+
+
+def _parse_price(s: str) -> float | None:
+    s = s.strip().rstrip(".,")
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 
 def extract_listings(subject: str, body: str) -> list[dict]:
-    """ЧОРНОВИК: одна email = зазвичай одне нове оголошення для Suchauftrag.
-    Пробуємо взяти назву із заголовка після ":" або першого рядка з ціною поруч."""
-    plain = _TAG_RE.sub(" ", body)
-    plain = re.sub(r"\s+", " ", plain).strip()
-    link_m = _LINK_RE.search(body)
-    link = link_m.group(0) if link_m else None
-    title = None
-    if ":" in subject:
-        cand = subject.split(":", 1)[1].strip()
-        if len(cand) > 5:
-            title = cand
-    price = None
-    pm = _PRICE_RE.search(plain)
-    if pm:
-        price = float(pm.group(1).replace(",", "."))
-        if not title:
-            # беремо ~80 символів перед ціною як евристичну назву
-            idx = pm.start()
-            title = plain[max(0, idx - 90):idx].strip(" -|·")
-    if not title or price is None:
-        return []
-    return [dict(title=title, price=price, link=link)]
+    """Розбиває тіло листа на блоки за міткою кожного оголошення (alt="Bild zur
+    Anzeige …") і витягує з кожного блоку назву, ціну, посилання й тип продавця."""
+    title_matches = list(_TITLE_RE.finditer(body))
+    out = []
+    for i, tm in enumerate(title_matches):
+        start = tm.start()
+        end = title_matches[i + 1].start() if i + 1 < len(title_matches) else len(body)
+        segment = body[start:end]
+        price_m = _PRICE_RE.search(segment)
+        if not price_m:
+            continue
+        price = _parse_price(price_m.group(1))
+        if price is None:
+            continue
+        link_m = _ADLINK_RE.search(segment)
+        out.append(dict(
+            title=tm.group(1).strip(),
+            price=price,
+            link=link_m.group(1) if link_m else None,
+            gewerblich=bool(_GEWERBLICH_RE.search(segment)),
+        ))
+    return out
 
 
 def send_telegram_card(text: str, link: str | None):
@@ -138,6 +153,9 @@ def run(state_path: str, dry_run: bool = False):
         subject = _decode(msg.get("Subject"))
         body = _body_text(msg)
         for lst in extract_listings(subject, body):
+            if lst.get("gewerblich"):
+                print(" - (гевербліх, пропущено)", lst["title"][:70])
+                continue
             res = evaluate(lst["title"], lst["price"])
             print(" -", lst["title"][:70], lst["price"], "->", res["verdict"])
             if res["verdict"].startswith("BUY"):
