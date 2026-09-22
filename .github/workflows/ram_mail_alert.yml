@@ -45,7 +45,8 @@ jobs:
           restore-keys: rammailstate-
 
       - name: Ensure state file exists
-        run: test -f ram_mail_state.json || printf '{"seen_ids": []}' > ram_mail_state.json
+        run: |
+          test -f ram_mail_state.json || printf '{"seen_ids": []}' > ram_mail_state.json
 
       - name: Check mail
         env:
