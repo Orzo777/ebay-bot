@@ -1,0 +1,66 @@
+name: weekly-health-check
+
+# Раз на тиждень перевіряє всі workflow репозиторію на збої за останні 7 днів
+# і шле коротке зведення в Telegram ЛИШЕ якщо є проблема. Якщо все ок — мовчить,
+# щоб не засмічувати (за проханням користувача). Не потребує GitHub-акаунту,
+# підключеного до Claude, чи хмарних routine — читає ту саму репу через
+# вбудований GITHUB_TOKEN.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"   # понеділок 08:00 UTC (~10:00 Europe/Berlin влітку, 09:00 взимку)
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Review last 7 days of workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          gh api "repos/$REPO/actions/runs?per_page=100" --jq '.workflow_runs' > runs.json
+          python3 - <<'PYEOF'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timedelta, timezone
+
+          runs = json.load(open("runs.json", encoding="utf-8"))
+          cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+          by_wf = {}
+          for r in runs:
+              created = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+              if created < cutoff:
+                  continue
+              name = r.get("name") or r.get("path")
+              d = by_wf.setdefault(name, {"total": 0, "failed": 0, "last_failed_url": None})
+              d["total"] += 1
+              if r.get("conclusion") in ("failure", "timed_out", "startup_failure"):
+                  d["failed"] += 1
+                  d["last_failed_url"] = r["html_url"]
+
+          problems = {k: v for k, v in by_wf.items() if v["failed"] > 0}
+          if not problems:
+              print("Усі workflow за останні 7 днів без збоїв — мовчу.")
+          else:
+              lines = ["⚠️ Тижнева перевірка ebay-bot: є збої за 7 днів"]
+              for name, v in problems.items():
+                  lines.append(f"- {name}: {v['failed']}/{v['total']} невдалих, останній: {v['last_failed_url']}")
+              text = "\n".join(lines)
+              print(text)
+              token = os.environ.get("TELEGRAM_BOT_TOKEN")
+              chat = os.environ.get("TELEGRAM_CHAT_ID")
+              if token and chat:
+                  data = urllib.parse.urlencode({"chat_id": chat, "text": text}).encode()
+                  urllib.request.urlopen(f"https://api.telegram.org/bot{token}/sendMessage", data=data, timeout=15)
+          PYEOF
