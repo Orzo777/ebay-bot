@@ -14,16 +14,20 @@ import sys
 sys.path.insert(0, ".")
 from ram_parse import parse_title
 
-# (gen, form, ecc, total, kit) -> реальні продажі за 90 днів (Terapeak, 21.09.2026)
+# (gen, form, ecc, total, modules) -> реальні продажі за 90 днів (Terapeak, 21.09.2026).
+# КРИТИЧНО: ключ фіксує САМЕ КІЛЬКІСТЬ ПЛАНОК, а не лише "кіт це чи ні" — інакше DDR4
+# 4x16 ГБ (дешевий, не наш тип) зливається з DDR4 2x32 ГБ (наш тип, дорожчий), бо в обох
+# total=64 і kit=True. Усі наші "кіт"-типи — саме 2-планкові; усе інше (3x, 4x, 8x...) —
+# інший ринок і в таблицю свідомо не входить.
 REAL = {
-    ("ddr5", "udimm", False, 32, True): dict(p25=299, med=335, st=46, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
-    ("ddr5", "udimm", False, 64, True): dict(p25=516, med=602, st=19, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
-    ("ddr5", "sodimm", False, 32, False): dict(p25=210, med=249, st=16, name="DDR5 SO-DIMM 32 ГБ"),
-    ("ddr5", "sodimm", False, 16, False): dict(p25=120, med=149, st=18, name="DDR5 SO-DIMM 16 ГБ"),
-    ("ddr4", "udimm", False, 32, True): dict(p25=107, med=137, st=21, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
-    ("ddr4", "udimm", False, 64, True): dict(p25=241, med=293, st=6, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
-    ("ddr4", "sodimm", False, 32, False): dict(p25=122, med=149, st=15, name="DDR4 SO-DIMM 32 ГБ"),
-    ("ddr4", "sodimm", False, 64, True): dict(p25=264, med=298, st=2.5, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
+    ("ddr5", "udimm", False, 32, 2): dict(p25=299, med=335, st=46, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
+    ("ddr5", "udimm", False, 64, 2): dict(p25=516, med=602, st=19, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
+    ("ddr5", "sodimm", False, 32, 1): dict(p25=210, med=249, st=16, name="DDR5 SO-DIMM 32 ГБ"),
+    ("ddr5", "sodimm", False, 16, 1): dict(p25=120, med=149, st=18, name="DDR5 SO-DIMM 16 ГБ"),
+    ("ddr4", "udimm", False, 32, 2): dict(p25=107, med=137, st=21, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
+    ("ddr4", "udimm", False, 64, 2): dict(p25=241, med=293, st=6, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
+    ("ddr4", "sodimm", False, 32, 1): dict(p25=122, med=149, st=15, name="DDR4 SO-DIMM 32 ГБ"),
+    ("ddr4", "sodimm", False, 64, 2): dict(p25=264, med=298, st=2.5, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
 }
 NOISE_BRANDS = {"other", "HP", "Dell", "Lenovo", "Apple", "Supermicro", "Medion", "ASUS", "QNAP/Synology", "2-Power"}
 
@@ -40,10 +44,13 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
         return dict(verdict="UNKNOWN", reason=f"парсер не розпізнав назву: {reason}", title=title, price=total_price)
     if p["ecc"]:
         return dict(verdict="SKIP", reason="ECC/серверна пам'ять — поза нашими прибутковими типами", title=title, price=total_price)
-    key = (p["gen"], p["form"], p["ecc"], p["total"], p["kit"])
+    key = (p["gen"], p["form"], p["ecc"], p["total"], p["modules"])
     real = REAL.get(key)
     if not real:
-        return dict(verdict="SKIP", reason=f"тип {p['gen']} {p['form']} {p['total']}ГБ не входить у список прибуткових", title=title, price=total_price)
+        return dict(verdict="SKIP",
+                    reason=f"тип {p['gen']} {p['form']} {p['total']}ГБ ({p['modules']} план.) не входить у список прибуткових "
+                           f"(можливо, це {p['total']}ГБ зібрано з іншої кількості планок, ніж наш профільний тип)",
+                    title=title, price=total_price)
     net_q = real["p25"] - costs(real["p25"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
     profit_est = net_q - total_price
@@ -56,21 +63,29 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
     else:
         verdict = "SKIP"
     brand_flag = "невідомий/сумнівний бренд" if (p["brand"] in NOISE_BRANDS or not p["brand"]) else p["brand"]
+    # Одна планка (modules==1) — назва каже лише сумарний обсяг, і за текстом НЕМОЖЛИВО
+    # перевірити, чи це справді одна фізична планка, чи продавець просто не написав "2x8"
+    # для того самого числа (продавці часто пишуть лише підсумкову ємність). Фото рятує не
+    # завжди (нове фото легко попросити, старе — ні), тож попереджаємо завжди для цих типів.
+    single_module_warning = p["modules"] == 1
     return dict(verdict=verdict, type=real["name"], price=total_price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
-                brand=brand_flag, title=title)
+                brand=brand_flag, title=title, single_module_warning=single_module_warning)
 
 
 def format_message(r: dict) -> str:
     if r["verdict"] in ("UNKNOWN", "SKIP"):
         return f"⏭ {r['title'][:70]}\n{r.get('reason', '')} (ціна {r['price']:.0f}€)"
     tag = {"BUY-EXCELLENT": "🟢🟢 ВІДМІННО, БЕРИ", "BUY-GOOD": "🟢 ДОБРЕ, БЕРИ", "BUY": "🟡 CHECK (тонка маржа)"}[r["verdict"]]
+    warn = ("\n⚠️ У назві вказано лише сумарний обсяг — уточніть у продавця, що це РІВНО ОДНА планка, "
+            "а не 2+ менших модулі разом (наприклад 2×8 замість однієї 16 ГБ).") if r.get("single_module_warning") else ""
     return (f"{tag}: {r['type']}\n"
             f"«{r['title'][:80]}»\n"
             f"Ціна: {r['price']:.0f}€ | стеля ROI30%: {r['cap']:.0f}€ | добра: {r['good']:.0f}€ | відмінна: {r['excellent']:.0f}€\n"
             f"Реальний продаж (90 дн.): медіана {r['median_sale']}€, швидкий {r['quick_sale']}€, sell-through {r['sell_through']}%\n"
             f"Бренд: {r['brand']}\n"
-            f"Орієнтовно чистими (продаж за {r['quick_sale']}€): ≈{r['profit_est']:.0f}€")
+            f"Орієнтовно чистими (продаж за {r['quick_sale']}€): ≈{r['profit_est']:.0f}€"
+            f"{warn}")
 
 
 if __name__ == "__main__":
