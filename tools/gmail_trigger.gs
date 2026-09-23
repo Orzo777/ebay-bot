@@ -7,21 +7,23 @@
  * Навіщо: розклад cron у GitHub запускав бота раз на 2,5–5 год замість кожних 15 хв.
  *
  * Установка (один раз, ~5 хв):
- *   1. https://script.google.com → «Новий проєкт» → вставити цей файл замість вмісту Code.gs → зберегти.
- *   2. ⚙ «Налаштування проєкту» → «Властивості скрипту» → додати властивість
- *        GITHUB_TOKEN = <fine-grained token з доступом Actions: Read and write лише до репо ebay-bot>
- *   3. У редакторі вибрати функцію install → «Виконати» → дозволити доступ до Gmail (це ваш власний скрипт).
+ *   1. https://script.google.com → «Новий проєкт» → вставити цей файл замість вмісту Code.gs.
+ *   2. Вставити свій GitHub-токен між лапками в рядку GITHUB_TOKEN нижче → зберегти (💾).
+ *      (Або, якщо вмієте, у ⚙ «Налаштування проєкту» → «Властивості скрипту» → GITHUB_TOKEN.)
+ *   3. Угорі вибрати функцію install → «Виконати» → дозволити доступ до Gmail (це ваш власний скрипт).
  *   4. Вибрати функцію check → «Виконати» один раз: у журналі має бути «нових листів немає» або «запущено».
  * Вимкнути: вибрати функцію uninstall → «Виконати».
+ * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
+const GITHUB_TOKEN = '';   // ← вставте токен між лапками: 'github_pat_...'
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 const QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:1d';
 
 function check() {
   const props = PropertiesService.getScriptProperties();
-  const token = props.getProperty('GITHUB_TOKEN');
-  if (!token) throw new Error('Немає GITHUB_TOKEN у властивостях скрипту (див. крок 2).');
+  const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  if (!token) throw new Error('Немає токена: вставте його в рядок const GITHUB_TOKEN = \'...\' (крок 2).');
 
   const seen = JSON.parse(props.getProperty('SEEN') || '[]');
   const ids = [];
