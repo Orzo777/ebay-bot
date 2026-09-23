@@ -171,6 +171,17 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         return
     m = imaplib.IMAP4_SSL("imap.gmail.com")
     m.login(gmail_user, gmail_pass)
+    if dry_run:   # діагностика: скільки листів від Kleinanzeigen лежить у кожній папці
+        since_d = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
+        for f in m.list()[1] or []:
+            line = f.decode(errors="ignore")
+            if "\\Noselect" in line:
+                continue
+            name = line.rsplit(' "/" ', 1)[-1].strip()
+            name = name if name.startswith('"') else f'"{name}"'
+            if m.select(name, readonly=True)[0] == "OK":
+                n = len(m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since_d})')[1][0].split())
+                print(f"   папка {line.split(')')[0]}) {name}: {n}")
     folder = _all_mail_folder(m)
     typ, _ = m.select(folder, readonly=True)    # нічого не позначаємо прочитаним
     if typ != "OK":
