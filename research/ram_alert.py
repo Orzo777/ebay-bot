@@ -9,6 +9,8 @@ research/ram_terapeak.py) і формує вердикт BUY/CHECK/SKIP.
 секрети TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID в оточенні):
     python research/ram_alert.py "..." 50 --tg
 """
+import json
+import os
 import sys
 
 sys.path.insert(0, ".")
@@ -19,7 +21,7 @@ from ram_parse import parse_title
 # 4x16 ГБ (дешевий, не наш тип) зливається з DDR4 2x32 ГБ (наш тип, дорожчий), бо в обох
 # total=64 і kit=True. Усі наші "кіт"-типи — саме 2-планкові; усе інше (3x, 4x, 8x...) —
 # інший ринок і в таблицю свідомо не входить.
-REAL = {
+REAL_BASE = {
     ("ddr5", "udimm", False, 32, 2): dict(p25=299, med=335, st=46, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
     ("ddr5", "udimm", False, 64, 2): dict(p25=516, med=602, st=19, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
     ("ddr5", "sodimm", False, 32, 1): dict(p25=210, med=249, st=16, name="DDR5 SO-DIMM 32 ГБ"),
@@ -29,6 +31,27 @@ REAL = {
     ("ddr4", "sodimm", False, 32, 1): dict(p25=122, med=149, st=15, name="DDR4 SO-DIMM 32 ГБ"),
     ("ddr4", "sodimm", False, 64, 2): dict(p25=264, med=298, st=2.5, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
 }
+
+
+def _with_refresh(base: dict) -> dict:
+    """Ціни зі щотижневого оновлення (research/ram_prices.json, пише price_refresh.py) поверх Terapeak.
+    RAM_PRICES_OFF=1 — лише базові цифри Terapeak (тести, щоб оновлення не змінювало очікувані вердикти)."""
+    table = {k: dict(v) for k, v in base.items()}
+    if os.getenv("RAM_PRICES_OFF") == "1":
+        return table
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return table
+    for k, v in table.items():
+        e = (data.get("types") or {}).get(f"{k[0]}|{k[1]}|{int(k[2])}|{k[3]}|{k[4]}")
+        if e and e.get("p25") and e.get("med"):
+            v["p25"], v["med"] = e["p25"], e["med"]
+    return table
+
+
+REAL = _with_refresh(REAL_BASE)
 NOISE_BRANDS = {"other", "HP", "Dell", "Lenovo", "Apple", "Supermicro", "Medion", "ASUS", "QNAP/Synology", "2-Power"}
 # Найбільша споживча одиночна планка. «DDR4 64GB» без розкладки — це точно набір (2×32 або 4×16),
 # а не одна планка: такі не відкидаємо, а оцінюємо як 2-планковий кіт із вимогою уточнити розкладку.

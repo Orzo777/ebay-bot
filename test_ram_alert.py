@@ -1,8 +1,10 @@
 """Регресійні тести для research/ram_alert.py і research/ram_mail_check.py на РЕАЛЬНИХ назвах
 зі сповіщень Kleinanzeigen (22–23.09.2026). Без мережі."""
+import os
 import sys
 import unittest
 
+os.environ["RAM_PRICES_OFF"] = "1"   # фіксовані цифри Terapeak: щотижневе оновлення цін не змінює очікувані вердикти
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 from ram_alert import evaluate, format_html, seller_template

@@ -1,0 +1,110 @@
+{
+ "terapeak_date": "2026-09-21",
+ "types": {
+  "ddr5|udimm|0|32|2": {
+   "name": "DDR5 UDIMM 32 ГБ (2×16) кіт",
+   "p25_tp": 299,
+   "med_tp": 335,
+   "ratio": 1.0,
+   "anchor_ask": 495.0,
+   "anchor_date": "2026-09-23",
+   "ask": 495.0,
+   "sellers": 112,
+   "updated": "2026-09-23",
+   "p25": 299,
+   "med": 335
+  },
+  "ddr5|udimm|0|64|2": {
+   "name": "DDR5 UDIMM 64 ГБ (2×32) кіт",
+   "p25_tp": 516,
+   "med_tp": 602,
+   "ratio": 1.0,
+   "anchor_ask": 920.26,
+   "anchor_date": "2026-09-23",
+   "ask": 920.26,
+   "sellers": 61,
+   "updated": "2026-09-23",
+   "p25": 516,
+   "med": 602
+  },
+  "ddr5|sodimm|0|32|1": {
+   "name": "DDR5 SO-DIMM 32 ГБ",
+   "p25_tp": 210,
+   "med_tp": 249,
+   "ratio": 1.0,
+   "anchor_ask": 399.0,
+   "anchor_date": "2026-09-23",
+   "ask": 399.0,
+   "sellers": 29,
+   "updated": "2026-09-23",
+   "p25": 210,
+   "med": 249
+  },
+  "ddr5|sodimm|0|16|1": {
+   "name": "DDR5 SO-DIMM 16 ГБ",
+   "p25_tp": 120,
+   "med_tp": 149,
+   "ratio": 1.0,
+   "anchor_ask": 229.0,
+   "anchor_date": "2026-09-23",
+   "ask": 229.0,
+   "sellers": 37,
+   "updated": "2026-09-23",
+   "p25": 120,
+   "med": 149
+  },
+  "ddr4|udimm|0|32|2": {
+   "name": "DDR4 UDIMM 32 ГБ (2×16) кіт",
+   "p25_tp": 107,
+   "med_tp": 137,
+   "ratio": 1.0,
+   "anchor_ask": 205.19,
+   "anchor_date": "2026-09-23",
+   "ask": 205.19,
+   "sellers": 162,
+   "updated": "2026-09-23",
+   "p25": 107,
+   "med": 137
+  },
+  "ddr4|udimm|0|64|2": {
+   "name": "DDR4 UDIMM 64 ГБ (2×32) кіт",
+   "p25_tp": 241,
+   "med_tp": 293,
+   "ratio": 1.0,
+   "anchor_ask": 501.99,
+   "anchor_date": "2026-09-23",
+   "ask": 501.99,
+   "sellers": 47,
+   "updated": "2026-09-23",
+   "p25": 241,
+   "med": 293
+  },
+  "ddr4|sodimm|0|32|1": {
+   "name": "DDR4 SO-DIMM 32 ГБ",
+   "p25_tp": 122,
+   "med_tp": 149,
+   "ratio": 1.0,
+   "anchor_ask": 183.62,
+   "anchor_date": "2026-09-23",
+   "ask": 183.62,
+   "sellers": 52,
+   "updated": "2026-09-23",
+   "p25": 122,
+   "med": 149
+  },
+  "ddr4|sodimm|0|64|2": {
+   "name": "DDR4 SO-DIMM 64 ГБ (2×32) кіт",
+   "p25_tp": 264,
+   "med_tp": 298,
+   "ratio": 1.0,
+   "anchor_ask": 399.0,
+   "anchor_date": "2026-09-23",
+   "ask": 399.0,
+   "sellers": 25,
+   "updated": "2026-09-23",
+   "p25": 264,
+   "med": 298
+  }
+ },
+ "updated": "2026-09-23"
+}

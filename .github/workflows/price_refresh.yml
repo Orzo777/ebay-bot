@@ -1,0 +1,56 @@
+name: price-refresh
+
+# Нова роль бота (з 23.09.2026): щотижня оновлює ціни продажу RAM, від яких ram_alert рахує стелі
+# купівлі для сповіщень Kleinanzeigen. Пошук дешевих лотів на самому eBay (poll.yml) зупинено:
+# ринок eBay вирівняний, а API-квота потрібна для досліджень.
+# 16 викликів Browse API; коміт research/ram_prices.json лише якщо щось змінилось;
+# у Telegram — коротке зведення, тільки коли стелі зсунулись на ≥2%.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # понеділок 06:00 UTC
+  workflow_dispatch: {}
+
+concurrency:
+  group: price-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Self-check (unit tests)
+        run: python -m unittest test_ram_parse test_ram_alert test_price_refresh
+
+      - name: Refresh prices
+        env:
+          EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+          EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
+        run: python research/price_refresh.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "ebay-bot"
+          git config user.email "bot@local"
+          git add research/ram_prices.json
+          if git diff --cached --quiet; then
+            echo "без змін"
+          else
+            git commit -m "price-refresh: weekly RAM sale prices $(date -u +%F)"
+            git push
+          fi
