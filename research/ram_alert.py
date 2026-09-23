@@ -30,6 +30,9 @@ REAL = {
     ("ddr4", "sodimm", False, 64, 2): dict(p25=264, med=298, st=2.5, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
 }
 NOISE_BRANDS = {"other", "HP", "Dell", "Lenovo", "Apple", "Supermicro", "Medion", "ASUS", "QNAP/Synology", "2-Power"}
+# Найбільша споживча одиночна планка. «DDR4 64GB» без розкладки — це точно набір (2×32 або 4×16),
+# а не одна планка: такі не відкидаємо, а оцінюємо як 2-планковий кіт із вимогою уточнити розкладку.
+MAX_SINGLE_GB = {"ddr4": 32, "ddr5": 48}
 
 
 def costs(sale_price: float) -> float:
@@ -46,6 +49,10 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
         return dict(verdict="SKIP", reason="ECC/серверна пам'ять — поза нашими прибутковими типами", title=title, price=total_price)
     key = (p["gen"], p["form"], p["ecc"], p["total"], p["modules"])
     real = REAL.get(key)
+    kit_unknown = False
+    if not real and p["modules"] == 1 and p["total"] > MAX_SINGLE_GB.get(p["gen"], 32):
+        real = REAL.get(key[:4] + (2,))
+        kit_unknown = real is not None
     if not real:
         return dict(verdict="SKIP",
                     reason=f"тип {p['gen']} {p['form']} {p['total']}ГБ ({p['modules']} план.) не входить у список прибуткових "
@@ -67,10 +74,11 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
     # перевірити, чи це справді одна фізична планка, чи продавець просто не написав "2x8"
     # для того самого числа (продавці часто пишуть лише підсумкову ємність). Фото рятує не
     # завжди (нове фото легко попросити, старе — ні), тож попереджаємо завжди для цих типів.
-    single_module_warning = p["modules"] == 1
+    single_module_warning = p["modules"] == 1 and not kit_unknown
     return dict(verdict=verdict, type=real["name"], price=total_price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
-                brand=brand_flag, title=title, single_module_warning=single_module_warning, total=p["total"])
+                brand=brand_flag, title=title, single_module_warning=single_module_warning, total=p["total"],
+                kit_unknown=kit_unknown)
 
 
 def seller_template(r: dict) -> str:
@@ -79,6 +87,9 @@ def seller_template(r: dict) -> str:
          'Lief er fehlerfrei? Bitte ein aktuelles Foto mit Zettel (Datum).')
     if r.get("single_module_warning"):
         t += f' Ist es genau EIN Riegel mit {r["total"]} GB?'
+    elif r.get("kit_unknown"):
+        half = r["total"] // 2
+        t += f' Sind es 2x{half} GB oder mehr Riegel?'
     return t + " Danke!"
 
 
@@ -109,6 +120,10 @@ def format_html(r: dict) -> str:
     ]
     if r.get("single_module_warning"):
         lines += ["", f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ, а не кілька менших."]
+    elif r.get("kit_unknown"):
+        half = r["total"] // 2
+        lines += ["", f"⚠️ Скільки планок — не вказано. Бери лише якщо це <b>2×{half} ГБ</b>; "
+                      f"4×{r['total'] // 4} ГБ коштує набагато менше."]
     lines += ["", f"<i>{escape(r['title'][:90])}</i>", "",
               "✉️ Текст продавцю (натисни — скопіюється):", f"<code>{escape(seller_template(r))}</code>"]
     return "\n".join(lines)

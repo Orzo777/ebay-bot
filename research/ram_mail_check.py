@@ -138,6 +138,7 @@ def load_state(path):
 
 def save_state(path, state):
     state["seen_ids"] = state["seen_ids"][-2000:]
+    state["seen_ads"] = state.get("seen_ads", [])[-3000:]
     json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False)
 
 
@@ -164,7 +165,14 @@ def _all_mail_folder(m) -> str:
     return _special_folder(m, "\\All", "INBOX")
 
 
-def _process(msg, max_age_hours: float, dry_run: bool) -> int:
+def _ad_key(lst: dict) -> str:
+    """Одне оголошення приходить кількома листами (підпадає під кілька підписок) — ключ за
+    номером оголошення + ціною: дубль відкидаємо, а зниження ціни сповіщаємо знову."""
+    m = re.search(r"/s-anzeige/(\d+)", lst.get("link") or "")
+    return f"{m.group(1) if m else lst['title'][:60]}@{lst['price']:.0f}"
+
+
+def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set) -> int:
     """Один лист → вердикти всіх оголошень у ньому; повертає кількість надісланих карток."""
     age = _mail_age_hours(msg)
     stale = age is not None and age > max_age_hours
@@ -174,6 +182,10 @@ def _process(msg, max_age_hours: float, dry_run: bool) -> int:
         print(f" · [{age or 0:.1f} год] без оголошень: {subject[:70]}")
     sent = 0
     for lst in listings:
+        ak = _ad_key(lst)
+        if ak in seen_ads:
+            continue
+        seen_ads.add(ak)
         if lst.get("gewerblich"):
             print(" - (gewerblich, пропущено)", lst["title"][:70])
             continue
@@ -196,6 +208,7 @@ def _process(msg, max_age_hours: float, dry_run: bool) -> int:
 def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, lookback_days: int = 2):
     state = load_state(state_path)
     seen = set() if dry_run else set(state["seen_ids"])   # діагностика бачить усе, навіть уже оброблене
+    seen_ads = set() if dry_run else set(state.get("seen_ads", []))
     gmail_user = os.getenv("GMAIL_USER", "")
     gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
     if not gmail_user or not gmail_pass:
@@ -234,10 +247,10 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
                 continue
             seen.add(msgid)
             new_mails += 1
-            alerts_sent += _process(msg, max_age_hours, dry_run)
+            alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads)
     m.logout()
     if not dry_run:
-        save_state(state_path, {"seen_ids": list(seen)})
+        save_state(state_path, {"seen_ids": list(seen), "seen_ads": list(seen_ads)})
     print(f"Нових листів оброблено: {new_mails}; сповіщень: {alerts_sent}")
 
 

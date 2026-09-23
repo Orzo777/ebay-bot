@@ -5,12 +5,9 @@ name: ram-mail-alert
 # картку з вердиктом + кнопкою-посиланням на оголошення. Повідомлення
 # продавцю НЕ надсилається автоматично — лише сам користувач з телефону.
 #
-# Розклад cron — best effort (як і в poll.yml): реальні запуски бувають на
-# 5-20 хв пізніше. Для оголошень, що резервують за хвилини, це не панацея —
-# цінність у тому, щоб нічого не пропустити й одразу мати готовий вердикт.
-#
-# УВАГА: research/ram_mail_check.py::extract_listings() поки чорновий парсер —
-# доробити після першого реального листа-зразка.
+# Основний запуск — з Google Apps Script (tools/gmail_trigger.gs): щохвилини бачить
+# новий лист у Gmail і викликає workflow_dispatch, ~1,5–2 хв від листа до картки.
+# cron нижче — лише запасний: GitHub фактично запускав його раз на 2,5–5 год (22–23.09).
 
 on:
   schedule:
@@ -41,6 +38,10 @@ jobs:
           python-version: "3.12"
 
       - run: pip install -r requirements.txt
+
+      # Запобіжник: зламаний фільтр не має слати сповіщення про гроші. Без мережі, ~1 с.
+      - name: Self-check (unit tests)
+        run: python -m unittest test_ram_parse test_ram_alert
 
       - name: Restore state
         uses: actions/cache/restore@v4
