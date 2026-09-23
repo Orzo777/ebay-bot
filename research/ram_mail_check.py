@@ -149,6 +149,18 @@ def _mail_age_hours(msg) -> float | None:
         return None
 
 
+def _all_mail_folder(m) -> str:
+    """Gmail «Уся пошта»: назва залежить від мови інтерфейсу ([Gmail]/All Mail, [Gmail]/Alle Nachrichten…),
+    тому шукаємо за службовим атрибутом \\All. Архівовані/переглянуті листи лишаються тут, а не в INBOX."""
+    typ, folders = m.list()
+    for f in folders or []:
+        line = f.decode(errors="ignore")
+        if "\\All" in line:
+            name = line.rsplit(' "/" ', 1)[-1].strip()
+            return name if name.startswith('"') else f'"{name}"'
+    return "INBOX"
+
+
 def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, lookback_days: int = 2):
     state = load_state(state_path)
     seen = set(state["seen_ids"])
@@ -159,7 +171,12 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         return
     m = imaplib.IMAP4_SSL("imap.gmail.com")
     m.login(gmail_user, gmail_pass)
-    m.select("INBOX", readonly=True)            # нічого не позначаємо прочитаним
+    folder = _all_mail_folder(m)
+    typ, _ = m.select(folder, readonly=True)    # нічого не позначаємо прочитаним
+    if typ != "OK":
+        folder = "INBOX"
+        m.select(folder, readonly=True)
+    print("Папка:", folder)
     since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
     typ, data = m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since})')
     ids = data[0].split()
