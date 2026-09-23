@@ -19,7 +19,8 @@ def fake_fetch(prices_by_query):
     titles = {"DDR5 32GB 2x16GB": "Kingston Fury DDR5 32GB 2x16GB 6000", "DDR5 64GB 2x32GB": "Corsair DDR5 64GB 2x32GB 6000",
               "DDR5 SODIMM 32GB": "Samsung DDR5 SODIMM 32GB 5600", "DDR5 SODIMM 16GB": "Samsung DDR5 SODIMM 16GB 5600",
               "DDR4 32GB 2x16GB": "Kingston DDR4 32GB 2x16GB 3200", "DDR4 64GB 2x32GB": "Crucial DDR4 64GB 2x32GB 3200",
-              "DDR4 SODIMM 32GB": "Kingston DDR4 SODIMM 32GB 3200", "DDR4 SODIMM 64GB 2x32GB": "Crucial DDR4 SODIMM 64GB 2x32GB"}
+              "DDR4 SODIMM 32GB": "Kingston DDR4 SODIMM 32GB 3200", "DDR4 SODIMM 64GB 2x32GB": "Crucial DDR4 SODIMM 64GB 2x32GB",
+              "DDR5 16GB": "Kingston FURY Beast DDR5 16GB 5200 DIMM", "DDR5 SODIMM 32GB 2x16GB": "Crucial DDR5 SODIMM 32GB 2x16GB 5600"}
 
     def fetch(q, cond):
         if cond.startswith("2750"):
@@ -57,8 +58,23 @@ class TestRefresh(unittest.TestCase):
         data, changes = refresh(data, fake_fetch({"DDR5 32GB 2x16GB": [330] * 15}), "2026-10-05")
         e = data["types"][key_str(KEY)]
         self.assertAlmostEqual(e["ratio"], 1.1)
-        self.assertEqual(e["p25"], round(299 * 1.1))
+        self.assertEqual(e["p25"], round(ram_alert.REAL_BASE[KEY]["p25"] * 1.1))
         self.assertTrue(any("DDR5 UDIMM 32" in c for c in changes))
+
+    def test_every_type_has_a_query(self):
+        from price_refresh import QUERIES
+        self.assertEqual(set(QUERIES), set(ram_alert.REAL_BASE))
+
+    def test_new_terapeak_base_resets_anchor(self):
+        data, _ = refresh({}, fake_fetch({"DDR5 32GB 2x16GB": [300] * 15}), "2026-09-28")
+        data, _ = refresh(data, fake_fetch({"DDR5 32GB 2x16GB": [330] * 15}), "2026-10-05")
+        e = data["types"][key_str(KEY)]
+        e["p25_tp"], e["med_tp"] = 1, 2          # ніби в JSON лишився старий знімок Terapeak
+        data, _ = refresh(data, fake_fetch({"DDR5 32GB 2x16GB": [400] * 15}), "2026-10-12")
+        e = data["types"][key_str(KEY)]
+        self.assertEqual(e["ratio"], 1.0)
+        self.assertEqual(e["anchor_ask"], 400)
+        self.assertEqual(e["p25"], ram_alert.REAL_BASE[KEY]["p25"])
 
     def test_other_types_without_data_unchanged(self):
         data, _ = refresh({}, fake_fetch({}), "2026-09-28")
@@ -69,6 +85,7 @@ class TestRefresh(unittest.TestCase):
 
 class TestAlertReadsFile(unittest.TestCase):
     def test_with_refresh_applies_file(self):
+        base_p25 = ram_alert.REAL_BASE[KEY]["p25"]
         with tempfile.TemporaryDirectory() as d:
             fake = os.path.join(d, "ram_alert.py")
             with open(os.path.join(d, "ram_prices.json"), "w", encoding="utf-8") as fh:
@@ -82,7 +99,7 @@ class TestAlertReadsFile(unittest.TestCase):
                 os.environ["RAM_PRICES_OFF"] = old_env
         self.assertEqual(table[KEY]["p25"], 350)
         self.assertEqual(table[KEY]["med"], 390)
-        self.assertEqual(ram_alert.REAL_BASE[KEY]["p25"], 299)   # база не змінюється
+        self.assertEqual(ram_alert.REAL_BASE[KEY]["p25"], base_p25)   # база не змінюється
 
 
 if __name__ == "__main__":

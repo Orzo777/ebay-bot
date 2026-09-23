@@ -1,0 +1,22 @@
+{
+ "source": "Terapeak (eBay.de Seller Hub, Sold), 23.09.2026, усі продавці, нове+вживане, ціна без доставки; фільтр за назвою",
+ "rebased_30d": {
+  "DDR5 UDIMM 32 ГБ (2×16) кіт": {"units": 139, "per_week": 32.4, "p25": 331, "med": 382, "p75": 416, "st_query": 19.05, "was_90d": {"p25": 299, "med": 335, "per_week": 11.9}},
+  "DDR5 UDIMM 64 ГБ (2×32) кіт": {"units": 51, "per_week": 11.9, "p25": 544, "med": 677, "p75": 723, "st_query": 9.11, "was_90d": {"p25": 516, "med": 602, "per_week": 4.6}},
+  "DDR4 UDIMM 32 ГБ (2×16) кіт": {"units": 40, "per_week": 9.3, "p25": 121, "med": 142, "p75": 182, "st_query": 30.43, "was_90d": {"p25": 107, "med": 137, "per_week": 10.3}}
+ },
+ "sodimm_30d_too_thin": {"DDR5 SO-DIMM 2x16 (14 шт)": [265, 334], "DDR5 SO-DIMM 1x32 (4–9 шт)": [196, 306], "DDR5 SO-DIMM 1x16 (5–17 шт)": [183, 233]},
+ "new_types_90d_added": {
+  "DDR5 SO-DIMM 32 ГБ (2×16) кіт": {"units": 91, "per_week": 7.1, "p25": 250, "med": 280, "p75": 322, "st_query": 8.22},
+  "DDR5 UDIMM 16 ГБ (одна планка)": {"units": 44, "per_week": 3.4, "p25": 147, "med": 180, "p75": 199, "st_query": 6.40, "note": "нижня межа: переглянуто 7 сторінок"}
+ },
+ "measured_not_added_90d": {
+  "DDR5 48 ГБ (2×24)": {"per_week": 2.7, "p25": 420, "med": 455},
+  "DDR5 96 ГБ (2×48)": {"per_week": 2.5, "p25": 709, "med": 825},
+  "DDR5 SO-DIMM 64 ГБ (2×32)": {"per_week": 1.6, "p25": 514, "med": 566},
+  "DDR5 UDIMM 32 ГБ одна планка": {"per_week": 1.2, "med": 179},
+  "DDR4 UDIMM 32 ГБ одна планка": {"per_week": 0.9, "med": 131},
+  "DDR5 SO-DIMM 8 ГБ": {"per_week": 4.3, "p25": 50, "med": 60},
+  "DDR5 SO-DIMM 16 ГБ (2×8)": {"per_week": 0.8, "med": 91}
+ }
+}

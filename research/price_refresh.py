@@ -26,6 +26,8 @@ LO, HI = 0.6, 1.8
 QUERIES = {  # ключ як у ram_alert.REAL → пошуковий запит eBay
     ("ddr5", "udimm", False, 32, 2): "DDR5 32GB 2x16GB",
     ("ddr5", "udimm", False, 64, 2): "DDR5 64GB 2x32GB",
+    ("ddr5", "udimm", False, 16, 1): "DDR5 16GB",
+    ("ddr5", "sodimm", False, 32, 2): "DDR5 SODIMM 32GB 2x16GB",
     ("ddr5", "sodimm", False, 32, 1): "DDR5 SODIMM 32GB",
     ("ddr5", "sodimm", False, 16, 1): "DDR5 SODIMM 16GB",
     ("ddr4", "udimm", False, 32, 2): "DDR4 32GB 2x16GB",
@@ -103,6 +105,10 @@ def refresh(data: dict, fetch, today: str) -> tuple[dict, list[str]]:
         ks = key_str(key)
         e = types.setdefault(ks, {"name": base["name"], "p25_tp": base["p25"], "med_tp": base["med"], "ratio": 1.0,
                                   "anchor_ask": None})
+        if (e["p25_tp"], e["med_tp"]) != (base["p25"], base["med"]):
+            # новий знімок Terapeak у ram_alert.REAL_BASE → починаємо відлік зсуву заново від сьогодні
+            e.update(name=base["name"], p25_tp=base["p25"], med_tp=base["med"], ratio=1.0, anchor_ask=None,
+                     p25=base["p25"], med=base["med"])
         ask, sellers = market_ask(key, fetch)
         if e["anchor_ask"] is None and ask and sellers >= MIN_SELLERS:
             e["anchor_ask"] = round(ask, 2)

@@ -46,6 +46,25 @@ class TestAmbiguousKit(unittest.TestCase):
         self.assertIn("EIN Riegel mit 16 GB", seller_template(r))
 
 
+class TestNewTypes(unittest.TestCase):
+    def test_ddr5_sodimm_2x16_kit(self):
+        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 170)
+        self.assertEqual(r["type"], "DDR5 SO-DIMM 32 ГБ (2×16) кіт")
+        self.assertEqual(r["verdict"], "BUY")
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "SKIP")   # вище стелі
+
+    def test_ddr5_single_16_desktop(self):
+        r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 90)
+        self.assertEqual(r["type"], "DDR5 UDIMM 16 ГБ (одна планка)")
+        self.assertTrue(r["verdict"].startswith("BUY"))
+        self.assertTrue(r["single_module_warning"])
+
+    def test_not_added_types_still_skip(self):
+        for t, p in [("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150), ("Samsung 8GB DDR5-5600 SO-DIMM", 20),
+                     ("Crucial DDR5 96GB Kit 2x48GB 5600", 200), ("Micron 16gb DDR5 sodimm 5600 2x 8Gb", 30)]:
+            self.assertEqual(evaluate(t, p)["verdict"], "SKIP", t)
+
+
 class TestPrices(unittest.TestCase):
     def test_tiers(self):
         self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 140)["verdict"], "BUY-GOOD")

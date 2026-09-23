@@ -16,20 +16,24 @@ import sys
 sys.path.insert(0, ".")
 from ram_parse import parse_title
 
-# (gen, form, ecc, total, modules) -> реальні продажі за 90 днів (Terapeak, 21.09.2026).
+# (gen, form, ecc, total, modules) -> реальні продажі (Terapeak). Період у полі `period`:
+#   30 днів (23.09.2026) — для типів із великою вибіркою: ціна DDR5 росте ~12%/міс, 90-денна медіана
+#   відставала на 5–14%; 90 днів (21–23.09.2026) — де продажів за 30 днів замало для висновку.
 # КРИТИЧНО: ключ фіксує САМЕ КІЛЬКІСТЬ ПЛАНОК, а не лише "кіт це чи ні" — інакше DDR4
 # 4x16 ГБ (дешевий, не наш тип) зливається з DDR4 2x32 ГБ (наш тип, дорожчий), бо в обох
 # total=64 і kit=True. Усі наші "кіт"-типи — саме 2-планкові; усе інше (3x, 4x, 8x...) —
 # інший ринок і в таблицю свідомо не входить.
 REAL_BASE = {
-    ("ddr5", "udimm", False, 32, 2): dict(p25=299, med=335, st=46, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
-    ("ddr5", "udimm", False, 64, 2): dict(p25=516, med=602, st=19, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
-    ("ddr5", "sodimm", False, 32, 1): dict(p25=210, med=249, st=16, name="DDR5 SO-DIMM 32 ГБ"),
-    ("ddr5", "sodimm", False, 16, 1): dict(p25=120, med=149, st=18, name="DDR5 SO-DIMM 16 ГБ"),
-    ("ddr4", "udimm", False, 32, 2): dict(p25=107, med=137, st=21, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
-    ("ddr4", "udimm", False, 64, 2): dict(p25=241, med=293, st=6, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
-    ("ddr4", "sodimm", False, 32, 1): dict(p25=122, med=149, st=15, name="DDR4 SO-DIMM 32 ГБ"),
-    ("ddr4", "sodimm", False, 64, 2): dict(p25=264, med=298, st=2.5, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
+    ("ddr5", "udimm", False, 32, 2): dict(p25=331, med=382, st=19, period=30, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
+    ("ddr5", "udimm", False, 64, 2): dict(p25=544, med=677, st=9, period=30, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
+    ("ddr5", "udimm", False, 16, 1): dict(p25=147, med=180, st=6, period=90, name="DDR5 UDIMM 16 ГБ (одна планка)"),
+    ("ddr5", "sodimm", False, 32, 2): dict(p25=250, med=280, st=8, period=90, name="DDR5 SO-DIMM 32 ГБ (2×16) кіт"),
+    ("ddr5", "sodimm", False, 32, 1): dict(p25=210, med=249, st=16, period=90, name="DDR5 SO-DIMM 32 ГБ"),
+    ("ddr5", "sodimm", False, 16, 1): dict(p25=120, med=149, st=18, period=90, name="DDR5 SO-DIMM 16 ГБ"),
+    ("ddr4", "udimm", False, 32, 2): dict(p25=121, med=142, st=30, period=30, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
+    ("ddr4", "udimm", False, 64, 2): dict(p25=241, med=293, st=6, period=90, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
+    ("ddr4", "sodimm", False, 32, 1): dict(p25=122, med=149, st=15, period=90, name="DDR4 SO-DIMM 32 ГБ"),
+    ("ddr4", "sodimm", False, 64, 2): dict(p25=264, med=298, st=2.5, period=90, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
 }
 
 
