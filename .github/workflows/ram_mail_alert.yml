@@ -15,7 +15,12 @@ name: ram-mail-alert
 on:
   schedule:
     - cron: "*/15 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Діагностика: показати вердикти всіх листів за 2 дні, нічого не надсилати"
+        type: boolean
+        default: false
 
 concurrency:
   group: ram-mail-alert
@@ -55,7 +60,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PYTHONIOENCODING: utf-8
-        run: python research/ram_mail_check.py --state ram_mail_state.json
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python research/ram_mail_check.py --state ram_mail_state.json --dry-run
+          else
+            python research/ram_mail_check.py --state ram_mail_state.json
+          fi
 
       - name: Save state
         if: always()

@@ -1,19 +1,19 @@
-"""Автоматична перевірка нових листів Kleinanzeigen (Suchauftrag) поштою: парсить
+"""Автоматична перевірка листів Kleinanzeigen (Suchauftrag) поштою: парсить
 назву/ціну/посилання, оцінює через ram_alert.evaluate() і шле в Telegram (той
 самий бот/чат основного eBay-бота) картку з вердиктом, кнопкою-посиланням на
-оголошення і готовим текстом для копіювання. Повідомлення НЕ надсилається
+оголошення і кнопкою «скопіювати текст продавцю». Повідомлення НЕ надсилається
 продавцю автоматично — це робить сам користувач з телефону.
 
-УВАГА: extract_listing() — ЧОРНОВИЙ парсер. Реальний формат листа Kleinanzeigen
-ще не бачений (перший лист користувач надішле окремо) — тоді цю функцію треба
-переписати під фактичну структуру теми/тіла листа. Решта пайплайну (оцінка,
-дедуплікація, відправка з кнопкою) вже робоча і тестується без пошти.
+Пошта відкривається ЛИШЕ для читання (readonly): бот не змінює позначки «прочитано»,
+а дублікати відсіює за Message-ID у файлі стану. Тому лист, який користувач уже
+відкрив на телефоні, бот все одно обробить (раніше шукали лише UNSEEN і пропускали такі).
+Листи, старші за --max-age-hours, не сповіщаються: вигідний лот за стільки годин уже продано.
 
 Потрібні секрети в оточенні:
     GMAIL_USER, GMAIL_APP_PASSWORD   — IMAP-доступ (пароль застосунку Google, НЕ звичайний пароль)
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID — той самий бот, що й основний бот
 
-Запуск: python research/ram_mail_check.py [--dry-run] [--state <path>]
+Запуск: python research/ram_mail_check.py [--dry-run] [--state <path>] [--max-age-hours 6]
 """
 import argparse
 import email
@@ -22,18 +22,16 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 import config
-from ram_alert import evaluate, format_message
+from ram_alert import evaluate, format_html, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
-TEMPLATES = {
-    True: 'Hallo, ist der Artikel noch verfügbar? Ich würde sofort per „Sicher bezahlen" mit Versand kaufen. '
-          'Lief er bis zum Ausbau fehlerfrei? Könnten Sie mir noch ein aktuelles Foto mit Zettel (Datum) schicken? Danke!',
-}
 
 
 def _decode(s):
@@ -105,14 +103,30 @@ def extract_listings(subject: str, body: str) -> list[dict]:
     return out
 
 
-def send_telegram_card(text: str, link: str | None):
+def build_keyboard(link: str | None, seller_text: str) -> dict:
+    """Кнопки під карткою: відкрити оголошення + скопіювати ЛИШЕ текст продавцю
+    (copy_text, Bot API 7.11+, ліміт 256 символів)."""
+    rows = []
+    if link:
+        rows.append([{"text": "🔗 Відкрити оголошення", "url": link}])
+    rows.append([{"text": "📋 Скопіювати текст продавцю", "copy_text": {"text": seller_text[:256]}}])
+    return {"inline_keyboard": rows}
+
+
+def send_telegram_card(html_text: str, link: str | None, seller_text: str):
     import requests
 
     url = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text}
-    if link:
-        payload["reply_markup"] = json.dumps({"inline_keyboard": [[{"text": "Відкрити оголошення", "url": link}]]})
+    payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
+               "disable_web_page_preview": "true",
+               "reply_markup": json.dumps(build_keyboard(link, seller_text), ensure_ascii=False)}
     r = requests.post(url, data=payload, timeout=15)
+    if r.status_code == 400:   # старий клієнт/API без copy_text — картка важливіша за кнопку
+        print("   Telegram 400:", r.text[:200], "→ повтор без кнопки копіювання")
+        kb = build_keyboard(link, seller_text)
+        kb["inline_keyboard"] = [row for row in kb["inline_keyboard"] if "url" in row[0]]
+        payload["reply_markup"] = json.dumps(kb, ensure_ascii=False)
+        r = requests.post(url, data=payload, timeout=15)
     r.raise_for_status()
 
 
@@ -127,54 +141,74 @@ def save_state(path, state):
     json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False)
 
 
-def run(state_path: str, dry_run: bool = False):
+def _mail_age_hours(msg) -> float | None:
+    try:
+        dt = parsedate_to_datetime(msg.get("Date"))
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+    except Exception:
+        return None
+
+
+def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, lookback_days: int = 2):
     state = load_state(state_path)
     seen = set(state["seen_ids"])
     gmail_user = os.getenv("GMAIL_USER", "")
     gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
     if not gmail_user or not gmail_pass:
-        print("[SKIP] GMAIL_USER / GMAIL_APP_PASSWORD не задані — dry-run на цьому не перевіриш, вихід.")
+        print("[SKIP] GMAIL_USER / GMAIL_APP_PASSWORD не задані — вихід.")
         return
     m = imaplib.IMAP4_SSL("imap.gmail.com")
     m.login(gmail_user, gmail_pass)
-    m.select("INBOX")
-    typ, data = m.search(None, f'(UNSEEN FROM "{FROM_FILTER}")')
+    m.select("INBOX", readonly=True)            # нічого не позначаємо прочитаним
+    since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
+    typ, data = m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since})')
     ids = data[0].split()
-    print(f"Нових листів від {FROM_FILTER}: {len(ids)}")
-    alerts_sent = 0
+    print(f"Листів від {FROM_FILTER} з {since}: {len(ids)}")
+    alerts_sent = new_mails = 0
     for mid in ids:
-        typ, msg_data = m.fetch(mid, "(RFC822)")
+        typ, msg_data = m.fetch(mid, "(BODY.PEEK[])")
         raw = msg_data[0][1]
         msg = email.message_from_bytes(raw)
         msgid = msg.get("Message-ID") or mid.decode()
-        if msgid in seen:
+        if msgid in seen and not dry_run:
             continue
         seen.add(msgid)
+        new_mails += 1
+        age = _mail_age_hours(msg)
+        stale = age is not None and age > max_age_hours
         subject = _decode(msg.get("Subject"))
         body = _body_text(msg)
-        for lst in extract_listings(subject, body):
+        listings = extract_listings(subject, body)
+        if not listings:
+            print(f" · [{age or 0:.1f} год] без оголошень: {subject[:70]}")
+        for lst in listings:
             if lst.get("gewerblich"):
-                print(" - (гевербліх, пропущено)", lst["title"][:70])
+                print(" - (gewerblich, пропущено)", lst["title"][:70])
                 continue
             res = evaluate(lst["title"], lst["price"])
-            print(" -", lst["title"][:70], lst["price"], "->", res["verdict"])
-            if res["verdict"].startswith("BUY"):
-                tpl = TEMPLATES[True]
-                text = format_message(res) + f"\n\nШаблон повідомлення продавцю (скопіюйте):\n{tpl}"
-                if dry_run:
-                    print("[DRY RUN] would send:\n", text, "\nlink:", lst["link"])
-                else:
-                    send_telegram_card(text, lst["link"])
-                alerts_sent += 1
-        m.store(mid, "+FLAGS", "\\Seen")
+            reason = f" ({res['reason']})" if res.get("reason") else ""
+            print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
+            if not res["verdict"].startswith("BUY"):
+                continue
+            if stale:
+                print(f"   старіший за {max_age_hours:.0f} год — не сповіщаю")
+                continue
+            if dry_run:
+                print("   [DRY RUN] надіслав би картку")
+            else:
+                send_telegram_card(format_html(res), lst["link"], seller_template(res))
+            alerts_sent += 1
     m.logout()
-    save_state(state_path, {"seen_ids": list(seen)})
-    print(f"Сповіщень надіслано: {alerts_sent}")
+    if not dry_run:
+        save_state(state_path, {"seen_ids": list(seen)})
+    print(f"Нових листів оброблено: {new_mails}; сповіщень: {alerts_sent}")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="нічого не надсилати й не зберігати стан; показати вердикти всіх листів")
     ap.add_argument("--state", default="ram_mail_state.json")
+    ap.add_argument("--max-age-hours", type=float, default=6.0)
+    ap.add_argument("--lookback-days", type=int, default=2)
     args = ap.parse_args()
-    run(args.state, args.dry_run)
+    run(args.state, args.dry_run, args.max_age_hours, args.lookback_days)

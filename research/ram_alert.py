@@ -70,7 +70,48 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
     single_module_warning = p["modules"] == 1
     return dict(verdict=verdict, type=real["name"], price=total_price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
-                brand=brand_flag, title=title, single_module_warning=single_module_warning)
+                brand=brand_flag, title=title, single_module_warning=single_module_warning, total=p["total"])
+
+
+def seller_template(r: dict) -> str:
+    """Текст продавцю німецькою. ≤256 символів — ліміт кнопки «копіювати» в Telegram."""
+    t = ('Hallo! Ist der RAM noch da? Ich kaufe sofort per „Sicher bezahlen" mit Versand. '
+         'Lief er fehlerfrei? Bitte ein aktuelles Foto mit Zettel (Datum).')
+    if r.get("single_module_warning"):
+        t += f' Ist es genau EIN Riegel mit {r["total"]} GB?'
+    return t + " Danke!"
+
+
+def _speed_label(st: float) -> str:
+    if st >= 30:
+        return "продається швидко"
+    if st >= 15:
+        return "продається помірно"
+    return "продається повільно"
+
+
+def format_html(r: dict) -> str:
+    """Картка для телефона: короткі рядки, найважливіше зверху, текст продавцю — окремим блоком,
+    який копіюється дотиком (тег <code>). Лише для вердиктів BUY*."""
+    from html import escape
+
+    tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — БЕРИ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — БЕРИ</b>",
+           "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>"}[r["verdict"]]
+    lines = [
+        tag,
+        f"<b>{escape(r['type'])}</b>",
+        f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>",
+        "",
+        f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>",
+        f"🛒 Купувати до {r['cap']:.0f} € (добре ≤ {r['good']:.0f}, супер ≤ {r['excellent']:.0f})",
+        f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
+        f"⏱ {_speed_label(r['sell_through'])}",
+    ]
+    if r.get("single_module_warning"):
+        lines += ["", f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ, а не кілька менших."]
+    lines += ["", f"<i>{escape(r['title'][:90])}</i>", "",
+              "✉️ Текст продавцю (натисни — скопіюється):", f"<code>{escape(seller_template(r))}</code>"]
+    return "\n".join(lines)
 
 
 def format_message(r: dict) -> str:
