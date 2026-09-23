@@ -149,21 +149,53 @@ def _mail_age_hours(msg) -> float | None:
         return None
 
 
-def _all_mail_folder(m) -> str:
-    """Gmail «Уся пошта»: назва залежить від мови інтерфейсу ([Gmail]/All Mail, [Gmail]/Alle Nachrichten…),
-    тому шукаємо за службовим атрибутом \\All. Архівовані/переглянуті листи лишаються тут, а не в INBOX."""
+def _special_folder(m, flag: str, default: str | None) -> str | None:
+    """Gmail-папка за службовим атрибутом (\\All, \\Trash): назви локалізовані ([Gmail]/Уся пошта…)."""
     typ, folders = m.list()
     for f in folders or []:
         line = f.decode(errors="ignore")
-        if "\\All" in line:
+        if flag in line:
             name = line.rsplit(' "/" ', 1)[-1].strip()
             return name if name.startswith('"') else f'"{name}"'
-    return "INBOX"
+    return default
+
+
+def _all_mail_folder(m) -> str:
+    return _special_folder(m, "\\All", "INBOX")
+
+
+def _process(msg, max_age_hours: float, dry_run: bool) -> int:
+    """Один лист → вердикти всіх оголошень у ньому; повертає кількість надісланих карток."""
+    age = _mail_age_hours(msg)
+    stale = age is not None and age > max_age_hours
+    subject = _decode(msg.get("Subject"))
+    listings = extract_listings(subject, _body_text(msg))
+    if not listings:
+        print(f" · [{age or 0:.1f} год] без оголошень: {subject[:70]}")
+    sent = 0
+    for lst in listings:
+        if lst.get("gewerblich"):
+            print(" - (gewerblich, пропущено)", lst["title"][:70])
+            continue
+        res = evaluate(lst["title"], lst["price"])
+        reason = f" ({res['reason']})" if res.get("reason") else ""
+        print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
+        if not res["verdict"].startswith("BUY"):
+            continue
+        if stale:
+            print(f"   старіший за {max_age_hours:.0f} год — не сповіщаю")
+            continue
+        if dry_run:
+            print("   [DRY RUN] надіслав би картку")
+        else:
+            send_telegram_card(format_html(res), lst["link"], seller_template(res))
+        sent += 1
+    return sent
 
 
 def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, lookback_days: int = 2):
     state = load_state(state_path)
-    seen = set(state["seen_ids"])
+    seen = set() if dry_run else set(state["seen_ids"])   # діагностика бачить усе, навіть уже оброблене
     gmail_user = os.getenv("GMAIL_USER", "")
     gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
     if not gmail_user or not gmail_pass:
@@ -182,50 +214,27 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
             if m.select(name, readonly=True)[0] == "OK":
                 n = len(m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since_d})')[1][0].split())
                 print(f"   папка {line.split(')')[0]}) {name}: {n}")
-    folder = _all_mail_folder(m)
-    typ, _ = m.select(folder, readonly=True)    # нічого не позначаємо прочитаним
-    if typ != "OK":
-        folder = "INBOX"
-        m.select(folder, readonly=True)
-    print("Папка:", folder)
+    # «Уся пошта» + кошик: користувач видаляє переглянуті сповіщення, а кошик у «Усю пошту» не входить.
+    folders = [_all_mail_folder(m)]
+    trash = _special_folder(m, "\\Trash", None)
+    if trash:
+        folders.append(trash)
     since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
-    typ, data = m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since})')
-    ids = data[0].split()
-    print(f"Листів від {FROM_FILTER} з {since}: {len(ids)}")
     alerts_sent = new_mails = 0
-    for mid in ids:
-        typ, msg_data = m.fetch(mid, "(BODY.PEEK[])")
-        raw = msg_data[0][1]
-        msg = email.message_from_bytes(raw)
-        msgid = msg.get("Message-ID") or mid.decode()
-        if msgid in seen and not dry_run:
+    for folder in folders:
+        if m.select(folder, readonly=True)[0] != "OK":    # readonly: нічого не позначаємо прочитаним
+            print("Не відкрилась папка:", folder)
             continue
-        seen.add(msgid)
-        new_mails += 1
-        age = _mail_age_hours(msg)
-        stale = age is not None and age > max_age_hours
-        subject = _decode(msg.get("Subject"))
-        body = _body_text(msg)
-        listings = extract_listings(subject, body)
-        if not listings:
-            print(f" · [{age or 0:.1f} год] без оголошень: {subject[:70]}")
-        for lst in listings:
-            if lst.get("gewerblich"):
-                print(" - (gewerblich, пропущено)", lst["title"][:70])
+        ids = m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since})')[1][0].split()
+        print(f"Папка {folder}: листів від {FROM_FILTER} з {since}: {len(ids)}")
+        for mid in ids:
+            msg = email.message_from_bytes(m.fetch(mid, "(BODY.PEEK[])")[1][0][1])
+            msgid = msg.get("Message-ID") or f"{folder}:{mid.decode()}"
+            if msgid in seen:
                 continue
-            res = evaluate(lst["title"], lst["price"])
-            reason = f" ({res['reason']})" if res.get("reason") else ""
-            print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
-            if not res["verdict"].startswith("BUY"):
-                continue
-            if stale:
-                print(f"   старіший за {max_age_hours:.0f} год — не сповіщаю")
-                continue
-            if dry_run:
-                print("   [DRY RUN] надіслав би картку")
-            else:
-                send_telegram_card(format_html(res), lst["link"], seller_template(res))
-            alerts_sent += 1
+            seen.add(msgid)
+            new_mails += 1
+            alerts_sent += _process(msg, max_age_hours, dry_run)
     m.logout()
     if not dry_run:
         save_state(state_path, {"seen_ids": list(seen)})
