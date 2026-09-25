@@ -1,5 +1,5 @@
 """Автоматична перевірка листів Kleinanzeigen (Suchauftrag) поштою: парсить
-назву/ціну/посилання, оцінює через ram_alert.evaluate() і шле в Telegram (той
+назву/ціну/посилання, оцінює через console_alert (Xbox Series X) або ram_alert.evaluate() і шле в Telegram (той
 самий бот/чат основного eBay-бота) картку з вердиктом, кнопкою-посиланням на
 оголошення і кнопкою «скопіювати текст продавцю». Повідомлення НЕ надсилається
 продавцю автоматично — це робить сам користувач з телефону.
@@ -29,6 +29,7 @@ from email.utils import parsedate_to_datetime
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 import config
+from console_alert import evaluate_console
 from ram_alert import evaluate, format_html, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
@@ -189,7 +190,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set) -> int:
         if lst.get("gewerblich"):
             print(" - (gewerblich, пропущено)", lst["title"][:70])
             continue
-        res = evaluate(lst["title"], lst["price"])
+        res = evaluate_console(lst["title"], lst["price"]) or evaluate(lst["title"], lst["price"])
         reason = f" ({res['reason']})" if res.get("reason") else ""
         print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
         if not res["verdict"].startswith("BUY"):

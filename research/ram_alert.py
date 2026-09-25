@@ -110,6 +110,8 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
 
 def seller_template(r: dict) -> str:
     """Текст продавцю німецькою. ≤256 символів — ліміт кнопки «копіювати» в Telegram."""
+    if r.get("seller_text"):  # не-RAM товари (console_alert) несуть власний текст
+        return r["seller_text"]
     t = ('Hallo! Ist der RAM noch da? Ich kaufe sofort per „Sicher bezahlen" mit Versand. '
          'Lief er fehlerfrei? Bitte ein aktuelles Foto mit Zettel (Datum).')
     if r.get("single_module_warning"):
@@ -151,6 +153,8 @@ def format_html(r: dict) -> str:
         half = r["total"] // 2
         lines += ["", f"⚠️ Скільки планок — не вказано. Бери лише якщо це <b>2×{half} ГБ</b>; "
                       f"4×{r['total'] // 4} ГБ коштує набагато менше."]
+    for note in r.get("notes", []):
+        lines += ["", f"⚠️ {escape(note)}"]
     lines += ["", f"<i>{escape(r['title'][:90])}</i>", "",
               "✉️ Текст продавцю (натисни — скопіюється):", f"<code>{escape(seller_template(r))}</code>"]
     return "\n".join(lines)
