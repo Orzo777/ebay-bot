@@ -104,6 +104,7 @@ def extract_listings(subject: str, body: str) -> list[dict]:
             price=price,
             link=link_m.group(1) if link_m else None,
             gewerblich=bool(_GEWERBLICH_RE.search(segment)),
+            vb=bool(re.search(r"€\s*VB", segment[price_m.start():price_m.end() + 12])),
         ))
     return out
 
@@ -253,7 +254,8 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if lst.get("gewerblich"):
             print(" - (gewerblich, пропущено)", lst["title"][:70])
             continue
-        res = evaluate_console(lst["title"], lst["price"]) or evaluate(lst["title"], lst["price"])
+        vb = lst.get("vb", False)
+        res = evaluate_console(lst["title"], lst["price"], vb=vb) or evaluate(lst["title"], lst["price"], vb=vb)
         reason = f" ({res['reason']})" if res.get("reason") else ""
         print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
         shown, shown_verdict = lst, res["verdict"]

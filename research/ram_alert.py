@@ -67,8 +67,23 @@ def costs(sale_price: float) -> float:
     return 0.05 * sale_price + 0.45 + 4.19 + 0.03 * (2 * 4.19 + 0.45)
 
 
-def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
-    total_price = price + shipping
+# Що платить ПОКУПЕЦЬ понад ціну в оголошенні: пересилка продавцю + «Sicher bezahlen» (0,50 € + 4,5%, 2026).
+BUY_FEE_FIXED, BUY_FEE_PCT = 0.50, 0.045
+SHIP_IN_RAM = 5.50   # DHL Päckchen, який обирає продавець у «Sicher bezahlen»
+
+
+def buy_cost(item: float, ship_in: float) -> float:
+    return item + ship_in + BUY_FEE_FIXED + BUY_FEE_PCT * item
+
+
+def item_for_cost(total: float, ship_in: float) -> float:
+    """Яка ціна в оголошенні дає таку повну вартість покупки."""
+    return (total - ship_in - BUY_FEE_FIXED) / (1 + BUY_FEE_PCT)
+
+
+def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict:
+    ship_in = SHIP_IN_RAM if shipping is None else shipping
+    total_price = price
     p, reason = parse_title(title)
     if not p:
         return dict(verdict="UNKNOWN", reason=f"парсер не розпізнав назву: {reason}", title=title, price=total_price)
@@ -88,8 +103,9 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
                     title=title, price=total_price, wrong_type=True)
     net_q = real["p25"] - costs(real["p25"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
-    profit_est = net_q - total_price
-    verdict = tier(total_price, cap, good, excellent)
+    cost = buy_cost(price, ship_in)
+    profit_est = net_q - cost
+    verdict = tier(cost, cap, good, excellent, vb)
     brand_flag = "невідомий/сумнівний бренд" if (p["brand"] in NOISE_BRANDS or not p["brand"]) else p["brand"]
     # Одна планка (modules==1) — назва каже лише сумарний обсяг, і за текстом НЕМОЖЛИВО
     # перевірити, чи це справді одна фізична планка, чи продавець просто не написав "2x8"
@@ -99,33 +115,38 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
     return dict(verdict=verdict, type=real["name"], price=total_price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
                 net_q=net_q, brand=brand_flag, title=title, single_module_warning=single_module_warning,
-                total=p["total"], kit_unknown=kit_unknown)
+                total=p["total"], kit_unknown=kit_unknown, buy_cost=cost, ship_in=ship_in, vb=vb)
 
 
-# Вердикти, на які йде картка. NEGOTIATE — до +15% понад стелю: після торгу стає вигідним.
+# Вердикти, на які йде картка. NEGOTIATE — трохи понад стелю: після торгу стає вигідним.
+# «VB» (Verhandlungsbasis) — продавець сам готовий торгуватись: до +15%; фіксована ціна — лише до +8%.
 SEND_VERDICTS = ("BUY-EXCELLENT", "BUY-GOOD", "BUY", "NEGOTIATE")
-NEGOTIATE_UP = 1.15
+NEGOTIATE_UP, NEGOTIATE_UP_FIXED = 1.15, 1.08
 
 
-def tier(total: float, cap: float, good: float, excellent: float) -> str:
+def tier(total: float, cap: float, good: float, excellent: float, vb: bool = False) -> str:
+    """total — ПОВНА вартість покупки (товар + пересилка + Sicher bezahlen)."""
     if total <= excellent:
         return "BUY-EXCELLENT"
     if total <= good:
         return "BUY-GOOD"
     if total <= cap:
         return "BUY"
-    if total <= cap * NEGOTIATE_UP:
+    if total <= cap * (NEGOTIATE_UP if vb else NEGOTIATE_UP_FIXED):
         return "NEGOTIATE"
     return "SKIP"
 
 
 def offer_price(r: dict) -> int | None:
-    """Зустрічна пропозиція для «МОЖНА» і «ТОРГУЙСЯ»: ~10% нижче ціни, не нижче «добре», не вище стелі,
-    округлено до 5 € (приклад: Xbox за 335 → 300)."""
+    """Зустрічна ціна ТОВАРУ для «МОЖНА» і «ТОРГУЙСЯ». Ціль — повна вартість покупки ~10% нижче
+    теперішньої, не нижче «добре», не вище стелі; з неї віднімаємо пересилку і Sicher bezahlen і
+    округлюємо ВНИЗ до цілих 5 € — продавець бачить круглу суму, а разом виходить не більше цілі."""
     if r.get("verdict") not in ("BUY", "NEGOTIATE"):
         return None
-    target = min(r["cap"], max(r["good"], r["price"] * 0.9))
-    return int(round(target / 5) * 5)
+    ship = r.get("ship_in", 0.0)
+    target = min(r["cap"], max(r["good"], r.get("buy_cost", r["price"]) * 0.9))
+    offer = int(item_for_cost(target, ship) // 5 * 5)
+    return offer if 0 < offer <= r["price"] * 0.95 else None   # торг на 5 € виглядає дріб'язково — купуй як є
 
 
 def offer_template(r: dict) -> str | None:
@@ -134,8 +155,8 @@ def offer_template(r: dict) -> str | None:
     if o is None:
         return None
     what = r.get("offer_item", "der RAM")
-    t = (f'Hallo! Ist {what} noch da? Wären {o} € inkl. Versand per „Sicher bezahlen" ok? '
-         f'Dann kaufe ich sofort.')
+    t = (f'Hallo! Ist {what} noch da? Wären {o} € ok? Versand und Käuferschutz zahle ich '
+         f'per „Sicher bezahlen" und kaufe sofort.')
     if r.get("single_module_warning"):
         t += f' Ist es genau EIN Riegel mit {r["total"]} GB?'
     elif r.get("kit_unknown"):
@@ -167,6 +188,11 @@ def _speed_label(st: float) -> str:
     return "продається повільно"
 
 
+def _item_cap(r: dict, key: str) -> int:
+    """Стеля як ціна В ОГОЛОШЕННІ (пересилку й Sicher bezahlen уже враховано)."""
+    return int(item_for_cost(r[key], r.get("ship_in", 0.0)))
+
+
 def format_html(r: dict) -> str:
     """Картка для телефона: короткі рядки, найважливіше зверху, текст продавцю — окремим блоком,
     який копіюється дотиком (тег <code>). Лише для вердиктів BUY*."""
@@ -177,17 +203,20 @@ def format_html(r: dict) -> str:
            "NEGOTIATE": "💬 <b>ТОРГУЙСЯ — трохи дорожче стелі</b>"}[r["verdict"]]
     offer = offer_price(r)
     profit = (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" if r["verdict"] != "NEGOTIATE"
-              else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € — мало")
+              else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)")
     lines = [
         tag,
         *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
         f"<b>{escape(r['type'])}</b>",
-        f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>",
+        f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>" + (" VB" if r.get("vb") else "")
+        + (f" (з пересилкою і Sicher bezahlen ≈ {r['buy_cost']:.0f} €)" if r.get("buy_cost") else ""),
         "",
         profit,
-        *([f"🤝 Запропонуй <b>{offer} €</b> → заробіток ≈ <b>{r['net_q'] - offer:.0f} €</b>"]
+        *([f"🤝 Запропонуй <b>{offer} €</b> (разом ≈ {buy_cost(offer, r.get('ship_in', 0)):.0f} €) "
+           f"→ заробіток ≈ <b>{r['net_q'] - buy_cost(offer, r.get('ship_in', 0)):.0f} €</b>"]
           if offer is not None and r.get("net_q") else []),
-        f"🛒 Купувати до {r['cap']:.0f} € (добре ≤ {r['good']:.0f}, супер ≤ {r['excellent']:.0f})",
+        f"🛒 Ціна в оголошенні до {_item_cap(r, 'cap')} € (добре ≤ {_item_cap(r, 'good')}, "
+        f"супер ≤ {_item_cap(r, 'excellent')})",
         f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
         f"⏱ {_speed_label(r['sell_through'])}",
     ]

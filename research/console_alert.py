@@ -12,12 +12,13 @@ evaluate_console() повертає None, якщо назва — не Xbox Seri
 """
 import re
 
-from ram_alert import tier
+from ram_alert import buy_cost, tier
 
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.
 XBOX_SERIES_X = dict(p25=509, med=561, st=30, name="Xbox Series X (вживана)")
 # Konsolen: 6,5% (eBay.de з 12.02.2026), €0.45 за замовлення; пересилка DHL Paket до 10 кг зі страховкою.
 FEE, ORDER_FEE, SHIP = 0.065, 0.45, 10.49
+SHIP_IN = 11.0   # пересилка, яку покупець платить продавцю (DHL Paket до 10 кг через «Sicher bezahlen»)
 MIN_PRICE = 150  # дешевше — аксесуар, «Suche», шахрайство або помилка в ціні
 SUSPICIOUS_BELOW = 250  # навіть за старими цінами (до 1.08) вживана Series X коштувала €330+
 
@@ -41,10 +42,11 @@ def _skip(title: str, price: float, reason: str, wrong_type: bool = True) -> dic
     return dict(verdict="SKIP", reason=reason, title=title, price=price, wrong_type=wrong_type)
 
 
-def evaluate_console(title: str, price: float, shipping: float = 0.0) -> dict | None:
+def evaluate_console(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict | None:
     if not _SERIES_X.search(title):
         return None
-    total = price + shipping
+    ship_in = SHIP_IN if shipping is None else shipping
+    total = price
     if _X_AND_S.search(title):
         return _skip(title, total, "«Series X/S» — аксесуар для обох консолей, не сама консоль")
     if _REJECT.search(title):
@@ -60,14 +62,16 @@ def evaluate_console(title: str, price: float, shipping: float = 0.0) -> dict | 
     real = XBOX_SERIES_X
     net_q = real["p25"] - costs(real["p25"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
-    verdict = tier(total, cap, good, excellent)
+    cost = buy_cost(price, ship_in)
+    verdict = tier(cost, cap, good, excellent, vb)
     notes = ["Перевір: працює привід і контролер, консоль не заблокована. Лише «Sicher bezahlen» або самовивіз."]
     if total < SUSPICIOUS_BELOW:
         notes.insert(0, "Підозріло дешево: частина таких оголошень — шахраї. Жодних переказів наперед.")
     return dict(verdict=verdict, type=real["name"], price=total, cap=cap, good=good, excellent=excellent,
-                quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - total,
+                quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
                 brand="Microsoft", title=title, notes=notes, seller_text=seller_text(), net_q=net_q,
-                offer_item="die Xbox Series X", offer_check="Laufen Laufwerk und Controller einwandfrei?")
+                offer_item="die Xbox Series X", offer_check="Laufen Laufwerk und Controller einwandfrei?",
+                buy_cost=cost, ship_in=ship_in, vb=vb)
 
 
 def seller_text() -> str:

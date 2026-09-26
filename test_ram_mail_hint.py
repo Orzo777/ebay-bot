@@ -39,6 +39,13 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(rmc.extract_listings("", body)[0]["title"],
                          "Xbox Series X Konsole mit 2 Controllern & Speichererweiterung")
 
+    def test_vb_flag_parsed(self):
+        body = ('<img alt="Bild zur Anzeige Xbox Series X"> 340 € VB Von Privat '
+                '<img alt="Bild zur Anzeige Xbox Series X 1TB"> 350 € Von Privat')
+        a, b = rmc.extract_listings("", body)
+        self.assertTrue(a["vb"])
+        self.assertFalse(b["vb"])
+
     def test_card_keyboard_has_search_button(self):
         kb = rmc.build_keyboard("https://www.kleinanzeigen.de/s-anzeige/1", "Hallo", "https://s")
         self.assertEqual(kb["inline_keyboard"][-1][0]["url"], "https://s")
@@ -75,7 +82,7 @@ class TestProcess(unittest.TestCase):
         self.assertTrue(self.hints[0][1].endswith("id=767883050"))
 
     def test_deal_gives_card_not_hint(self):
-        sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 290), 6, False, set(), {})
+        sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 250), 6, False, set(), {})
         self.assertEqual((sent, len(self.hints)), (1, 0))
         self.assertTrue(self.cards[0][3].endswith("id=767883050"))   # кнопка «інші нові збіги»
 
@@ -85,10 +92,10 @@ class TestProcess(unittest.TestCase):
         self.assertEqual((sent, len(self.hints)), (0, 0))
 
     def test_negotiate_card_has_offer_button(self):
-        rmc._process(ka_mail("Xbox Series X 1TB", 395), 6, False, set(), {})
+        rmc._process(ka_mail("Xbox Series X 1TB", 340), 6, False, set(), {})
         self.assertEqual(len(self.cards), 1)
         offer_text = self.cards[0][5]
-        self.assertIn("€ inkl. Versand", offer_text)
+        self.assertIn("Versand und Käuferschutz zahle ich", offer_text)
         kb = rmc.build_keyboard("l", "s", "q", offer_text)
         self.assertTrue(any("пропозицією" in row[0]["text"] for row in kb["inline_keyboard"]))
 

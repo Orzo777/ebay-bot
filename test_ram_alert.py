@@ -40,7 +40,7 @@ class TestAmbiguousKit(unittest.TestCase):
 
     def test_real_single_16_gets_single_warning(self):
         r = evaluate("SK Hynix 16GB DDR5 SODIMM RAM, 5600MHz, PC5-5600B", 50)
-        self.assertEqual(r["verdict"], "BUY-EXCELLENT")
+        self.assertEqual(r["verdict"], "BUY-GOOD")   # 50 € + пересилка + Sicher bezahlen ≈ 58 €
         self.assertTrue(r["single_module_warning"])
         self.assertFalse(r["kit_unknown"])
         self.assertIn("EIN Riegel mit 16 GB", seller_template(r))
@@ -48,11 +48,12 @@ class TestAmbiguousKit(unittest.TestCase):
 
 class TestNewTypes(unittest.TestCase):
     def test_ddr5_sodimm_2x16_kit(self):
-        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 170)
+        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 160)
         self.assertEqual(r["type"], "DDR5 SO-DIMM 32 ГБ (2×16) кіт")
         self.assertEqual(r["verdict"], "BUY")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "NEGOTIATE")  # до +15% над стелею
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 220)["verdict"], "SKIP")       # далеко над стелею
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 170)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "SKIP")
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 185, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
 
     def test_ddr5_single_16_desktop(self):
         r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 90)
