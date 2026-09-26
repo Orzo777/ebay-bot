@@ -331,8 +331,8 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if dry_run:
             print("   [DRY RUN] надіслав би картку")
         else:
-            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink,
-                               offer_text=offer_template(res))
+            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink, False,
+                               offer_template(res))
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
     # кандидат ймовірно схований у тій самій пачці. Правильний товар, просто дорожчий, — не привід.

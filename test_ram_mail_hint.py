@@ -86,6 +86,12 @@ class TestProcess(unittest.TestCase):
         self.assertEqual((sent, len(self.hints)), (1, 0))
         self.assertTrue(self.cards[0][3].endswith("id=767883050"))   # кнопка «інші нові збіги»
 
+    def test_scam_seller_gives_no_card(self):
+        rmc.check_listing = lambda *a: {"level": "medium", "score": 3, "reasons": ["x"], "seller": "приватний",
+                                        "block": True, "hard": ["хоче оплату переказом / PayPal Freunde"]}
+        sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 250), 6, False, set(), {})
+        self.assertEqual((sent, len(self.cards)), (0, 0))
+
     def test_pc_search_goes_to_separate_bot(self):
         pcs, old = [], (rmc.send_pc_card, rmc.PC_BOT_TOKEN)
         rmc.send_pc_card, rmc.PC_BOT_TOKEN = pcs.append, "x"
