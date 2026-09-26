@@ -7,8 +7,8 @@ import unittest
 os.environ["RAM_PRICES_OFF"] = "1"
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
-from console_alert import SUSPICIOUS_BELOW, evaluate_console, seller_text
-from ram_alert import buy_cost, evaluate, format_html, offer_price, offer_template, seller_template
+from console_alert import SUSPICIOUS_BELOW, evaluate_console
+from ram_alert import buy_cost, desc_facts, evaluate, format_html, offer_price, offer_template, seller_template
 
 
 def verdict(title, price):
@@ -64,8 +64,10 @@ class TestNegotiate(unittest.TestCase):
         self.assertEqual(offer_price(r), 300)          # 300 € + пересилка + збір ≈ 325 € — у межах
         t = offer_template(r)
         self.assertIn("300 €", t)
-        self.assertIn("Versand und Käuferschutz zahle ich", t)
-        self.assertNotIn(",", t.split("Wären")[1].split("€")[0])   # ціла сума, без центів
+        self.assertTrue(t.startswith("Hallo! Ich nehme die Xbox Series X für 300 €"))   # хук: одразу рішення і сума
+        self.assertIn("reservieren", t)
+        self.assertIn("Versand und Gebühr übernehme ich", t)
+        self.assertNotIn("noch da", t)
         self.assertIn("Xbox Series X", t)
         self.assertLessEqual(len(t), 256)
         self.assertIn("Запропонуй <b>300 €</b>", format_html(r))
@@ -95,11 +97,28 @@ class TestCard(unittest.TestCase):
         html = format_html(r)
         self.assertIn("Xbox Series X", html)
         self.assertIn("Sicher bezahlen", html)
-        self.assertEqual(seller_template(r), seller_text())
-        self.assertNotIn("RAM", seller_template(r))
+        t = seller_template(r)
+        self.assertNotIn("RAM", t)
+        self.assertLessEqual(len(t), 256)
+        # порядок: беру → умови → питання
+        self.assertLess(t.index("reservieren"), t.index("Sicher bezahlen"))
+        self.assertLess(t.index("Sicher bezahlen"), t.index("Laufwerk"))
 
-    def test_seller_text_fits_copy_button(self):
-        self.assertLessEqual(len(seller_text()), 256)
+    def test_description_answers_skip_questions(self):
+        r = evaluate_console("Xbox Series X 1TB mit Controller", 290)
+        r["desc"] = "Konsole läuft einwandfrei, Rechnung von MediaMarkt liegt bei."
+        t = seller_template(r)
+        self.assertNotIn("Laufwerk", t)
+        self.assertNotIn("Rechnung", t)
+        self.assertIn("справне", format_html(r))
+        self.assertIn("є чек", format_html(r))
+
+    def test_description_facts(self):
+        self.assertEqual(desc_facts("Nicht getestet, keine Rechnung.")["works"], False)
+        self.assertEqual(desc_facts("Nicht getestet, keine Rechnung.")["receipt"], False)
+        self.assertEqual(desc_facts("Laufwerk defekt")["works"], False)
+        self.assertIsNone(desc_facts("Privatverkauf ohne Gewähr.")["works"])   # юридична формула, не «не тестовано»
+        self.assertIsNone(desc_facts(None)["receipt"])
 
     def test_ram_card_unchanged(self):
         r = evaluate("Crucial 2x32GB DDR4 2666 RAM Kit 64GB", 65)

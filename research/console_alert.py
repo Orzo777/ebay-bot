@@ -69,15 +69,9 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
         notes.insert(0, "Підозріло дешево: частина таких оголошень — шахраї. Жодних переказів наперед.")
     return dict(verdict=verdict, type=real["name"], price=total, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
-                brand="Microsoft", title=title, notes=notes, seller_text=seller_text(), net_q=net_q,
-                offer_item="die Xbox Series X", offer_check="Laufen Laufwerk und Controller einwandfrei?",
+                brand="Microsoft", title=title, notes=notes, net_q=net_q,
+                item_acc="die Xbox Series X", check_q="Laufen Laufwerk und Controller einwandfrei, keine Sperre?",
                 buy_cost=cost, ship_in=ship_in, vb=vb)
-
-
-def seller_text() -> str:
-    """Німецькою, ≤256 символів (ліміт кнопки «копіювати» в Telegram)."""
-    return ('Hallo! Ist die Xbox Series X noch da? Laufen Laufwerk und Controller einwandfrei, keine Sperre? '
-            'Ich kaufe sofort per „Sicher bezahlen" mit Versand. Bitte ein aktuelles Foto mit Zettel (Datum). Danke!')
 
 
 if __name__ == "__main__":

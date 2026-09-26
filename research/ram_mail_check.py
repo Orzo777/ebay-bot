@@ -328,6 +328,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
             continue
         res["risk_lines"] = risk_lines(risk)
+        res["desc"] = (risk or {}).get("desc")   # що продавець уже написав — не питаємо
         if dry_run:
             print("   [DRY RUN] надіслав би картку")
         else:

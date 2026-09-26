@@ -116,7 +116,7 @@ class TestProcess(unittest.TestCase):
         rmc._process(ka_mail("Xbox Series X 1TB", 340), 6, False, set(), {})
         self.assertEqual(len(self.cards), 1)
         offer_text = self.cards[0][5]
-        self.assertIn("Versand und Käuferschutz zahle ich", offer_text)
+        self.assertIn("Versand und Gebühr übernehme ich", offer_text)
         kb = rmc.build_keyboard("l", "s", "q", offer_text)
         self.assertTrue(any("пропозицією" in row[0]["text"] for row in kb["inline_keyboard"]))
 

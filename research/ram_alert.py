@@ -10,6 +10,7 @@ research/ram_terapeak.py) і формує вердикт BUY/CHECK/SKIP.
     python research/ram_alert.py "..." 50 --tg
 """
 import json
+import re
 import os
 import sys
 
@@ -149,35 +150,86 @@ def offer_price(r: dict) -> int | None:
     return offer if 0 < offer <= r["price"] * 0.95 else None   # торг на 5 € виглядає дріб'язково — купуй як є
 
 
+# Що продавець уже написав в описі (сторінку оголошення бот і так відкриває для перевірки на шахраїв) —
+# про це не питаємо, а на картці показуємо. Вирази вузькі: «ohne Gewähr» (юридична формула) — не «не тестовано».
+_DESC_BROKEN = re.compile(r"funktioniert nicht|nicht funktionsfähig|\bdefekt|kaputt|startet nicht|kein bild", re.I)
+_DESC_UNTESTED = re.compile(r"ungetestet|nicht getestet|ungeprüft|nicht geprüft|(?:kann|konnte)\s+(?:\w+\s+)?nicht\s+test", re.I)
+_DESC_WORKS = re.compile(r"getestet|funktioniert|funktionsfähig|einwandfrei|fehlerfrei|problemlos|memtest|"
+                         r"läuft\s+(?:stabil|super|perfekt|top|ohne)|keine\s+(?:probleme|fehler|mängel)", re.I)
+_DESC_NO_RECEIPT = re.compile(r"\b(?:keine?n?|ohne)\s+(?:\w+\s+)?(?:rechnung|kaufbeleg|quittung|kassenbon)|"
+                              r"rechnung\s+(?:ist\s+)?(?:nicht|leider nicht)", re.I)
+_DESC_RECEIPT = re.compile(r"rechnung|kaufbeleg|quittung|kassenbon|kaufnachweis", re.I)
+
+
+def desc_facts(desc: str | None, r: dict | None = None) -> dict:
+    """Опис → {works: True/False/None, receipt: True/False/None, kit_ok: bool}. None — опис не згадує."""
+    d = desc or ""
+    works = (False if _DESC_BROKEN.search(d) or _DESC_UNTESTED.search(d)
+             else True if _DESC_WORKS.search(d) else None)
+    receipt = False if _DESC_NO_RECEIPT.search(d) else True if _DESC_RECEIPT.search(d) else None
+    kit_ok = False
+    if r and r.get("total"):
+        t = r["total"]
+        if r.get("kit_unknown"):
+            kit_ok = bool(re.search(rf"\b2\s*[x×]\s*{t // 2}\s*gb|\b(?:zwei|2)\s+(?:riegel|module|stück)", d, re.I))
+        elif r.get("single_module_warning"):
+            kit_ok = bool(re.search(rf"\b1\s*[x×]\s*{t}\s*gb|\bein(?:en|zelner)?\s+(?:riegel|modul)", d, re.I))
+    return dict(works=works, receipt=receipt, kit_ok=kit_ok)
+
+
+def _questions(r: dict) -> list[str]:
+    f = desc_facts(r.get("desc"), r)
+    q = []
+    if r.get("single_module_warning") and not f["kit_ok"]:
+        q.append(f'Ist es genau EIN Riegel mit {r["total"]} GB?')
+    elif r.get("kit_unknown") and not f["kit_ok"]:
+        q.append(f'Sind es 2x{r["total"] // 2} GB oder mehr Riegel?')
+    if f["works"] is None:
+        q.append(r.get("check_q", "Lief er fehlerfrei?"))
+    if f["receipt"] is None:
+        q.append("Gibt es eine Rechnung?")
+    return q
+
+
+def buyer_message(r: dict, offer: int | None = None) -> str:
+    """Текст продавцю (німецькою, ≤256 символів — ліміт кнопки «копіювати» в Telegram).
+    Як «хук»: спершу рішення (беру, зарезервуй), потім умови, в кінці лише питання, на які опис не відповів.
+    «Ще в наявності?» не питаємо: зняте оголошення продавець і так закриває або ставить «Reserviert»."""
+    what = r.get("item_acc", "den RAM")
+    head = (f"Hallo! Ich nehme {what} für {offer} € und kaufe sofort – bitte für mich reservieren."
+            if offer is not None else f"Hallo! Ich nehme {what} und kaufe sofort – bitte für mich reservieren.")
+    parts = [head, 'Ich zahle per „Sicher bezahlen", Versand und Gebühr übernehme ich.', *_questions(r), "Danke!"]
+    while len(" ".join(parts)) > 256 and len(parts) > 3:   # задовге — спершу жертвуємо останнім питанням (чек)
+        parts.pop(-2)
+    return " ".join(parts)
+
+
 def offer_template(r: dict) -> str | None:
-    """Текст продавцю з пропозицією ціни (≤256 символів, німецькою)."""
     o = offer_price(r)
-    if o is None:
-        return None
-    what = r.get("offer_item", "der RAM")
-    t = (f'Hallo! Ist {what} noch da? Wären {o} € ok? Versand und Käuferschutz zahle ich '
-         f'per „Sicher bezahlen" und kaufe sofort.')
-    if r.get("single_module_warning"):
-        t += f' Ist es genau EIN Riegel mit {r["total"]} GB?'
-    elif r.get("kit_unknown"):
-        t += f' Sind es 2x{r["total"] // 2} GB oder mehr Riegel?'
-    elif r.get("offer_check"):
-        t += " " + r["offer_check"]
-    return t + " Danke!"
+    return None if o is None else buyer_message(r, o)
 
 
 def seller_template(r: dict) -> str:
-    """Текст продавцю німецькою. ≤256 символів — ліміт кнопки «копіювати» в Telegram."""
-    if r.get("seller_text"):  # не-RAM товари (console_alert) несуть власний текст
-        return r["seller_text"]
-    t = ('Hallo! Ist der RAM noch da? Ich kaufe sofort per „Sicher bezahlen" mit Versand. '
-         'Lief er fehlerfrei? Bitte ein aktuelles Foto mit Zettel (Datum).')
-    if r.get("single_module_warning"):
-        t += f' Ist es genau EIN Riegel mit {r["total"]} GB?'
-    elif r.get("kit_unknown"):
-        half = r["total"] // 2
-        t += f' Sind es 2x{half} GB oder mehr Riegel?'
-    return t + " Danke!"
+    return buyer_message(r)
+
+
+def desc_line(r: dict) -> str | None:
+    """Рядок на картку: що продавець сам написав в описі."""
+    if r.get("desc") is None:
+        return None
+    f = desc_facts(r["desc"], r)
+    bits = []
+    if f["works"] is True:
+        bits.append("✓ пише, що справне / протестоване")
+    elif f["works"] is False:
+        bits.append("⚠️ пише, що НЕ тестоване або з дефектом")
+    if f["receipt"] is True:
+        bits.append("🧾 є чек")
+    elif f["receipt"] is False:
+        bits.append("без чека")
+    if f["kit_ok"]:
+        bits.append("✓ кількість планок вказана")
+    return "📝 В описі: " + (" · ".join(bits) if bits else "нічого про справність і чек — питання в тексті")
 
 
 def _speed_label(st: float) -> str:
@@ -220,7 +272,11 @@ def format_html(r: dict) -> str:
         f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
         f"⏱ {_speed_label(r['sell_through'])}",
     ]
-    if r.get("single_module_warning"):
+    if desc_line(r):
+        lines += ["", escape(desc_line(r))]
+    if desc_facts(r.get("desc"), r)["kit_ok"]:
+        pass   # продавець уже написав у описі, скільки планок
+    elif r.get("single_module_warning"):
         lines += ["", f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ, а не кілька менших."]
     elif r.get("kit_unknown"):
         half = r["total"] // 2
