@@ -59,6 +59,11 @@ class TestRisk(unittest.TestCase):
         r = parse_listing("<html>Diese Anzeige ist nicht mehr verfügbar</html>", 300, 509, TODAY)
         self.assertEqual(r["level"], "gone")
 
+    def test_unreadable_page_is_unknown_not_scam(self):
+        r = parse_listing("<html><title>Kleinanzeigen</title>Suche</html>", 65, 147, TODAY)
+        self.assertEqual(r["level"], "unknown")
+        self.assertIn("невідомо", risk_lines(r)[0])
+
     def test_card_lines_escape_and_unknown(self):
         self.assertIn("не вдалося", risk_lines(None)[0])
         lines = risk_lines({"level": "medium", "score": 2, "reasons": ["<b>x</b>"], "seller": "приватний"})

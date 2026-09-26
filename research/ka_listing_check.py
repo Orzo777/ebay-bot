@@ -35,6 +35,9 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
     today = today or date.today()
     if _GONE_RE.search(page) and not _DESC_RE.search(page):
         return dict(level="gone", score=0, reasons=["оголошення вже зняте"], seller="")
+    if not _DESC_RE.search(page) and not _SINCE_RE.search(page):   # не сторінка оголошення (редирект, зміна верстки)
+        return dict(level="unknown", score=0, reasons=["сторінку не вдалося прочитати — можливо, оголошення вже зняте"],
+                    seller="")
     reasons, score = [], 0
     m = _SINCE_RE.search(page)
     seller = "комерційний" if _COMMERCIAL_RE.search(page) else "приватний"
@@ -97,7 +100,7 @@ def check_listing(link: str | None, price: float, quick_sale: float) -> dict | N
         return None
 
 
-LABEL = {"low": "🟢 низький", "medium": "🟡 середній", "high": "🔴 ВИСОКИЙ", "gone": "⚫ оголошення зняте"}
+LABEL = {"unknown": "⚪ невідомо", "low": "🟢 низький", "medium": "🟡 середній", "high": "🔴 ВИСОКИЙ", "gone": "⚫ оголошення зняте"}
 
 
 def risk_lines(risk: dict | None) -> list[str]:
