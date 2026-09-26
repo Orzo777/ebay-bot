@@ -78,15 +78,19 @@ function doPost(e) {
     props.setProperty('TG_SEEN', JSON.stringify(seen.slice(-200)));
     const msg = update.message;
     if (!msg || !msg.chat) return ContentService.createTextOutput('ok');
-    const text = [msg.text, msg.caption].filter(String).join(' ');
+    // Посилання буває сховане «під словом» (text_link) або в підписі до фото — збираємо все
+    const urls = [].concat(msg.entities || [], msg.caption_entities || [])
+      .map(function (en) { return en.url || ''; }).filter(Boolean);
+    const text = [msg.text, msg.caption].concat(urls).filter(Boolean).join(' ') || '(без тексту)';
     const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
-    UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_share.yml/dispatches', {
+    const resp = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_share.yml/dispatches', {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
       payload: JSON.stringify({ ref: 'main', inputs: { text: text.slice(0, 1000), chat_id: String(Number(msg.chat.id)) } }),
       muteHttpExceptions: true,
     });
+    if (resp.getResponseCode() !== 204) console.log('GitHub ' + resp.getResponseCode() + ': ' + resp.getContentText());
   } catch (err) {
     console.log('doPost: ' + err);
   } finally {
