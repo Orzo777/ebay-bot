@@ -32,6 +32,7 @@ sys.path.insert(0, "research")
 import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
+from pc_alert import evaluate_pc, pc_card_lines
 from ram_alert import SEND_VERDICTS, evaluate, format_html, offer_template, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
@@ -294,15 +295,17 @@ def pc_text(lst: dict) -> str:
     from html import escape
 
     head = f"🖥 <b>{lst['price']:.0f} €</b>" + (" VB" if lst.get("vb") else "") + f" · {escape(lst['title'][:90])}"
-    return head + "\nДешевий ПК у Гамбурзі — глянь фото: відеокарта, скільки планок RAM, блок живлення."
+    lines = [head] + (pc_card_lines(lst["pc_eval"]) if lst.get("pc_eval") else [])
+    return "\n".join(lines + ["Самовивіз у Гамбурзі — глянь фото: відеокарта, скільки планок RAM, блок живлення."])
 
 
 def send_pc_card(lst: dict):
     import requests
 
     kb = {"inline_keyboard": [[{"text": "🔗 Відкрити оголошення", "url": lst["link"]}]]} if lst.get("link") else None
+    silent = (lst.get("pc_eval") or {}).get("verdict") == "UNKNOWN"   # «глянь сам» — без звуку
     payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": pc_text(lst), "parse_mode": "HTML",
-               "disable_web_page_preview": "false"}
+               "disable_web_page_preview": "false", "disable_notification": "true" if silent else "false"}
     if kb:
         payload["reply_markup"] = json.dumps(kb, ensure_ascii=False)
     requests.post(f"{config.TELEGRAM_API_BASE}/bot{PC_BOT_TOKEN}/sendMessage", data=payload, timeout=15).raise_for_status()
@@ -322,6 +325,11 @@ def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: s
             continue
         if stale:
             continue
+        ev = evaluate_pc(lst["title"], lst["price"])   # ціле / на запчастини, самовивіз; невигідне — не шлемо
+        print(f"   оцінка: {ev['verdict']}" + (f", заробіток ≈ {ev['profit']:.0f} € ({ev['how']})" if "profit" in ev else ""))
+        if ev["verdict"] == "SKIP":
+            continue
+        lst["pc_eval"] = ev
         # та сама перевірка продавця, що й в основному боті: без «Sicher bezahlen» / PayPal Freunde — не показуємо
         risk = check_listing(lst.get("link"), lst["price"], 0)
         if risk and (risk["level"] == "gone" or risk.get("block")):
