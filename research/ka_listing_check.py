@@ -28,8 +28,10 @@ _CONTACT = re.compile(r"whats\s?app|telegram|\b[\w.+-]+@[a-z0-9-]+\.[a-z]{2,}|\+
 _PAYMENT = re.compile(r"freunde\s*(?:&|und)\s*familie|paypal\s*(?:an\s*)?(?:freunde|friends|family)|\bf\s?&\s?f\b|vorkasse|"
                       r"nur\s+(?:per\s+)?überweisung|western union|paysafe", re.I)
 _OK_NEG = r"(?!\s*(?:problem|thema|garantie|gewährleistung|rücknahme|umtausch|haftung))"
-_NO_PROTECTION = re.compile(r"(?:sicher bezahlen|bezahlfunktion|käuferschutz)[^.!,;]{0,80}\b(?:nicht|kein\w*)\b" + _OK_NEG + "|"
-                            r"\b(?:nicht|kein\w*|ohne)\b[^.!,;]{0,40}(?:sicher bezahlen|bezahlfunktion|käuferschutz)", re.I)
+# «Sicher bezahlen» пишуть по-різному: «Sicher zahlen», «sicheres Bezahlen», «Sicherbezahlen» (26.09: «kein Sicher zahlen»)
+_SB = r"(?:sicher(?:es)?\s*(?:be)?zahl\w*|bezahlfunktion|käuferschutz)"
+_NO_PROTECTION = re.compile(_SB + r"[^.!,;]{0,80}\b(?:nicht|kein\w*)\b" + _OK_NEG + "|"
+                            r"\b(?:nicht|kein\w*|ohne)\b[^.!,;]{0,40}" + _SB, re.I)
 _STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur versand|keine abholung|"
                     r"keine besichtigung|dringend", re.I)
 

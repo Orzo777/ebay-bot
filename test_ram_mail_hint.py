@@ -92,6 +92,19 @@ class TestProcess(unittest.TestCase):
         sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 250), 6, False, set(), {})
         self.assertEqual((sent, len(self.cards)), (0, 0))
 
+    def test_pc_scam_seller_skipped(self):
+        pcs, old = [], (rmc.send_pc_card, rmc.PC_BOT_TOKEN)
+        rmc.send_pc_card, rmc.PC_BOT_TOKEN = pcs.append, "x"
+        rmc.check_listing = lambda *a: {"level": "medium", "score": 2, "reasons": [], "seller": "", "block": True,
+                                        "hard": ["відмовляється від «Sicher bezahlen»"]}
+        try:
+            m = ka_mail("Terra PC / i5-6400 / 8GB Ram / 256GB SSD / Win11", 60)
+            m.replace_header("Subject", "Neue Treffer zu deiner Suche „PCs in Hamburg (+20 km)“")
+            self.assertEqual(rmc._process(m, 6, False, set(), {}), 0)
+            self.assertEqual(pcs, [])
+        finally:
+            rmc.send_pc_card, rmc.PC_BOT_TOKEN = old
+
     def test_pc_filter_real_titles(self):
         # 26.09: у ПК-бот прийшов «Raspberry Pi 3 Model B im transparenten Gehäuse» — не ПК
         skip = ["Raspberry Pi 3 Model B im transparenten Gehäuse", "Fujitsu Futro S720 Thin Client",

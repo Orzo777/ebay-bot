@@ -305,6 +305,11 @@ def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: s
             continue
         if stale:
             continue
+        # та сама перевірка продавця, що й в основному боті: без «Sicher bezahlen» / PayPal Freunde — не показуємо
+        risk = check_listing(lst.get("link"), lst["price"], 0)
+        if risk and (risk["level"] == "gone" or risk.get("block")):
+            print("   пропускаю: " + ("оголошення зняте" if risk["level"] == "gone" else "ШАХРАЙ — " + "; ".join(risk["hard"])))
+            continue
         if dry_run or not PC_BOT_TOKEN:
             print("   [ПК-бот] " + ("DRY RUN" if dry_run else "немає секрету PC_BOT_TOKEN — пропускаю"))
             continue

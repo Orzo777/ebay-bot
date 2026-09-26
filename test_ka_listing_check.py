@@ -66,6 +66,13 @@ class TestRisk(unittest.TestCase):
             self.assertTrue(r["block"], desc)
             self.assertTrue(r["hard"])
 
+    def test_sicher_zahlen_spelling(self):
+        # 26.09, ПК-бот: «Ich biete kein Sicher zahlen an, das dauert zu lange, lieber Paypal.»
+        r = parse_listing(page("Der PC ist frisch aufgesetzt mit Windows 11 Pro. Ich biete kein Sicher zahlen an, "
+                               "das dauert zu lange, lieber Paypal. Porto sind 7€"), 60, 0, TODAY)
+        self.assertTrue(r["block"])
+        self.assertIn("відмовляється від «Sicher bezahlen»", r["hard"])
+
     def test_honest_texts_not_blocked(self):
         # вузькі вирази: звичайні формулювання чесних продавців не блокуються
         for desc in [HONEST,
