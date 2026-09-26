@@ -31,6 +31,7 @@ sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 import config
 from console_alert import evaluate_console
+from ka_listing_check import check_listing, risk_lines
 from ram_alert import evaluate, format_html, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
@@ -119,12 +120,13 @@ def build_keyboard(link: str | None, seller_text: str, search: str | None = None
     return {"inline_keyboard": rows}
 
 
-def send_telegram_card(html_text: str, link: str | None, seller_text: str, search: str | None = None):
+def send_telegram_card(html_text: str, link: str | None, seller_text: str, search: str | None = None,
+                       silent: bool = False):
     import requests
 
     url = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
-               "disable_web_page_preview": "true",
+               "disable_web_page_preview": "true", "disable_notification": "true" if silent else "false",
                "reply_markup": json.dumps(build_keyboard(link, seller_text, search), ensure_ascii=False)}
     r = requests.post(url, data=payload, timeout=15)
     if r.status_code == 400:   # старий клієнт/API без copy_text — картка важливіша за кнопку
@@ -256,10 +258,16 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if stale:
             print(f"   старіший за {max_age_hours:.0f} год — не сповіщаю")
             continue
+        risk = check_listing(lst["link"], lst["price"], res.get("quick_sale", 0))
+        print(f"   продавець: {risk['level'] + ' ' + '; '.join(risk['reasons']) if risk else 'не перевірено'}")
+        if risk and risk["level"] == "gone":
+            continue
+        res["risk_lines"] = risk_lines(risk)
+        silent = bool(risk and risk["level"] == "high")   # схоже на шахрая — картка без звуку
         if dry_run:
-            print("   [DRY RUN] надіслав би картку")
+            print(f"   [DRY RUN] надіслав би картку{' (тихо, високий ризик)' if silent else ''}")
         else:
-            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink)
+            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink, silent)
         sent += 1
     if hint_times is not None and not sent and not stale and sid and listings:
         now = datetime.now(timezone.utc)

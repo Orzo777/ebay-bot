@@ -139,6 +139,7 @@ def format_html(r: dict) -> str:
            "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>"}[r["verdict"]]
     lines = [
         tag,
+        *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
         f"<b>{escape(r['type'])}</b>",
         f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>",
         "",
