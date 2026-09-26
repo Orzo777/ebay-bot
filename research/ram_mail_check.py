@@ -325,7 +325,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if risk and risk["level"] == "gone":
             continue
         if risk and risk.get("block"):   # PayPal Freunde, «без Sicher bezahlen», WhatsApp, свіжий акаунт — не показуємо
-            print("   ⛔ шахрайство, картку не надсилаю: " + "; ".join(risk["hard"]))
+            print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
             continue
         res["risk_lines"] = risk_lines(risk)
         if dry_run:
