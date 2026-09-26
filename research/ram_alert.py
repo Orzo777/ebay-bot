@@ -58,6 +58,10 @@ def _with_refresh(base: dict) -> dict:
         return table
     for k, v in table.items():
         e = (data.get("types") or {}).get(f"{k[0]}|{k[1]}|{int(k[2])}|{k[3]}|{k[4]}")
+        # поправка рахувалась від старого знімка Terapeak (REAL_BASE з того часу оновлено) — вона застаріла:
+        # до наступного щотижневого запуску (він сам скине якір) беремо свіжий знімок як є
+        if e and "p25_tp" in e and (e["p25_tp"], e.get("med_tp")) != (v["p25"], v["med"]):
+            continue
         if e and e.get("p25") and e.get("med"):
             v["p25"], v["med"] = e["p25"], e["med"]
     return table

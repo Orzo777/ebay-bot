@@ -84,6 +84,21 @@ class TestRefresh(unittest.TestCase):
 
 
 class TestAlertReadsFile(unittest.TestCase):
+    def test_stale_anchor_ignored_after_new_terapeak(self):
+        # 26.09: REAL_BASE оновлено новим знімком, а файл ще рахує поправку від старого — брати свіжий знімок
+        base = ram_alert.REAL_BASE[KEY]
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "ram_prices.json"), "w", encoding="utf-8") as fh:
+                json.dump({"types": {key_str(KEY): {"p25_tp": base["p25"] - 50, "med_tp": base["med"], "p25": 1, "med": 2}}}, fh)
+            old_file, old_env = ram_alert.__file__, os.environ.pop("RAM_PRICES_OFF")
+            try:
+                ram_alert.__file__ = os.path.join(d, "ram_alert.py")
+                table = ram_alert._with_refresh(ram_alert.REAL_BASE)
+            finally:
+                ram_alert.__file__ = old_file
+                os.environ["RAM_PRICES_OFF"] = old_env
+        self.assertEqual(table[KEY]["p25"], base["p25"])
+
     def test_with_refresh_applies_file(self):
         base_p25 = ram_alert.REAL_BASE[KEY]["p25"]
         with tempfile.TemporaryDirectory() as d:
