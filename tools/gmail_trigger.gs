@@ -73,11 +73,11 @@ function doPost(e) {
     const update = JSON.parse(e.postData.contents);
     const props = PropertiesService.getScriptProperties();
     const seen = JSON.parse(props.getProperty('TG_SEEN') || '[]');
-    if (seen.indexOf(update.update_id) >= 0) return ContentService.createTextOutput('ok');
+    if (seen.indexOf(update.update_id) >= 0) return HtmlService.createHtmlOutput('ok');
     seen.push(update.update_id);
     props.setProperty('TG_SEEN', JSON.stringify(seen.slice(-200)));
     const msg = update.message;
-    if (!msg || !msg.chat) return ContentService.createTextOutput('ok');
+    if (!msg || !msg.chat) return HtmlService.createHtmlOutput('ok');
     // Посилання буває сховане «під словом» (text_link) або в підписі до фото — збираємо все
     const urls = [].concat(msg.entities || [], msg.caption_entities || [])
       .map(function (en) { return en.url || ''; }).filter(Boolean);
@@ -96,7 +96,9 @@ function doPost(e) {
   } finally {
     lock.releaseLock();
   }
-  return ContentService.createTextOutput('ok');   // Telegram чекає 200, інакше повторюватиме
+  // HtmlService, а НЕ ContentService: ContentService відповідає 302 (перенаправлення), Telegram вважає це
+  // помилкою і безкінечно повторює найстаріше повідомлення, а нові стоять у черзі (26.09: бот «мовчав»).
+  return HtmlService.createHtmlOutput('ok');
 }
 
 function install() {
