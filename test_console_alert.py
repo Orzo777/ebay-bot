@@ -147,5 +147,20 @@ class TestPS5(unittest.TestCase):
         self.assertIsNone(evaluate_console("Crucial 32GB DDR5 2x16GB", 100))
 
 
+class TestSwitch2(unittest.TestCase):
+    # 26.09: KA €220–270 при швидкому продажу на eBay €382 (вживані); ігри й аксесуари з «Switch 2» у назві — не консоль
+    def test_console_vs_games(self):
+        self.assertEqual(evaluate_console("Nintendo Switch 2 + Mario Kart World", 220)["verdict"], "BUY")
+        self.assertEqual(evaluate_console("Pokémon Legenden: Z-A - Nintendo Switch 2 Edition", 35)["verdict"], "SKIP")
+        self.assertEqual(evaluate_console("Nintendo Switch 2 Pro Controller", 60)["verdict"], "SKIP")
+        self.assertIsNone(evaluate_console("FeinTech SW212 HDMI 2.1 Switch 2x1 + Audio Extractor", 25))
+        self.assertIsNone(evaluate_console("Nintendo Switch OLED", 200))
+
+    def test_sealed_cheap_warns(self):
+        r = evaluate_console("Nintendo Switch 2 – neu & originalverpackt", 230)
+        self.assertIn("шахрай", r["notes"][0])
+        self.assertIn("die Switch 2", seller_template(r))
+
+
 if __name__ == "__main__":
     unittest.main()
