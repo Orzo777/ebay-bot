@@ -72,6 +72,14 @@ class TestNewTypes(unittest.TestCase):
         self.assertTrue(evaluate(t, 320)["verdict"].startswith("BUY"))
         self.assertEqual(evaluate(t, 370, vb=True)["verdict"], "NEGOTIATE")
 
+    def test_types_added_26_09(self):
+        # заміряні 26.09, коли з'ясувалось, що їх бракує
+        self.assertEqual(evaluate("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150)["type"], "DDR5 UDIMM 48 ГБ (2×24) кіт")
+        self.assertEqual(evaluate("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150)["verdict"], "BUY-EXCELLENT")
+        self.assertEqual(evaluate("Kingston Fury Beast DDR5 16GB (2x8GB) 5200", 90)["type"], "DDR5 UDIMM 16 ГБ (2×8) кіт")
+        self.assertEqual(evaluate("Crucial 32GB Kit DDR4 3200 SODIMM 2x16GB", 70)["type"], "DDR4 SO-DIMM 32 ГБ (2×16) кіт")
+        self.assertIn("не купуємо", evaluate("Crucial DDR5 96GB Kit 2x48GB 5600", 200)["reason"])
+
     def test_ddr5_single_16_desktop(self):
         r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 90)
         self.assertEqual(r["type"], "DDR5 UDIMM 16 ГБ (одна планка)")
@@ -79,7 +87,7 @@ class TestNewTypes(unittest.TestCase):
         self.assertTrue(r["single_module_warning"])
 
     def test_not_added_types_still_skip(self):
-        for t, p in [("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150), ("Samsung 8GB DDR5-5600 SO-DIMM", 20),
+        for t, p in [("Samsung 8GB DDR5-5600 SO-DIMM", 20),
                      ("Crucial DDR5 96GB Kit 2x48GB 5600", 200), ("Micron 16gb DDR5 sodimm 5600 2x 8Gb", 30)]:
             self.assertEqual(evaluate(t, p)["verdict"], "SKIP", t)
 

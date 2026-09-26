@@ -33,6 +33,10 @@ REAL_BASE = {
     ("ddr5", "sodimm", False, 64, 2): dict(p25=510, med=556, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
     ("ddr5", "sodimm", False, 32, 1): dict(p25=210, med=249, st=16, period=90, name="DDR5 SO-DIMM 32 ГБ"),
     ("ddr5", "sodimm", False, 16, 1): dict(p25=120, med=149, st=18, period=90, name="DDR5 SO-DIMM 16 ГБ"),
+    # 26.09.2026, Terapeak 30 днів (типи, яких бракувало): DDR5 2×24 — 9 продано, 2×8 — 13, DDR4 SO-DIMM 2×16 — 24
+    ("ddr5", "udimm", False, 48, 2): dict(p25=409, med=459, st=9, period=30, name="DDR5 UDIMM 48 ГБ (2×24) кіт"),
+    ("ddr5", "udimm", False, 16, 2): dict(p25=159, med=185, st=10, period=30, name="DDR5 UDIMM 16 ГБ (2×8) кіт"),
+    ("ddr4", "sodimm", False, 32, 2): dict(p25=131, med=144, st=15, period=30, name="DDR4 SO-DIMM 32 ГБ (2×16) кіт"),
     ("ddr4", "udimm", False, 32, 2): dict(p25=121, med=142, st=30, period=30, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
     ("ddr4", "udimm", False, 64, 2): dict(p25=241, med=293, st=6, period=90, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
     ("ddr4", "sodimm", False, 32, 1): dict(p25=122, med=149, st=15, period=90, name="DDR4 SO-DIMM 32 ГБ"),
@@ -101,8 +105,9 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
         kit_unknown = real is not None
     if not real:
         return dict(verdict="SKIP",
-                    reason=f"тип {p['gen']} {p['form']} {p['total']}ГБ ({p['modules']} план.) не входить у список прибуткових "
-                           f"(можливо, це {p['total']}ГБ зібрано з іншої кількості планок, ніж наш профільний тип)",
+                    reason=f"{p['gen'].upper()} {'ноутбучна' if p['form'] == 'sodimm' else p['form'].upper()} "
+                           f"{p['total']} ГБ ({p['modules']} план.) — цей тип не купуємо: на eBay продається дешево "
+                           f"або рідко (заміри 21–26.09)",
                     title=title, price=total_price, wrong_type=True)
     net_q = real["p25"] - costs(real["p25"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
