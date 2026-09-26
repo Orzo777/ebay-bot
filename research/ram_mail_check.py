@@ -396,6 +396,14 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
             new_mails += 1
             alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads, hint_times)
     m.logout()
+    if pc_replay and not alerts_sent and PC_BOT_TOKEN:   # листів про ПК ще не було — перевіряємо сам зв'язок
+        import requests
+
+        requests.post(f"{config.TELEGRAM_API_BASE}/bot{PC_BOT_TOKEN}/sendMessage", timeout=15, data={
+            "chat_id": config.TELEGRAM_CHAT_ID,
+            "text": "✅ ПК-бот підключено. Тут з'являтимуться дешеві ПК у Гамбурзі (до 60 €, 20 км) з підписки Kleinanzeigen."}
+        ).raise_for_status()
+        print("ПК-бот: надіслано перевірочне повідомлення")
     if not dry_run and not pc_replay:
         save_state(state_path, {"seen_ids": list(seen), "seen_ads": list(seen_ads), "hint_times": hint_times})
     print(f"Нових листів оброблено: {new_mails}; сповіщень: {alerts_sent}")
