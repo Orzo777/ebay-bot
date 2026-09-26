@@ -324,13 +324,15 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         print(f"   продавець: {risk['level'] + ' ' + '; '.join(risk['reasons']) if risk else 'не перевірено'}")
         if risk and risk["level"] == "gone":
             continue
+        if risk and risk.get("block"):   # PayPal Freunde, «без Sicher bezahlen», WhatsApp, свіжий акаунт — не показуємо
+            print("   ⛔ шахрайство, картку не надсилаю: " + "; ".join(risk["hard"]))
+            continue
         res["risk_lines"] = risk_lines(risk)
-        silent = bool(risk and risk["level"] == "high")   # схоже на шахрая — картка без звуку
         if dry_run:
-            print(f"   [DRY RUN] надіслав би картку{' (тихо, високий ризик)' if silent else ''}")
+            print("   [DRY RUN] надіслав би картку")
         else:
-            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink, silent,
-                               offer_template(res))
+            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink,
+                               offer_text=offer_template(res))
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
     # кандидат ймовірно схований у тій самій пачці. Правильний товар, просто дорожчий, — не привід.

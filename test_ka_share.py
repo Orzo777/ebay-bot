@@ -67,6 +67,12 @@ class TestEvaluate(unittest.TestCase):
         self.assertIn(res["verdict"], ("BUY-EXCELLENT", "BUY-GOOD"))
         self.assertIn("самовивіз", msg)
 
+    def test_scam_listing_is_rejected_not_carded(self):
+        msg, res = evaluate_listing(page("Xbox Series X 1TB", "250 €",
+                                         desc="Top Zustand, mit OVP. Bezahlung nur per PayPal Freunde und Familie."), "u")
+        self.assertIn("схоже на шахрая", msg)
+        self.assertNotIn("Запропонуй", msg)
+
     def test_no_price(self):
         msg, res = evaluate_listing(page("Xbox Series X", "VB"), "u")
         self.assertIsNone(res)

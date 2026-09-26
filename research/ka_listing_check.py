@@ -20,12 +20,16 @@ _SINCE_RE = re.compile(r"Aktiv seit\s*(\d{2})\.(\d{2})\.(\d{4})")
 _COMMERCIAL_RE = re.compile(r"Gewerblicher Nutzer")
 _GONE_RE = re.compile(r"nicht mehr verfügbar|wurde gelöscht|Anzeige ist deaktiviert|existiert nicht mehr", re.I)
 
-_CONTACT = re.compile(r"whats\s?app|telegram|signal\b|e-?mail|@[a-z0-9-]+\.[a-z]{2,}|\+\d{2}\s?\d|\b01[5-7]\d[\s/]?\d{3}|"
-                      r"handynummer|meine nummer|schreib(?:t)? mir (?:auf|per)", re.I)
-_PAYMENT = re.compile(r"freunde\s*(?:&|und)\s*familie|paypal\s*(?:an\s*)?freunde|\bf\s?&\s?f\b|vorkasse|"
-                      r"nur\s+(?:per\s+)?überweisung|western union|gutschein|paysafe", re.I)
-_NO_PROTECTION = re.compile(r"(?:sicher bezahlen|bezahlfunktion|käuferschutz)[^.!]{0,80}(?:nicht|kein)|"
-                            r"(?:nicht|kein)[^.!]{0,40}(?:sicher bezahlen|käuferschutz)", re.I)
+# «Жорсткі» ознаки — оголошення відкидається одразу, картки не буде: нормальний продавець лишається в чаті KA
+# і погоджується на «Sicher bezahlen». Регулярні вирази навмисно вузькі: «E-Mail-Rechnung», «HDMI-Signal»,
+# «Gutschein dabei», «Sicher bezahlen möglich, keine Rücknahme» — НЕ шахрайство.
+_CONTACT = re.compile(r"whats\s?app|telegram|\b[\w.+-]+@[a-z0-9-]+\.[a-z]{2,}|\+\d{2}\s?\d{2,}|\b01[5-7]\d[\s/]?\d{3}|"
+                      r"handynummer|meine nummer|schreib(?:t)? mir (?:auf|per|über)|kontaktier\w* mich (?:auf|per|über)", re.I)
+_PAYMENT = re.compile(r"freunde\s*(?:&|und)\s*familie|paypal\s*(?:an\s*)?(?:freunde|friends|family)|\bf\s?&\s?f\b|vorkasse|"
+                      r"nur\s+(?:per\s+)?überweisung|western union|paysafe", re.I)
+_OK_NEG = r"(?!\s*(?:problem|thema|garantie|gewährleistung|rücknahme|umtausch|haftung))"
+_NO_PROTECTION = re.compile(r"(?:sicher bezahlen|bezahlfunktion|käuferschutz)[^.!,;]{0,80}\b(?:nicht|kein\w*)\b" + _OK_NEG + "|"
+                            r"\b(?:nicht|kein\w*|ohne)\b[^.!,;]{0,40}(?:sicher bezahlen|bezahlfunktion|käuferschutz)", re.I)
 _STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur versand|keine abholung|"
                     r"keine besichtigung|dringend", re.I)
 
@@ -38,7 +42,7 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
     if not _DESC_RE.search(page) and not _SINCE_RE.search(page):   # не сторінка оголошення (редирект, зміна верстки)
         return dict(level="unknown", score=0, reasons=["сторінку не вдалося прочитати — можливо, оголошення вже зняте"],
                     seller="")
-    reasons, score = [], 0
+    reasons, hard, score = [], [], 0
     m = _SINCE_RE.search(page)
     seller = "комерційний" if _COMMERCIAL_RE.search(page) else "приватний"
     if m:
@@ -48,6 +52,7 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
         if age_days < 14:
             score += 3
             reasons.append(f"акаунт створено {age_days} дн. тому")
+            hard.append(f"акаунт створено {age_days} дн. тому")
         elif age_days < 90:
             score += 1
             reasons.append(f"молодий акаунт ({age_days} дн.)")
@@ -63,12 +68,15 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
     if _CONTACT.search(desc):
         score += 2
         reasons.append("у описі кличе писати поза Kleinanzeigen")
+        hard.append("кличе писати поза Kleinanzeigen")
     if _PAYMENT.search(desc):
         score += 2
         reasons.append("оплата переказом / PayPal Freunde")
+        hard.append("хоче оплату переказом / PayPal Freunde (без захисту покупця)")
     if _NO_PROTECTION.search(desc):
         score += 1
         reasons.append("відмовляється від «Sicher bezahlen» / захисту покупця")
+        hard.append("відмовляється від «Sicher bezahlen»")
     story = sorted({s.group(0).lower() for s in _STORY.finditer(desc)})
     if story:
         score += min(len(story), 2)
@@ -80,7 +88,10 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
         score += 1
         reasons.append(f"ціна {price:.0f} € — менше половини ринку")
     level = "high" if score >= 4 else "medium" if score >= 2 else "low"
-    return dict(level=level, score=score, reasons=reasons, seller=seller)
+    if level == "high" and not hard:
+        hard.append("забагато ознак шахрайства разом")
+    # block: у підписках картки не буде зовсім; лишаються 🟢 і 🟡 лише з «м'яких» ознак (молодий акаунт, короткий опис)
+    return dict(level=level, score=score, reasons=reasons, seller=seller, block=bool(hard), hard=hard)
 
 
 def check_listing(link: str | None, price: float, quick_sale: float) -> dict | None:

@@ -52,8 +52,34 @@ class TestRisk(unittest.TestCase):
         r = parse_listing(page('Versand nur über PayPal als „Freunde &amp; Familie". Andere Zahlungswege wie „PayPal '
                                'Käuferschutz" oder die Bezahlfunktion von Kleinanzeigen kommen für mich nicht infrage.'),
                           350, 509, TODAY)
-        self.assertEqual(r["level"], "medium")
+        self.assertEqual(r["level"], "medium")   # «жовтий», але з жорсткими ознаками — все одно відкидаємо
+        self.assertTrue(r["block"])
         self.assertTrue(any("Sicher bezahlen" in x for x in r["reasons"]))
+
+    def test_block_hard_flags(self):
+        # PayPal Freunde / відмова від Sicher bezahlen / WhatsApp / свіжий акаунт — картки не буде навіть при 🟡
+        for desc, since in [("Zahlung nur per PayPal Freunde, Versand sofort. Top Zustand, kaum benutzt.", "16.07.2019"),
+                            ("Sicher bezahlen ist nicht möglich. Top Zustand, kaum benutzt, mit OVP.", "16.07.2019"),
+                            ("Top Zustand, kaum benutzt, mit OVP. Meldet euch per WhatsApp.", "16.07.2019"),
+                            (HONEST, "22.09.2026")]:
+            r = parse_listing(page(desc, since=since), 300, 509, TODAY)
+            self.assertTrue(r["block"], desc)
+            self.assertTrue(r["hard"])
+
+    def test_honest_texts_not_blocked(self):
+        # вузькі вирази: звичайні формулювання чесних продавців не блокуються
+        for desc in [HONEST,
+                     "Privatverkauf, keine Garantie und keine Rücknahme. Sicher bezahlen gerne, kein Problem.",
+                     "Sicher bezahlen möglich, keine Rücknahme. HDMI-Signal einwandfrei, Rechnung per E-Mail vorhanden.",
+                     "Xbox mit Game Pass Gutschein, Nichtraucherhaushalt, Versand per DHL möglich.",
+                     "RAM 2x16GB + 32GB Kit, getestet mit MemTest, läuft stabil."]:
+            r = parse_listing(page(desc), 300, 509, TODAY)
+            self.assertFalse(r["block"], desc)
+
+    def test_young_account_or_short_text_only_warns(self):
+        r = parse_listing(page("Xbox Series X", since="01.08.2026"), 300, 509, TODAY)
+        self.assertEqual(r["level"], "medium")
+        self.assertFalse(r["block"])
 
     def test_gone_listing(self):
         r = parse_listing("<html>Diese Anzeige ist nicht mehr verfügbar</html>", 300, 509, TODAY)

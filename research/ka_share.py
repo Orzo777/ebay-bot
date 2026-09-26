@@ -82,6 +82,9 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
         notes.append("Оголошення позначене «Reserviert».")
     if res["verdict"] in SEND_VERDICTS:
         risk = parse_listing(page, info["price"], res.get("quick_sale", 0))
+        if risk.get("block"):   # вигідна ціна не рятує: без захисту покупця це лотерея
+            lines = [f"⛔ <b>Не бери — схоже на шахрая</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €"]
+            return "\n".join(lines + ["   • " + escape(h) for h in risk["hard"]]), res
         res["risk_lines"] = risk_lines(risk)
         res["notes"] = res.get("notes", []) + notes
         return format_html(res), res
