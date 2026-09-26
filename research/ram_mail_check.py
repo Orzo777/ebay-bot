@@ -70,8 +70,10 @@ _ADLINK_RE = re.compile(r'href="(https://www\.kleinanzeigen\.de/s-anzeige/\d+)[^
 _PRICE_RE = re.compile(r"([\d.,]+)\s?€")
 _GEWERBLICH_RE = re.compile(r"Von Gewerblich")
 _SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
-# Підписки не для бота (напр. «PCs in Hamburg» — дешеві ПК на розбірку, сповіщення йдуть у «Вхідні» Gmail)
+# «Мухи окремо, котлети окремо»: дешеві ПК на розбірку (підписка «PCs in Hamburg») йдуть в ОКРЕМИЙ
+# Telegram-бот (секрет PC_BOT_TOKEN, той самий chat_id), без оцінки RAM-логікою.
 IGNORE_SEARCH_RE = re.compile(r"„PCs in ")
+PC_BOT_TOKEN = os.getenv("PC_BOT_TOKEN", "")
 HINT_GAP_MIN = 45   # тиха підказка «глянь пошук» — не частіше разу на 45 хв на одну підписку
 
 
@@ -242,6 +244,42 @@ def send_telegram_hint(html_text: str, link: str):
     requests.post(url, data=payload, timeout=15).raise_for_status()
 
 
+def pc_text(lst: dict) -> str:
+    from html import escape
+
+    head = f"🖥 <b>{lst['price']:.0f} €</b>" + (" VB" if lst.get("vb") else "") + f" · {escape(lst['title'][:90])}"
+    return head + "\nДешевий ПК у Гамбурзі — глянь фото: відеокарта, скільки планок RAM, блок живлення."
+
+
+def send_pc_card(lst: dict):
+    import requests
+
+    kb = {"inline_keyboard": [[{"text": "🔗 Відкрити оголошення", "url": lst["link"]}]]} if lst.get("link") else None
+    payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": pc_text(lst), "parse_mode": "HTML",
+               "disable_web_page_preview": "false"}
+    if kb:
+        payload["reply_markup"] = json.dumps(kb, ensure_ascii=False)
+    requests.post(f"{config.TELEGRAM_API_BASE}/bot{PC_BOT_TOKEN}/sendMessage", data=payload, timeout=15).raise_for_status()
+
+
+def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: set) -> int:
+    sent = 0
+    for lst in extract_listings(subject, body):
+        ak = "pc:" + _ad_key(lst)
+        if ak in seen_ads or lst.get("gewerblich"):
+            continue
+        seen_ads.add(ak)
+        print(f" · ПК: {lst['title'][:60]} | {lst['price']:.0f}€")
+        if stale:
+            continue
+        if dry_run or not PC_BOT_TOKEN:
+            print("   [ПК-бот] " + ("DRY RUN" if dry_run else "немає секрету PC_BOT_TOKEN — пропускаю"))
+            continue
+        send_pc_card(lst)
+        sent += 1
+    return sent
+
+
 def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times: dict | None = None) -> int:
     """Один лист → вердикти всіх оголошень у ньому; повертає кількість надісланих карток.
     Kleinanzeigen кладе в лист лише ОДНЕ оголошення з пачки («2/5 neue Ergebnisse» у дзвіночку) —
@@ -250,8 +288,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
     stale = age is not None and age > max_age_hours
     subject = _decode(msg.get("Subject"))
     if IGNORE_SEARCH_RE.search(subject):
-        print(f" · не для бота: {subject[27:80]}")
-        return 0
+        return _process_pc(subject, _body_text(msg), stale, dry_run, seen_ads)
     body = _body_text(msg)
     listings = extract_listings(subject, body)
     sid, slink = search_link(body)

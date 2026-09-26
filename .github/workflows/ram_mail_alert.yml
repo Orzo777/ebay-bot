@@ -60,6 +60,7 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PC_BOT_TOKEN: ${{ secrets.PC_BOT_TOKEN }}
           PYTHONIOENCODING: utf-8
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
