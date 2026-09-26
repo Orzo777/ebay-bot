@@ -345,7 +345,9 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
     return sent
 
 
-def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, lookback_days: int = 2):
+def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, lookback_days: int = 2,
+        pc_replay: bool = False):
+    """pc_replay: разово перевідправити в ПК-бот свіжі листи підписки «PCs in …» (перевірка ПК-бота)."""
     state = load_state(state_path)
     seen = set() if dry_run else set(state["seen_ids"])   # діагностика бачить усе, навіть уже оброблене
     seen_ads = set() if dry_run else set(state.get("seen_ads", []))
@@ -384,13 +386,17 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         for mid in ids:
             msg = email.message_from_bytes(m.fetch(mid, "(BODY.PEEK[])")[1][0][1])
             msgid = msg.get("Message-ID") or f"{folder}:{mid.decode()}"
+            if pc_replay:
+                if IGNORE_SEARCH_RE.search(_decode(msg.get("Subject"))):
+                    alerts_sent += _process(msg, max_age_hours, False, set(), None)
+                continue
             if msgid in seen:
                 continue
             seen.add(msgid)
             new_mails += 1
             alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads, hint_times)
     m.logout()
-    if not dry_run:
+    if not dry_run and not pc_replay:
         save_state(state_path, {"seen_ids": list(seen), "seen_ads": list(seen_ads), "hint_times": hint_times})
     print(f"Нових листів оброблено: {new_mails}; сповіщень: {alerts_sent}")
 
@@ -401,5 +407,6 @@ if __name__ == "__main__":
     ap.add_argument("--state", default="ram_mail_state.json")
     ap.add_argument("--max-age-hours", type=float, default=6.0)
     ap.add_argument("--lookback-days", type=int, default=2)
+    ap.add_argument("--pc-replay", action="store_true", help="перевідправити в ПК-бот свіжі листи підписки на ПК")
     args = ap.parse_args()
-    run(args.state, args.dry_run, args.max_age_hours, args.lookback_days)
+    run(args.state, args.dry_run, args.max_age_hours, args.lookback_days, args.pc_replay)

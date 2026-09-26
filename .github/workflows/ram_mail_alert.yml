@@ -18,6 +18,10 @@ on:
         description: "Діагностика: показати вердикти всіх листів за 2 дні, нічого не надсилати"
         type: boolean
         default: false
+      pc_replay:
+        description: "Перевірка ПК-бота: перевідправити свіжі листи підписки «PCs in Hamburg»"
+        type: boolean
+        default: false
 
 concurrency:
   group: ram-mail-alert
@@ -63,7 +67,9 @@ jobs:
           PC_BOT_TOKEN: ${{ secrets.PC_BOT_TOKEN }}
           PYTHONIOENCODING: utf-8
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${{ inputs.pc_replay }}" = "true" ]; then
+            python research/ram_mail_check.py --state ram_mail_state.json --pc-replay --max-age-hours 24
+          elif [ "${{ inputs.dry_run }}" = "true" ]; then
             python research/ram_mail_check.py --state ram_mail_state.json --dry-run
           else
             python research/ram_mail_check.py --state ram_mail_state.json
