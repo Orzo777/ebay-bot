@@ -73,7 +73,7 @@ class TestNegotiate(unittest.TestCase):
         self.assertIn("Запропонуй <b>300 €</b>", format_html(r))
 
     def test_negotiate_offer_not_above_cap(self):
-        r = evaluate_console("Xbox Series X 1TB", 380, vb=True)
+        r = evaluate_console("Xbox Series X 1TB", 370, vb=True)
         self.assertEqual(r["verdict"], "NEGOTIATE")
         self.assertLessEqual(buy_cost(offer_price(r), r["ship_in"]), r["cap"])   # разом — не вище стелі
         self.assertEqual(offer_price(r) % 5, 0)

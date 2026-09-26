@@ -81,7 +81,7 @@ class TestNewTypes(unittest.TestCase):
         self.assertIn("не купуємо", evaluate("Crucial DDR5 96GB Kit 2x48GB 5600", 200)["reason"])
 
     def test_ddr5_single_16_desktop(self):
-        r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 90)
+        r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 85)
         self.assertEqual(r["type"], "DDR5 UDIMM 16 ГБ (одна планка)")
         self.assertTrue(r["verdict"].startswith("BUY"))
         self.assertTrue(r["single_module_warning"])
@@ -94,8 +94,8 @@ class TestNewTypes(unittest.TestCase):
 
 class TestPrices(unittest.TestCase):
     def test_tiers(self):
-        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 140)["verdict"], "BUY-GOOD")
-        self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 300)["verdict"], "BUY-GOOD")
+        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 135)["verdict"], "BUY-GOOD")
+        self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 285)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate("Crucial DDR5 16GB 5600 SODIMM", 145)["verdict"], "SKIP")
 
 

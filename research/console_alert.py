@@ -34,8 +34,13 @@ _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|fest
 _CONSOLE_WORD = re.compile(r"konsole|console|\d\s?tb\b|\bmit\b|\binkl|\+|\bbundle\b", re.I)
 
 
+PACK = 3.0            # коробка + наповнювач для консолі
+INSURE_OVER_500 = 6.99  # DHL базово страхує до €500; Xbox продається дорожче → страховка до €2 500
+
+
 def costs(sale_price: float) -> float:
-    return FEE * sale_price + ORDER_FEE + SHIP + 0.03 * (2 * SHIP + ORDER_FEE)
+    return (FEE * sale_price + ORDER_FEE + SHIP + PACK + (INSURE_OVER_500 if sale_price > 500 else 0)
+            + 0.03 * (2 * SHIP + ORDER_FEE))
 
 
 def _skip(title: str, price: float, reason: str, wrong_type: bool = True) -> dict:
