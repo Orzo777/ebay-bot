@@ -55,6 +55,36 @@ function check() {
   console.log('запущено бота, нових листів: ' + fresh);
 }
 
+/**
+ * «Поділитися → бот» (вебхук Telegram). Telegram надсилає сюди кожне повідомлення, яке ви пишете боту
+ * або яким ділитесь з ним (кнопка «Teilen» в оголошенні Kleinanzeigen). Скрипт одразу запускає GitHub
+ * workflow ka_share.yml, той оцінює оголошення й відповідає карткою в Telegram (~30 с).
+ * Відповідь іде лише у ВАШ чат: GitHub звіряє chat.id із секретом TELEGRAM_CHAT_ID.
+ *
+ * Розгортання (один раз): «Розгорнути» → «Нове розгортання» → тип «Вебзастосунок» →
+ * «Виконувати від імені: я», «Хто має доступ: будь-хто» → «Розгорнути» → скопіювати адресу …/exec.
+ */
+function doPost(e) {
+  try {
+    const update = JSON.parse(e.postData.contents);
+    const msg = update.message;
+    if (!msg || !msg.chat) return ContentService.createTextOutput('ok');
+    const text = [msg.text, msg.caption].filter(String).join(' ');
+    const props = PropertiesService.getScriptProperties();
+    const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+    UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_share.yml/dispatches', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+      payload: JSON.stringify({ ref: 'main', inputs: { text: text.slice(0, 1000), chat_id: String(Number(msg.chat.id)) } }),
+      muteHttpExceptions: true,
+    });
+  } catch (err) {
+    console.log('doPost: ' + err);
+  }
+  return ContentService.createTextOutput('ok');   // Telegram чекає 200, інакше повторюватиме
+}
+
 function install() {
   uninstall();
   ScriptApp.newTrigger('check').timeBased().everyMinutes(1).create();

@@ -1,0 +1,48 @@
+name: ka-share
+
+# «Поділитися → бот»: користувач ділиться оголошенням Kleinanzeigen у Telegram-бот; вебхук Google Apps Script
+# (tools/gmail_trigger.gs, doPost) запускає цей workflow з текстом повідомлення. Скрипт відкриває одну сторінку
+# оголошення і відповідає карткою в той самий чат. Чужі чати ігноруються (порівняння з TELEGRAM_CHAT_ID).
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: "Текст повідомлення з Telegram (посилання на оголошення)"
+        required: true
+      chat_id:
+        description: "chat.id відправника (перевіряється проти секрету)"
+        required: true
+
+concurrency:
+  group: ka-share-${{ github.run_id }}
+
+permissions:
+  contents: read
+
+jobs:
+  share:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Evaluate shared listing
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SHARE_TEXT: ${{ inputs.text }}
+          SHARE_CHAT: ${{ inputs.chat_id }}
+          PYTHONIOENCODING: utf-8
+        # вхідні дані — лише через змінні оточення (не підставляються в команду)
+        run: |
+          # "owner" — ручний запуск власником репозиторію (gh workflow run); з вебхука приходить лише числовий chat.id
+          if [ "$SHARE_CHAT" != "$TELEGRAM_CHAT_ID" ] && [ "$SHARE_CHAT" != "owner" ]; then echo "чужий чат — ігнорую"; exit 0; fi
+          python research/ka_share.py "$SHARE_TEXT"

@@ -216,6 +216,19 @@ def hint_text(subject: str, shown: dict | None, verdict: str | None) -> str:
     return "\n".join(lines)
 
 
+def send_telegram_text(html_text: str, link: str | None = None):
+    """Коротка відповідь (напр. на «Поділитися → бот»: «не бери, бо…»), з кнопкою на оголошення."""
+    import requests
+
+    url = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
+               "disable_web_page_preview": "true"}
+    if link:
+        payload["reply_markup"] = json.dumps({"inline_keyboard": [[{"text": "🔗 Відкрити оголошення", "url": link}]]},
+                                             ensure_ascii=False)
+    requests.post(url, data=payload, timeout=15).raise_for_status()
+
+
 def send_telegram_hint(html_text: str, link: str):
     import requests
 

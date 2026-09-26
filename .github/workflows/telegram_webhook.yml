@@ -1,0 +1,33 @@
+name: telegram-webhook
+
+# Один раз після розгортання вебзастосунку Apps Script: прив'язує Telegram-бота до його адреси (…/exec),
+# щоб повідомлення, якими користувач ділиться з ботом, приходили в doPost. Токен бота — лише із секретів.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Адреса вебзастосунку Apps Script (https://script.google.com/macros/s/…/exec); порожньо — показати стан"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  webhook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Set or show webhook
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          HOOK_URL: ${{ inputs.url }}
+        run: |
+          if [ -n "$HOOK_URL" ]; then
+            case "$HOOK_URL" in https://script.google.com/macros/s/*/exec) ;; *) echo "не схоже на адресу Apps Script"; exit 1;; esac
+            curl -sS "https://api.telegram.org/bot${TOKEN}/setWebhook" \
+              --data-urlencode "url=${HOOK_URL}" -d 'allowed_updates=["message"]' -d drop_pending_updates=true
+            echo
+          fi
+          curl -sS "https://api.telegram.org/bot${TOKEN}/getWebhookInfo" | sed 's/"url":"[^"]*"/"url":"(set)"/'
