@@ -73,7 +73,8 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
     if not p:
         return dict(verdict="UNKNOWN", reason=f"парсер не розпізнав назву: {reason}", title=title, price=total_price)
     if p["ecc"]:
-        return dict(verdict="SKIP", reason="ECC/серверна пам'ять — поза нашими прибутковими типами", title=title, price=total_price)
+        return dict(verdict="SKIP", reason="ECC/серверна пам'ять — поза нашими прибутковими типами", title=title,
+                    price=total_price, wrong_type=True)
     key = (p["gen"], p["form"], p["ecc"], p["total"], p["modules"])
     real = REAL.get(key)
     kit_unknown = False
@@ -84,18 +85,11 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
         return dict(verdict="SKIP",
                     reason=f"тип {p['gen']} {p['form']} {p['total']}ГБ ({p['modules']} план.) не входить у список прибуткових "
                            f"(можливо, це {p['total']}ГБ зібрано з іншої кількості планок, ніж наш профільний тип)",
-                    title=title, price=total_price)
+                    title=title, price=total_price, wrong_type=True)
     net_q = real["p25"] - costs(real["p25"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
     profit_est = net_q - total_price
-    if total_price <= excellent:
-        verdict = "BUY-EXCELLENT"
-    elif total_price <= good:
-        verdict = "BUY-GOOD"
-    elif total_price <= cap:
-        verdict = "BUY"
-    else:
-        verdict = "SKIP"
+    verdict = tier(total_price, cap, good, excellent)
     brand_flag = "невідомий/сумнівний бренд" if (p["brand"] in NOISE_BRANDS or not p["brand"]) else p["brand"]
     # Одна планка (modules==1) — назва каже лише сумарний обсяг, і за текстом НЕМОЖЛИВО
     # перевірити, чи це справді одна фізична планка, чи продавець просто не написав "2x8"
@@ -104,8 +98,51 @@ def evaluate(title: str, price: float, shipping: float = 0.0) -> dict:
     single_module_warning = p["modules"] == 1 and not kit_unknown
     return dict(verdict=verdict, type=real["name"], price=total_price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
-                brand=brand_flag, title=title, single_module_warning=single_module_warning, total=p["total"],
-                kit_unknown=kit_unknown)
+                net_q=net_q, brand=brand_flag, title=title, single_module_warning=single_module_warning,
+                total=p["total"], kit_unknown=kit_unknown)
+
+
+# Вердикти, на які йде картка. NEGOTIATE — до +15% понад стелю: після торгу стає вигідним.
+SEND_VERDICTS = ("BUY-EXCELLENT", "BUY-GOOD", "BUY", "NEGOTIATE")
+NEGOTIATE_UP = 1.15
+
+
+def tier(total: float, cap: float, good: float, excellent: float) -> str:
+    if total <= excellent:
+        return "BUY-EXCELLENT"
+    if total <= good:
+        return "BUY-GOOD"
+    if total <= cap:
+        return "BUY"
+    if total <= cap * NEGOTIATE_UP:
+        return "NEGOTIATE"
+    return "SKIP"
+
+
+def offer_price(r: dict) -> int | None:
+    """Зустрічна пропозиція для «МОЖНА» і «ТОРГУЙСЯ»: ~10% нижче ціни, не нижче «добре», не вище стелі,
+    округлено до 5 € (приклад: Xbox за 335 → 300)."""
+    if r.get("verdict") not in ("BUY", "NEGOTIATE"):
+        return None
+    target = min(r["cap"], max(r["good"], r["price"] * 0.9))
+    return int(round(target / 5) * 5)
+
+
+def offer_template(r: dict) -> str | None:
+    """Текст продавцю з пропозицією ціни (≤256 символів, німецькою)."""
+    o = offer_price(r)
+    if o is None:
+        return None
+    what = r.get("offer_item", "der RAM")
+    t = (f'Hallo! Ist {what} noch da? Wären {o} € inkl. Versand per „Sicher bezahlen" ok? '
+         f'Dann kaufe ich sofort.')
+    if r.get("single_module_warning"):
+        t += f' Ist es genau EIN Riegel mit {r["total"]} GB?'
+    elif r.get("kit_unknown"):
+        t += f' Sind es 2x{r["total"] // 2} GB oder mehr Riegel?'
+    elif r.get("offer_check"):
+        t += " " + r["offer_check"]
+    return t + " Danke!"
 
 
 def seller_template(r: dict) -> str:
@@ -136,14 +173,20 @@ def format_html(r: dict) -> str:
     from html import escape
 
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — БЕРИ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — БЕРИ</b>",
-           "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>"}[r["verdict"]]
+           "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>",
+           "NEGOTIATE": "💬 <b>ТОРГУЙСЯ — трохи дорожче стелі</b>"}[r["verdict"]]
+    offer = offer_price(r)
+    profit = (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" if r["verdict"] != "NEGOTIATE"
+              else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € — мало")
     lines = [
         tag,
         *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
         f"<b>{escape(r['type'])}</b>",
         f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>",
         "",
-        f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>",
+        profit,
+        *([f"🤝 Запропонуй <b>{offer} €</b> → заробіток ≈ <b>{r['net_q'] - offer:.0f} €</b>"]
+          if offer is not None and r.get("net_q") else []),
         f"🛒 Купувати до {r['cap']:.0f} € (добре ≤ {r['good']:.0f}, супер ≤ {r['excellent']:.0f})",
         f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
         f"⏱ {_speed_label(r['sell_through'])}",
@@ -158,13 +201,16 @@ def format_html(r: dict) -> str:
         lines += ["", f"⚠️ {escape(note)}"]
     lines += ["", f"<i>{escape(r['title'][:90])}</i>", "",
               "✉️ Текст продавцю (натисни — скопіюється):", f"<code>{escape(seller_template(r))}</code>"]
+    if offer is not None:
+        lines += ["", f"✉️ З пропозицією {offer} €:", f"<code>{escape(offer_template(r))}</code>"]
     return "\n".join(lines)
 
 
 def format_message(r: dict) -> str:
     if r["verdict"] in ("UNKNOWN", "SKIP"):
         return f"⏭ {r['title'][:70]}\n{r.get('reason', '')} (ціна {r['price']:.0f}€)"
-    tag = {"BUY-EXCELLENT": "🟢🟢 ВІДМІННО, БЕРИ", "BUY-GOOD": "🟢 ДОБРЕ, БЕРИ", "BUY": "🟡 CHECK (тонка маржа)"}[r["verdict"]]
+    tag = {"BUY-EXCELLENT": "🟢🟢 ВІДМІННО, БЕРИ", "BUY-GOOD": "🟢 ДОБРЕ, БЕРИ", "BUY": "🟡 CHECK (тонка маржа)",
+           "NEGOTIATE": "💬 ТОРГУЙСЯ (до +15% над стелею)"}[r["verdict"]]
     warn = ("\n⚠️ У назві вказано лише сумарний обсяг — уточніть у продавця, що це РІВНО ОДНА планка, "
             "а не 2+ менших модулі разом (наприклад 2×8 замість однієї 16 ГБ).") if r.get("single_module_warning") else ""
     return (f"{tag}: {r['type']}\n"

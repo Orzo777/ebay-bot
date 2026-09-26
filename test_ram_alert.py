@@ -51,7 +51,8 @@ class TestNewTypes(unittest.TestCase):
         r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 170)
         self.assertEqual(r["type"], "DDR5 SO-DIMM 32 ГБ (2×16) кіт")
         self.assertEqual(r["verdict"], "BUY")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "SKIP")   # вище стелі
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "NEGOTIATE")  # до +15% над стелею
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 220)["verdict"], "SKIP")       # далеко над стелею
 
     def test_ddr5_single_16_desktop(self):
         r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 90)

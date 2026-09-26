@@ -12,6 +12,8 @@ evaluate_console() повертає None, якщо назва — не Xbox Seri
 """
 import re
 
+from ram_alert import tier
+
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.
 XBOX_SERIES_X = dict(p25=509, med=561, st=30, name="Xbox Series X (вживана)")
 # Konsolen: 6,5% (eBay.de з 12.02.2026), €0.45 за замовлення; пересилка DHL Paket до 10 кг зі страховкою.
@@ -35,8 +37,8 @@ def costs(sale_price: float) -> float:
     return FEE * sale_price + ORDER_FEE + SHIP + 0.03 * (2 * SHIP + ORDER_FEE)
 
 
-def _skip(title: str, price: float, reason: str) -> dict:
-    return dict(verdict="SKIP", reason=reason, title=title, price=price)
+def _skip(title: str, price: float, reason: str, wrong_type: bool = True) -> dict:
+    return dict(verdict="SKIP", reason=reason, title=title, price=price, wrong_type=wrong_type)
 
 
 def evaluate_console(title: str, price: float, shipping: float = 0.0) -> dict | None:
@@ -54,18 +56,18 @@ def evaluate_console(title: str, price: float, shipping: float = 0.0) -> dict | 
     if _ACCESSORY.search(title) and not _CONSOLE_WORD.search(title):
         return _skip(title, total, "схоже на аксесуар, а не на консоль")
     if total < MIN_PRICE:
-        return _skip(title, total, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні")
+        return _skip(title, total, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
     real = XBOX_SERIES_X
     net_q = real["p25"] - costs(real["p25"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
-    verdict = ("BUY-EXCELLENT" if total <= excellent else "BUY-GOOD" if total <= good
-               else "BUY" if total <= cap else "SKIP")
+    verdict = tier(total, cap, good, excellent)
     notes = ["Перевір: працює привід і контролер, консоль не заблокована. Лише «Sicher bezahlen» або самовивіз."]
     if total < SUSPICIOUS_BELOW:
         notes.insert(0, "Підозріло дешево: частина таких оголошень — шахраї. Жодних переказів наперед.")
     return dict(verdict=verdict, type=real["name"], price=total, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - total,
-                brand="Microsoft", title=title, notes=notes, seller_text=seller_text())
+                brand="Microsoft", title=title, notes=notes, seller_text=seller_text(), net_q=net_q,
+                offer_item="die Xbox Series X", offer_check="Laufen Laufwerk und Controller einwandfrei?")
 
 
 def seller_text() -> str:

@@ -71,13 +71,26 @@ class TestProcess(unittest.TestCase):
         sent = rmc._process(ka_mail("X Box Series S", 219), 6, False, set(), {})
         self.assertEqual((sent, len(self.cards), len(self.hints)), (0, 0, 1))
         self.assertIn("xbox series x", self.hints[0][0])
-        self.assertIn("не наш тип", self.hints[0][0])
+        self.assertIn("не той товар", self.hints[0][0])
         self.assertTrue(self.hints[0][1].endswith("id=767883050"))
 
     def test_deal_gives_card_not_hint(self):
         sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 290), 6, False, set(), {})
         self.assertEqual((sent, len(self.hints)), (1, 0))
         self.assertTrue(self.cards[0][3].endswith("id=767883050"))   # кнопка «інші нові збіги»
+
+    def test_right_type_but_pricier_gives_no_hint(self):
+        # випадок 26.09: Corsair DDR5 16GB, дорожче стелі — у тій пачці більше нічого не було, підказка — шум
+        sent = rmc._process(ka_mail("Corsair Vengeance 16GB DDR5 6000 RAM", 190), 6, False, set(), {})
+        self.assertEqual((sent, len(self.hints)), (0, 0))
+
+    def test_negotiate_card_has_offer_button(self):
+        rmc._process(ka_mail("Xbox Series X 1TB", 395), 6, False, set(), {})
+        self.assertEqual(len(self.cards), 1)
+        offer_text = self.cards[0][5]
+        self.assertIn("€ inkl. Versand", offer_text)
+        kb = rmc.build_keyboard("l", "s", "q", offer_text)
+        self.assertTrue(any("пропозицією" in row[0]["text"] for row in kb["inline_keyboard"]))
 
     def test_hint_throttled_and_stale_mail_silent(self):
         times = {}

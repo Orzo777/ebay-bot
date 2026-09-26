@@ -32,7 +32,7 @@ sys.path.insert(0, "research")
 import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
-from ram_alert import evaluate, format_html, seller_template
+from ram_alert import SEND_VERDICTS, evaluate, format_html, offer_template, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
 
@@ -108,30 +108,34 @@ def extract_listings(subject: str, body: str) -> list[dict]:
     return out
 
 
-def build_keyboard(link: str | None, seller_text: str, search: str | None = None) -> dict:
+def build_keyboard(link: str | None, seller_text: str, search: str | None = None, offer_text: str | None = None) -> dict:
     """Кнопки під карткою: відкрити оголошення + скопіювати ЛИШЕ текст продавцю
     (copy_text, Bot API 7.11+, ліміт 256 символів) + уся підписка (у листі лише одне з кількох нових)."""
     rows = []
     if link:
         rows.append([{"text": "🔗 Відкрити оголошення", "url": link}])
     rows.append([{"text": "📋 Скопіювати текст продавцю", "copy_text": {"text": seller_text[:256]}}])
+    if offer_text:
+        price = re.search(r"Wären (\d+) €", offer_text)
+        label = f"📋 Текст із пропозицією {price.group(1)} €" if price else "📋 Текст із пропозицією ціни"
+        rows.append([{"text": label, "copy_text": {"text": offer_text[:256]}}])
     if search:
         rows.append([{"text": "🔎 Інші нові збіги цієї підписки", "url": search}])
     return {"inline_keyboard": rows}
 
 
 def send_telegram_card(html_text: str, link: str | None, seller_text: str, search: str | None = None,
-                       silent: bool = False):
+                       silent: bool = False, offer_text: str | None = None):
     import requests
 
     url = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
                "disable_web_page_preview": "true", "disable_notification": "true" if silent else "false",
-               "reply_markup": json.dumps(build_keyboard(link, seller_text, search), ensure_ascii=False)}
+               "reply_markup": json.dumps(build_keyboard(link, seller_text, search, offer_text), ensure_ascii=False)}
     r = requests.post(url, data=payload, timeout=15)
     if r.status_code == 400:   # старий клієнт/API без copy_text — картка важливіша за кнопку
         print("   Telegram 400:", r.text[:200], "→ повтор без кнопки копіювання")
-        kb = build_keyboard(link, seller_text, search)
+        kb = build_keyboard(link, seller_text, search, offer_text)
         kb["inline_keyboard"] = [row for row in kb["inline_keyboard"] if "url" in row[0]]
         payload["reply_markup"] = json.dumps(kb, ensure_ascii=False)
         r = requests.post(url, data=payload, timeout=15)
@@ -206,7 +210,7 @@ def hint_text(subject: str, shown: dict | None, verdict: str | None) -> str:
     lines = [f"🔕 Нові збіги: <b>{escape(search_name(subject))}</b>"]
     if shown:
         lines.append(f"У листі Kleinanzeigen показує лише одне: <i>{escape(shown['title'][:70])}</i> — "
-                     f"{shown['price']:.0f} € ({'не наш тип' if verdict == 'UNKNOWN' else 'дорожче стелі'}).")
+                     f"{shown['price']:.0f} € — не той товар.")
     lines.append("Решту збігів Kleinanzeigen у лист не кладе — серед них може бути вигідне. Глянь пошук.")
     return "\n".join(lines)
 
@@ -232,7 +236,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
     body = _body_text(msg)
     listings = extract_listings(subject, body)
     sid, slink = search_link(body)
-    shown, shown_verdict = None, None
+    shown, shown_verdict, wrong_type = None, None, False
     if dry_run:   # діагностика: чи не губимо оголошення, які є в листі, але не розпізнані парсером
         ad_ids = sorted(set(re.findall(r"/s-anzeige/(?:[^/\"'\s]+/)?(\d{8,})", body)))
         count = re.search(r"(\d+)\s+neue", re.sub(r"<[^>]+>", " ", body))
@@ -253,7 +257,8 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         reason = f" ({res['reason']})" if res.get("reason") else ""
         print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
         shown, shown_verdict = lst, res["verdict"]
-        if not res["verdict"].startswith("BUY"):
+        wrong_type = wrong_type or res["verdict"] == "UNKNOWN" or bool(res.get("wrong_type"))
+        if res["verdict"] not in SEND_VERDICTS:
             continue
         if stale:
             print(f"   старіший за {max_age_hours:.0f} год — не сповіщаю")
@@ -267,9 +272,12 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if dry_run:
             print(f"   [DRY RUN] надіслав би картку{' (тихо, високий ризик)' if silent else ''}")
         else:
-            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink, silent)
+            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink, silent,
+                               offer_template(res))
         sent += 1
-    if hint_times is not None and not sent and not stale and sid and listings:
+    # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
+    # кандидат ймовірно схований у тій самій пачці. Правильний товар, просто дорожчий, — не привід.
+    if hint_times is not None and not sent and not stale and sid and listings and wrong_type:
         now = datetime.now(timezone.utc)
         if should_hint(sid, now, hint_times):
             hint_times[sid] = now.isoformat()
