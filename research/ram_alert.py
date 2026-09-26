@@ -24,23 +24,24 @@ from ram_parse import parse_title
 # 4x16 ГБ (дешевий, не наш тип) зливається з DDR4 2x32 ГБ (наш тип, дорожчий), бо в обох
 # total=64 і kit=True. Усі наші "кіт"-типи — саме 2-планкові; усе інше (3x, 4x, 8x...) —
 # інший ринок і в таблицю свідомо не входить.
+# 26.09.2026 (вечір): 7 типів оновлено з заміру Terapeak (30 днів, ~840 проданих, класифікація парсером бота).
 REAL_BASE = {
     ("ddr5", "udimm", False, 32, 2): dict(p25=331, med=382, st=19, period=30, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
     ("ddr5", "udimm", False, 64, 2): dict(p25=544, med=677, st=9, period=30, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
     ("ddr5", "udimm", False, 16, 1): dict(p25=147, med=180, st=6, period=90, name="DDR5 UDIMM 16 ГБ (одна планка)"),
-    ("ddr5", "sodimm", False, 32, 2): dict(p25=250, med=280, st=8, period=90, name="DDR5 SO-DIMM 32 ГБ (2×16) кіт"),
+    ("ddr5", "sodimm", False, 32, 2): dict(p25=231, med=255, st=8, period=90, name="DDR5 SO-DIMM 32 ГБ (2×16) кіт"),
     # 26.09.2026, Terapeak 30 днів: ≥13 проданих вживаних (Crucial/SK hynix/Samsung/Kingston Impact), p25 ~510, медіана ~556
-    ("ddr5", "sodimm", False, 64, 2): dict(p25=510, med=556, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
-    ("ddr5", "sodimm", False, 32, 1): dict(p25=210, med=249, st=16, period=90, name="DDR5 SO-DIMM 32 ГБ"),
+    ("ddr5", "sodimm", False, 64, 2): dict(p25=421, med=567, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
+    ("ddr5", "sodimm", False, 32, 1): dict(p25=230, med=255, st=16, period=90, name="DDR5 SO-DIMM 32 ГБ"),
     ("ddr5", "sodimm", False, 16, 1): dict(p25=120, med=149, st=18, period=90, name="DDR5 SO-DIMM 16 ГБ"),
     # 26.09.2026, Terapeak 30 днів (типи, яких бракувало): DDR5 2×24 — 9 продано, 2×8 — 13, DDR4 SO-DIMM 2×16 — 24
     ("ddr5", "udimm", False, 48, 2): dict(p25=409, med=459, st=9, period=30, name="DDR5 UDIMM 48 ГБ (2×24) кіт"),
     ("ddr5", "udimm", False, 16, 2): dict(p25=159, med=185, st=10, period=30, name="DDR5 UDIMM 16 ГБ (2×8) кіт"),
-    ("ddr4", "sodimm", False, 32, 2): dict(p25=131, med=144, st=15, period=30, name="DDR4 SO-DIMM 32 ГБ (2×16) кіт"),
-    ("ddr4", "udimm", False, 32, 2): dict(p25=121, med=142, st=30, period=30, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
-    ("ddr4", "udimm", False, 64, 2): dict(p25=241, med=293, st=6, period=90, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
+    ("ddr4", "sodimm", False, 32, 2): dict(p25=108, med=128, st=15, period=30, name="DDR4 SO-DIMM 32 ГБ (2×16) кіт"),
+    ("ddr4", "udimm", False, 32, 2): dict(p25=134, med=154, st=30, period=30, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
+    ("ddr4", "udimm", False, 64, 2): dict(p25=267, med=306, st=6, period=90, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
     ("ddr4", "sodimm", False, 32, 1): dict(p25=122, med=149, st=15, period=90, name="DDR4 SO-DIMM 32 ГБ"),
-    ("ddr4", "sodimm", False, 64, 2): dict(p25=264, med=298, st=2.5, period=90, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
+    ("ddr4", "sodimm", False, 64, 2): dict(p25=214, med=260, st=2.5, period=90, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
 }
 
 

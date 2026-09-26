@@ -15,7 +15,8 @@ import re
 from ram_alert import buy_cost, tier
 
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.
-XBOX_SERIES_X = dict(p25=509, med=561, st=30, name="Xbox Series X (вживана)")
+# 26.09.2026: 83 продані за 30 днів (класифікація цим же оцінювачем) — p25 545, медіана 571
+XBOX_SERIES_X = dict(p25=545, med=571, st=30, name="Xbox Series X (вживана)")
 # Konsolen: 6,5% (eBay.de з 12.02.2026), €0.45 за замовлення; пересилка DHL Paket до 10 кг зі страховкою.
 FEE, ORDER_FEE, SHIP = 0.065, 0.45, 10.49
 SHIP_IN = 11.0   # пересилка, яку покупець платить продавцю (DHL Paket до 10 кг через «Sicher bezahlen»)
@@ -83,8 +84,8 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
 # Terapeak eBay.de, SOLD, вживані, 30 днів до 26.09.2026 (див. PS5_* нижче). Slim і перша («товста») модель
 # продаються майже однаково, тому Disc — один тип; Digital — окремий (дешевший); Pro не купуємо (забирає бюджет,
 # на KA вже по ринку).
-PS5_DISC = dict(p25=459, med=489, st=30, name="PS5 з дисководом (вживана)")
-PS5_DIGITAL = dict(p25=418, med=443, st=25, name="PS5 Digital (вживана)")
+PS5_DISC = dict(p25=438, med=460, st=30, name="PS5 з дисководом (вживана)")   # 183 продані / 30 дн.
+PS5_DIGITAL = dict(p25=399, med=419, st=25, name="PS5 Digital (вживана)")   # 102 продані / 30 дн.
 PS5_SUSPICIOUS_BELOW = 280
 
 _PS5 = re.compile(r"\bps\s?5\b|playstation\s*5", re.I)

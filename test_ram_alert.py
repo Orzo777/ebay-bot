@@ -56,12 +56,12 @@ class TestAmbiguousKit(unittest.TestCase):
 
 class TestNewTypes(unittest.TestCase):
     def test_ddr5_sodimm_2x16_kit(self):
-        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 160)
+        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 140)
         self.assertEqual(r["type"], "DDR5 SO-DIMM 32 ГБ (2×16) кіт")
         self.assertEqual(r["verdict"], "BUY")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 170)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 155)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8%
         self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "SKIP")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 185, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 165, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
 
     def test_ddr5_sodimm_2x32_kit(self):
         # 26.09: поділились у бот Kingston FURY Impact 64GB (2x32) SO-DIMM за 420 € — бот не знав типу
@@ -69,8 +69,8 @@ class TestNewTypes(unittest.TestCase):
         r = evaluate(t, 420)
         self.assertEqual(r["type"], "DDR5 SO-DIMM 64 ГБ (2×32) кіт")
         self.assertEqual(r["verdict"], "SKIP")                              # ≈445 € разом — заробіток ~17 €
-        self.assertTrue(evaluate(t, 320)["verdict"].startswith("BUY"))
-        self.assertEqual(evaluate(t, 370, vb=True)["verdict"], "NEGOTIATE")
+        self.assertTrue(evaluate(t, 270)["verdict"].startswith("BUY"))
+        self.assertEqual(evaluate(t, 310, vb=True)["verdict"], "NEGOTIATE")
 
     def test_types_added_26_09(self):
         # заміряні 26.09, коли з'ясувалось, що їх бракує
@@ -94,7 +94,7 @@ class TestNewTypes(unittest.TestCase):
 
 class TestPrices(unittest.TestCase):
     def test_tiers(self):
-        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 135)["verdict"], "BUY-GOOD")
+        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 105)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 285)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate("Crucial DDR5 16GB 5600 SODIMM", 145)["verdict"], "SKIP")
 
