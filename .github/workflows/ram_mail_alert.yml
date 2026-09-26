@@ -41,7 +41,7 @@ jobs:
 
       # Запобіжник: зламаний фільтр не має слати сповіщення про гроші. Без мережі, ~1 с.
       - name: Self-check (unit tests)
-        run: python -m unittest test_ram_parse test_ram_alert test_console_alert
+        run: python -m unittest test_ram_parse test_ram_alert test_console_alert test_ram_mail_hint
 
       - name: Restore state
         uses: actions/cache/restore@v4

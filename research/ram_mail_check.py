@@ -17,6 +17,7 @@
 """
 import argparse
 import email
+import html
 import imaplib
 import json
 import os
@@ -67,6 +68,8 @@ _TITLE_RE = re.compile(r'alt="Bild zur Anzeige ([^"]+)"')
 _ADLINK_RE = re.compile(r'href="(https://www\.kleinanzeigen\.de/s-anzeige/\d+)[^"]*"[^>]*title="Anzeige ansehen"')
 _PRICE_RE = re.compile(r"([\d.,]+)\s?€")
 _GEWERBLICH_RE = re.compile(r"Von Gewerblich")
+_SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
+HINT_GAP_MIN = 45   # тиха підказка «глянь пошук» — не частіше разу на 45 хв на одну підписку
 
 
 def _parse_price(s: str) -> float | None:
@@ -96,7 +99,7 @@ def extract_listings(subject: str, body: str) -> list[dict]:
             continue
         link_m = _ADLINK_RE.search(segment)
         out.append(dict(
-            title=tm.group(1).strip(),
+            title=html.unescape(tm.group(1)).strip(),   # «&amp;» у назві → «&»
             price=price,
             link=link_m.group(1) if link_m else None,
             gewerblich=bool(_GEWERBLICH_RE.search(segment)),
@@ -104,27 +107,29 @@ def extract_listings(subject: str, body: str) -> list[dict]:
     return out
 
 
-def build_keyboard(link: str | None, seller_text: str) -> dict:
+def build_keyboard(link: str | None, seller_text: str, search: str | None = None) -> dict:
     """Кнопки під карткою: відкрити оголошення + скопіювати ЛИШЕ текст продавцю
-    (copy_text, Bot API 7.11+, ліміт 256 символів)."""
+    (copy_text, Bot API 7.11+, ліміт 256 символів) + уся підписка (у листі лише одне з кількох нових)."""
     rows = []
     if link:
         rows.append([{"text": "🔗 Відкрити оголошення", "url": link}])
     rows.append([{"text": "📋 Скопіювати текст продавцю", "copy_text": {"text": seller_text[:256]}}])
+    if search:
+        rows.append([{"text": "🔎 Інші нові збіги цієї підписки", "url": search}])
     return {"inline_keyboard": rows}
 
 
-def send_telegram_card(html_text: str, link: str | None, seller_text: str):
+def send_telegram_card(html_text: str, link: str | None, seller_text: str, search: str | None = None):
     import requests
 
     url = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
                "disable_web_page_preview": "true",
-               "reply_markup": json.dumps(build_keyboard(link, seller_text), ensure_ascii=False)}
+               "reply_markup": json.dumps(build_keyboard(link, seller_text, search), ensure_ascii=False)}
     r = requests.post(url, data=payload, timeout=15)
     if r.status_code == 400:   # старий клієнт/API без copy_text — картка важливіша за кнопку
         print("   Telegram 400:", r.text[:200], "→ повтор без кнопки копіювання")
-        kb = build_keyboard(link, seller_text)
+        kb = build_keyboard(link, seller_text, search)
         kb["inline_keyboard"] = [row for row in kb["inline_keyboard"] if "url" in row[0]]
         payload["reply_markup"] = json.dumps(kb, ensure_ascii=False)
         r = requests.post(url, data=payload, timeout=15)
@@ -173,13 +178,59 @@ def _ad_key(lst: dict) -> str:
     return f"{m.group(1) if m else lst['title'][:60]}@{lst['price']:.0f}"
 
 
-def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set) -> int:
-    """Один лист → вердикти всіх оголошень у ньому; повертає кількість надісланих карток."""
+def search_link(body: str) -> tuple[str | None, str | None]:
+    """Посилання «Neue Treffer ansehen» → (id підписки, чисте посилання на неї)."""
+    m = _SEARCH_RE.search(body)
+    if not m:
+        return None, None
+    return m.group(1), f"https://www.kleinanzeigen.de/m-suche-verwenden.html?id={m.group(1)}"
+
+
+def search_name(subject: str) -> str:
+    m = re.search(r"„(.+?)“", subject)
+    name = m.group(1) if m else subject
+    return re.sub(r"^(PC-Zubehör & Software|Konsolen) - | in Ganz Deutschland$", "", name)
+
+
+def should_hint(search_id: str, now: datetime, hint_times: dict, min_gap_min: int = HINT_GAP_MIN) -> bool:
+    """Не частіше за одну тиху підказку на підписку за min_gap_min хвилин."""
+    last = hint_times.get(search_id)
+    return not last or (now - datetime.fromisoformat(last)).total_seconds() >= min_gap_min * 60
+
+
+def hint_text(subject: str, shown: dict | None, verdict: str | None) -> str:
+    from html import escape
+
+    lines = [f"🔕 Нові збіги: <b>{escape(search_name(subject))}</b>"]
+    if shown:
+        lines.append(f"У листі Kleinanzeigen показує лише одне: <i>{escape(shown['title'][:70])}</i> — "
+                     f"{shown['price']:.0f} € ({'не наш тип' if verdict == 'UNKNOWN' else 'дорожче стелі'}).")
+    lines.append("Решту збігів Kleinanzeigen у лист не кладе — серед них може бути вигідне. Глянь пошук.")
+    return "\n".join(lines)
+
+
+def send_telegram_hint(html_text: str, link: str):
+    import requests
+
+    url = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
+               "disable_web_page_preview": "true", "disable_notification": "true",
+               "reply_markup": json.dumps({"inline_keyboard": [[{"text": "🔎 Відкрити пошук", "url": link}]]},
+                                          ensure_ascii=False)}
+    requests.post(url, data=payload, timeout=15).raise_for_status()
+
+
+def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times: dict | None = None) -> int:
+    """Один лист → вердикти всіх оголошень у ньому; повертає кількість надісланих карток.
+    Kleinanzeigen кладе в лист лише ОДНЕ оголошення з пачки («2/5 neue Ergebnisse» у дзвіночку) —
+    якщо воно невигідне, шлемо тиху підказку з кнопкою на підписку, щоб приховані збіги не губились."""
     age = _mail_age_hours(msg)
     stale = age is not None and age > max_age_hours
     subject = _decode(msg.get("Subject"))
     body = _body_text(msg)
     listings = extract_listings(subject, body)
+    sid, slink = search_link(body)
+    shown, shown_verdict = None, None
     if dry_run:   # діагностика: чи не губимо оголошення, які є в листі, але не розпізнані парсером
         ad_ids = sorted(set(re.findall(r"/s-anzeige/(?:[^/\"'\s]+/)?(\d{8,})", body)))
         count = re.search(r"(\d+)\s+neue", re.sub(r"<[^>]+>", " ", body))
@@ -199,6 +250,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set) -> int:
         res = evaluate_console(lst["title"], lst["price"]) or evaluate(lst["title"], lst["price"])
         reason = f" ({res['reason']})" if res.get("reason") else ""
         print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
+        shown, shown_verdict = lst, res["verdict"]
         if not res["verdict"].startswith("BUY"):
             continue
         if stale:
@@ -207,8 +259,16 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set) -> int:
         if dry_run:
             print("   [DRY RUN] надіслав би картку")
         else:
-            send_telegram_card(format_html(res), lst["link"], seller_template(res))
+            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink)
         sent += 1
+    if hint_times is not None and not sent and not stale and sid and listings:
+        now = datetime.now(timezone.utc)
+        if should_hint(sid, now, hint_times):
+            hint_times[sid] = now.isoformat()
+            if dry_run:
+                print("   [DRY RUN] тиха підказка: " + search_name(subject))
+            else:
+                send_telegram_hint(hint_text(subject, shown, shown_verdict), slink)
     return sent
 
 
@@ -216,6 +276,7 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
     state = load_state(state_path)
     seen = set() if dry_run else set(state["seen_ids"])   # діагностика бачить усе, навіть уже оброблене
     seen_ads = set() if dry_run else set(state.get("seen_ads", []))
+    hint_times = {} if dry_run else dict(state.get("hint_times", {}))
     gmail_user = os.getenv("GMAIL_USER", "")
     gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
     if not gmail_user or not gmail_pass:
@@ -254,10 +315,10 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
                 continue
             seen.add(msgid)
             new_mails += 1
-            alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads)
+            alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads, hint_times)
     m.logout()
     if not dry_run:
-        save_state(state_path, {"seen_ids": list(seen), "seen_ads": list(seen_ads)})
+        save_state(state_path, {"seen_ids": list(seen), "seen_ads": list(seen_ads), "hint_times": hint_times})
     print(f"Нових листів оброблено: {new_mails}; сповіщень: {alerts_sent}")
 
 
