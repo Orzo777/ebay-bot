@@ -70,6 +70,8 @@ _ADLINK_RE = re.compile(r'href="(https://www\.kleinanzeigen\.de/s-anzeige/\d+)[^
 _PRICE_RE = re.compile(r"([\d.,]+)\s?€")
 _GEWERBLICH_RE = re.compile(r"Von Gewerblich")
 _SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
+# Підписки не для бота (напр. «PCs in Hamburg» — дешеві ПК на розбірку, сповіщення йдуть у «Вхідні» Gmail)
+IGNORE_SEARCH_RE = re.compile(r"„PCs in ")
 HINT_GAP_MIN = 45   # тиха підказка «глянь пошук» — не частіше разу на 45 хв на одну підписку
 
 
@@ -247,6 +249,9 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
     age = _mail_age_hours(msg)
     stale = age is not None and age > max_age_hours
     subject = _decode(msg.get("Subject"))
+    if IGNORE_SEARCH_RE.search(subject):
+        print(f" · не для бота: {subject[27:80]}")
+        return 0
     body = _body_text(msg)
     listings = extract_listings(subject, body)
     sid, slink = search_link(body)

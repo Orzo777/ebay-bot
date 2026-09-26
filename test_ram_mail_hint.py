@@ -86,6 +86,12 @@ class TestProcess(unittest.TestCase):
         self.assertEqual((sent, len(self.hints)), (1, 0))
         self.assertTrue(self.cards[0][3].endswith("id=767883050"))   # кнопка «інші нові збіги»
 
+    def test_pc_search_ignored(self):
+        m = ka_mail("PC + Monitor i7,16GB,500W 85+,GPU", 25)
+        m.replace_header("Subject", "Neue Treffer zu deiner Suche „PCs in Hamburg (+20 km)“")
+        self.assertEqual(rmc._process(m, 6, False, set(), {}), 0)
+        self.assertEqual((len(self.cards), len(self.hints)), (0, 0))
+
     def test_right_type_but_pricier_gives_no_hint(self):
         # випадок 26.09: Corsair DDR5 16GB, дорожче стелі — у тій пачці більше нічого не було, підказка — шум
         sent = rmc._process(ka_mail("Corsair Vengeance 16GB DDR5 6000 RAM", 190), 6, False, set(), {})

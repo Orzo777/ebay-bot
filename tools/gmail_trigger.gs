@@ -65,12 +65,20 @@ function check() {
  * «Виконувати від імені: я», «Хто має доступ: будь-хто» → «Розгорнути» → скопіювати адресу …/exec.
  */
 function doPost(e) {
+  // Apps Script відповідає Telegram перенаправленням 302, і Telegram повторює те саме повідомлення
+  // ще 5–7 разів (26.09: 7 однакових карток). Тому кожен update_id обробляємо лише раз.
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(10000);
     const update = JSON.parse(e.postData.contents);
+    const props = PropertiesService.getScriptProperties();
+    const seen = JSON.parse(props.getProperty('TG_SEEN') || '[]');
+    if (seen.indexOf(update.update_id) >= 0) return ContentService.createTextOutput('ok');
+    seen.push(update.update_id);
+    props.setProperty('TG_SEEN', JSON.stringify(seen.slice(-200)));
     const msg = update.message;
     if (!msg || !msg.chat) return ContentService.createTextOutput('ok');
     const text = [msg.text, msg.caption].filter(String).join(' ');
-    const props = PropertiesService.getScriptProperties();
     const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
     UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_share.yml/dispatches', {
       method: 'post',
@@ -81,6 +89,8 @@ function doPost(e) {
     });
   } catch (err) {
     console.log('doPost: ' + err);
+  } finally {
+    lock.releaseLock();
   }
   return ContentService.createTextOutput('ok');   // Telegram чекає 200, інакше повторюватиме
 }

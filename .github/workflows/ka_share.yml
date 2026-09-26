@@ -14,8 +14,11 @@ on:
         description: "chat.id відправника (перевіряється проти секрету)"
         required: true
 
+# Страховка від повторів Telegram (Apps Script відповідає 302 → Telegram шле те саме ще раз):
+# однаковий текст одночасно — старіший запуск скасовується, лишається один.
 concurrency:
-  group: ka-share-${{ github.run_id }}
+  group: ka-share-${{ inputs.chat_id }}-${{ inputs.text }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
