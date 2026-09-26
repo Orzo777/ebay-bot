@@ -63,6 +63,15 @@ class TestNewTypes(unittest.TestCase):
         self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "SKIP")
         self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 185, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
 
+    def test_ddr5_sodimm_2x32_kit(self):
+        # 26.09: поділились у бот Kingston FURY Impact 64GB (2x32) SO-DIMM за 420 € — бот не знав типу
+        t = "Kingston FURY Impact 64GB (2x32GB) DDR5-5600 SO-DIMM KF556S40IBK2"
+        r = evaluate(t, 420)
+        self.assertEqual(r["type"], "DDR5 SO-DIMM 64 ГБ (2×32) кіт")
+        self.assertEqual(r["verdict"], "SKIP")                              # ≈445 € разом — заробіток ~17 €
+        self.assertTrue(evaluate(t, 320)["verdict"].startswith("BUY"))
+        self.assertEqual(evaluate(t, 370, vb=True)["verdict"], "NEGOTIATE")
+
     def test_ddr5_single_16_desktop(self):
         r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 90)
         self.assertEqual(r["type"], "DDR5 UDIMM 16 ГБ (одна планка)")

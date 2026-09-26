@@ -29,6 +29,8 @@ REAL_BASE = {
     ("ddr5", "udimm", False, 64, 2): dict(p25=544, med=677, st=9, period=30, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
     ("ddr5", "udimm", False, 16, 1): dict(p25=147, med=180, st=6, period=90, name="DDR5 UDIMM 16 ГБ (одна планка)"),
     ("ddr5", "sodimm", False, 32, 2): dict(p25=250, med=280, st=8, period=90, name="DDR5 SO-DIMM 32 ГБ (2×16) кіт"),
+    # 26.09.2026, Terapeak 30 днів: ≥13 проданих вживаних (Crucial/SK hynix/Samsung/Kingston Impact), p25 ~510, медіана ~556
+    ("ddr5", "sodimm", False, 64, 2): dict(p25=510, med=556, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
     ("ddr5", "sodimm", False, 32, 1): dict(p25=210, med=249, st=16, period=90, name="DDR5 SO-DIMM 32 ГБ"),
     ("ddr5", "sodimm", False, 16, 1): dict(p25=120, med=149, st=18, period=90, name="DDR5 SO-DIMM 16 ГБ"),
     ("ddr4", "udimm", False, 32, 2): dict(p25=121, med=142, st=30, period=30, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),

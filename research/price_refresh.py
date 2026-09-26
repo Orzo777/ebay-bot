@@ -28,6 +28,7 @@ QUERIES = {  # ключ як у ram_alert.REAL → пошуковий запит
     ("ddr5", "udimm", False, 64, 2): "DDR5 64GB 2x32GB",
     ("ddr5", "udimm", False, 16, 1): "DDR5 16GB",
     ("ddr5", "sodimm", False, 32, 2): "DDR5 SODIMM 32GB 2x16GB",
+    ("ddr5", "sodimm", False, 64, 2): "DDR5 SODIMM 64GB 2x32GB",
     ("ddr5", "sodimm", False, 32, 1): "DDR5 SODIMM 32GB",
     ("ddr5", "sodimm", False, 16, 1): "DDR5 SODIMM 16GB",
     ("ddr4", "udimm", False, 32, 2): "DDR4 32GB 2x16GB",
