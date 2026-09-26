@@ -125,5 +125,27 @@ class TestCard(unittest.TestCase):
         self.assertIn("RAM", seller_template(r))
 
 
+class TestPS5(unittest.TestCase):
+    # 26.09: PS5 Slim Disc — слабкий кандидат з міні-дослідження (KA 2 з 18 у зоні торгу)
+    def test_disc_and_digital_types(self):
+        self.assertEqual(evaluate_console("PS5 Slim Disc Edition 1TB", 300)["type"], "PS5 з дисководом (вживана)")
+        self.assertEqual(evaluate_console("Playstation 5 Konsole mit 2 Controllern", 300)["type"], "PS5 з дисководом (вживана)")
+        self.assertEqual(evaluate_console("PS5 Digital Edition Slim", 250)["type"], "PS5 Digital (вживана)")
+
+    def test_rejects(self):
+        for t, p in [("PS5 Pro 2TB", 700), ("PS5 Controller DualSense", 40), ("PS5 Konsole defekt", 100),
+                     ("PS5 Spiele Paket", 60), ("Suche PS5 Slim", 300)]:
+            self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", t)
+
+    def test_negotiate_zone_and_offer(self):
+        r = evaluate_console("PS5 Slim Disc Edition 1TB", 320, vb=True)
+        self.assertEqual(r["verdict"], "NEGOTIATE")
+        self.assertIn("die PS5", offer_template(r))
+        self.assertIn("PSN", seller_template(r))
+
+    def test_not_ps5_goes_to_ram(self):
+        self.assertIsNone(evaluate_console("Crucial 32GB DDR5 2x16GB", 100))
+
+
 if __name__ == "__main__":
     unittest.main()

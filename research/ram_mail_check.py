@@ -259,10 +259,27 @@ _PC_HAS_INSIDES = re.compile(r"\bi[3579]\b|i[3579]-?\d|ryzen|core|xeon|pentium|c
 _PC_MONITOR = re.compile(r"monitor|bildschirm", re.I)
 
 
+# Мініпк користувачу не потрібні (26.09): ноутбучна пам'ять, відеокарту не поставиш, на розбір малоцінні.
+# Назва часто не містить «mini» («Terra PC / i5-6400 / … / 25x22x10cm») — тоді ловимо за розмірами корпусу.
+_PC_MINI = re.compile(r"\bmini\b|mini-?pc|minipc|\bmicro\b|\btiny\b|\bnuc\b|\busff\b|\bdm\b|desktop\s?mini|"
+                      r"\bm\d{3}q\b|esprimo\s*q|\bq\d{3}\b|mac\s?mini|beelink|minisforum|gmktec|zbox|\bbrix\b|"
+                      r"chuwi|trigkey|acemagic|geekom|asus\s*pn\d", re.I)
+_PC_DIMS = re.compile(r"(\d{1,3}(?:[.,]\d)?)\s*[x×]\s*(\d{1,3}(?:[.,]\d)?)\s*[x×]\s*(\d{1,3}(?:[.,]\d)?)\s*cm", re.I)
+
+
+def _is_mini_pc(title: str) -> bool:
+    if _PC_MINI.search(title):
+        return True
+    m = _PC_DIMS.search(title)
+    return bool(m) and max(float(x.replace(",", ".")) for x in m.groups()) < 35
+
+
 def pc_skip_reason(title: str) -> str | None:
     """None — схоже на цілий ПК; інакше причина, чому не шлемо."""
     if _PC_NOT_PC.search(title):
         return "не комп'ютер (Raspberry Pi / тонкий клієнт)"
+    if _is_mini_pc(title):
+        return "мініпк — не беремо"
     part, pc = _PC_PART.search(title), _PC_WORD.search(title)
     if part and (not pc or part.start() < pc.start()):
         return "запчастина або периферія, не цілий ПК"

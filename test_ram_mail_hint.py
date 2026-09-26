@@ -109,9 +109,14 @@ class TestProcess(unittest.TestCase):
         # 26.09: у ПК-бот прийшов «Raspberry Pi 3 Model B im transparenten Gehäuse» — не ПК
         skip = ["Raspberry Pi 3 Model B im transparenten Gehäuse", "Fujitsu Futro S720 Thin Client",
                 "PC Gehäuse mit Netzteil", "Netzteil für PC 500W", "Monitor 24 Zoll Samsung",
-                "Tastatur und Maus Set", "Mainboard mit i5 und 8GB RAM"]
+                "Tastatur und Maus Set", "Mainboard mit i5 und 8GB RAM",
+                # мініпк (26.09: «прибери міні пк»)
+                "Terra PC / i5-6400 / 8GB Ram / 256GB SSD / Win11 / 25x22x10cm", "Lenovo ThinkCentre M720q i5 8GB",
+                "Dell OptiPlex 3070 Micro i5", "HP EliteDesk 800 G3 Mini", "Intel NUC i5", "Fujitsu Esprimo Q556",
+                "Mini PC Beelink N100", "HP ProDesk 400 G4 DM"]
         keep = ["PC + Monitor i7,16GB,500W 85+,GPU", "Gaming PC mit Netzteil 600W", "Dell Optiplex 7050 i5 8GB",
-                "Computer Tower", "Alter PC", "HP Desktop PC Windows 10", "Gaming PC Gehäuse RGB mit Ryzen 5"]
+                "Computer Tower", "Alter PC", "HP Desktop PC Windows 10", "Gaming PC Gehäuse RGB mit Ryzen 5",
+                "Fujitsu Esprimo P757 i5 Tower", "Dell OptiPlex 7050 SFF i5", "Gaming PC 45x20x42cm GTX 1060"]
         for t in skip:
             self.assertIsNotNone(rmc.pc_skip_reason(t), t)
         for t in keep:
