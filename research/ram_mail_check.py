@@ -244,6 +244,35 @@ def send_telegram_hint(html_text: str, link: str):
     requests.post(url, data=payload, timeout=15).raise_for_status()
 
 
+# У категорію «PCs» продавці кладуть і дрібниці: Raspberry Pi, тонкі клієнти, порожні корпуси, периферію.
+# Для ПК-бота потрібен цілий комп'ютер (його розбирають на RAM/відеокарту або перепродують).
+_PC_NOT_PC = re.compile(r"raspberry|\bpi\s?[2-5]\b|arduino|banana\s?pi|orange\s?pi|odroid|jetson|"
+                        r"thin\s?client|futro|\bt6[2-4]0\b|wyse|igel", re.I)
+# Запчастина — лише якщо названа ПЕРШОЮ («Netzteil für PC»), а не в комплекті («Gaming PC mit Netzteil»)
+_PC_PART = re.compile(r"netzteil|mainboard|motherboard|lüfter|kühler|tastatur|maus\b|headset|webcam|kabel|adapter|"
+                      r"drucker|lautsprecher|dvd|laufwerk|spiel\b|software|windows\s?(?:1[01]|key|lizenz)|"
+                      r"grafikkarte|prozessor|\bcpu\b|arbeitsspeicher|festplatte", re.I)
+_PC_WORD = re.compile(r"\bpc\b|computer|rechner|gaming|tower|desktop|workstation", re.I)
+_PC_CASE = re.compile(r"gehäuse|\bcase\b", re.I)
+_PC_HAS_INSIDES = re.compile(r"\bi[3579]\b|i[3579]-?\d|ryzen|core|xeon|pentium|celeron|athlon|intel|amd|"
+                             r"\d+\s?gb|gtx|rtx|\brx\s?\d|radeon|geforce|ssd|gaming|komplett", re.I)
+_PC_MONITOR = re.compile(r"monitor|bildschirm", re.I)
+
+
+def pc_skip_reason(title: str) -> str | None:
+    """None — схоже на цілий ПК; інакше причина, чому не шлемо."""
+    if _PC_NOT_PC.search(title):
+        return "не комп'ютер (Raspberry Pi / тонкий клієнт)"
+    part, pc = _PC_PART.search(title), _PC_WORD.search(title)
+    if part and (not pc or part.start() < pc.start()):
+        return "запчастина або периферія, не цілий ПК"
+    if _PC_CASE.search(title) and not _PC_HAS_INSIDES.search(title):
+        return "лише корпус"
+    if _PC_MONITOR.search(title) and not pc and not _PC_HAS_INSIDES.search(title):
+        return "лише монітор"
+    return None
+
+
 def pc_text(lst: dict) -> str:
     from html import escape
 
@@ -270,6 +299,10 @@ def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: s
             continue
         seen_ads.add(ak)
         print(f" · ПК: {lst['title'][:60]} | {lst['price']:.0f}€")
+        skip = pc_skip_reason(lst["title"])
+        if skip:
+            print(f"   пропускаю: {skip}")
+            continue
         if stale:
             continue
         if dry_run or not PC_BOT_TOKEN:

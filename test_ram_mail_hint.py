@@ -92,6 +92,18 @@ class TestProcess(unittest.TestCase):
         sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 250), 6, False, set(), {})
         self.assertEqual((sent, len(self.cards)), (0, 0))
 
+    def test_pc_filter_real_titles(self):
+        # 26.09: у ПК-бот прийшов «Raspberry Pi 3 Model B im transparenten Gehäuse» — не ПК
+        skip = ["Raspberry Pi 3 Model B im transparenten Gehäuse", "Fujitsu Futro S720 Thin Client",
+                "PC Gehäuse mit Netzteil", "Netzteil für PC 500W", "Monitor 24 Zoll Samsung",
+                "Tastatur und Maus Set", "Mainboard mit i5 und 8GB RAM"]
+        keep = ["PC + Monitor i7,16GB,500W 85+,GPU", "Gaming PC mit Netzteil 600W", "Dell Optiplex 7050 i5 8GB",
+                "Computer Tower", "Alter PC", "HP Desktop PC Windows 10", "Gaming PC Gehäuse RGB mit Ryzen 5"]
+        for t in skip:
+            self.assertIsNotNone(rmc.pc_skip_reason(t), t)
+        for t in keep:
+            self.assertIsNone(rmc.pc_skip_reason(t), t)
+
     def test_pc_search_goes_to_separate_bot(self):
         pcs, old = [], (rmc.send_pc_card, rmc.PC_BOT_TOKEN)
         rmc.send_pc_card, rmc.PC_BOT_TOKEN = pcs.append, "x"
