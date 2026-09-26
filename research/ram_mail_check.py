@@ -178,7 +178,13 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set) -> int:
     age = _mail_age_hours(msg)
     stale = age is not None and age > max_age_hours
     subject = _decode(msg.get("Subject"))
-    listings = extract_listings(subject, _body_text(msg))
+    body = _body_text(msg)
+    listings = extract_listings(subject, body)
+    if dry_run:   # діагностика: чи не губимо оголошення, які є в листі, але не розпізнані парсером
+        ad_ids = sorted(set(re.findall(r"/s-anzeige/(?:[^/\"'\s]+/)?(\d{8,})", body)))
+        count = re.search(r"(\d+)\s+neue", re.sub(r"<[^>]+>", " ", body))
+        print(f" · {subject[27:75]} | розпізнано {len(listings)}, id оголошень у листі {len(ad_ids)}"
+              f"{', «' + count.group(0) + '»' if count else ''}")
     if not listings:
         print(f" · [{age or 0:.1f} год] без оголошень: {subject[:70]}")
     sent = 0
