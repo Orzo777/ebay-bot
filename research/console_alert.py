@@ -27,7 +27,10 @@ _SERIES_X = re.compile(r"series\s*x\b", re.I)
 _X_AND_S = re.compile(r"series\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|series\s*s\s*(?:/|\||&|und|oder|,)\s*x\b", re.I)
 _OTHER_CONSOLE = re.compile(r"series\s*s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
 _REJECT = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|"
-                     r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)", re.I)
+                     r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
+                     # eBay (27.09): ігри-колекційки та послуги в категорії Konsolen; японська Switch 2 — лише японська мова
+                     r"collector|legacy\s+edition|steelbook|\bwata\b|\bvga\b|graded|samm?lung|samlung|\blegit\b|"
+                     r"timestamp|troph|\bjapan", re.I)
 _DIGITAL = re.compile(r"digital", re.I)
 _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|festplatte|\bssd\b|lenkrad|wheel|ständer|"
                         r"halterung|kühler|lüfter|skin|folie|hülle|tasche|\bcase\b|netzteil|kabel|\bspiele?\b|\bgame\b|"
@@ -46,9 +49,12 @@ def _is_accessory(title: str, acc_re: re.Pattern, name_re: re.Pattern) -> bool:
     acc = acc_re.search(title)
     if not acc:
         return False
+    name = name_re.search(title)
+    # «Disc-Laufwerk für PS5 Digital Edition Konsole» — «Konsole» тут про те, ДО ЧОГО аксесуар (eBay, 27.09)
+    if name and acc.start() < name.start() and _FOR_WORD.search(title[acc.end():name.start()]):
+        return True
     if _STRONG_CONSOLE.search(title):
         return False
-    name = name_re.search(title)
     if not name:
         return True
     if acc.start() < name.start() or _FOR_WORD.search(title[:name.start()]):
@@ -77,7 +83,7 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
     if _X_AND_S.search(title):
         return _skip(title, total, "«Series X/S» — аксесуар для обох консолей, не сама консоль")
     if _REJECT.search(title):
-        return _skip(title, total, "дефект / пошук / обмін / лише коробка")
+        return _skip(title, total, "дефект / пошук / обмін / лише коробка / гра чи колекційне")
     if _OTHER_CONSOLE.search(_SERIES_X.sub("", title)):
         return _skip(title, total, "разом з іншою консоллю або не Series X")
     if _DIGITAL.search(title):
@@ -111,7 +117,7 @@ PS5_SUSPICIOUS_BELOW = 280
 
 _PS5 = re.compile(r"\bps\s?5\b|playstation\s*5", re.I)
 _PS5_PRO = re.compile(r"\bpro\b", re.I)
-_PS5_OTHER = re.compile(r"portal|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
+_PS5_OTHER = re.compile(r"portal|porta\s+remote|remote[\s-]?play|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
 _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive|\bssd\b|festplatte|ständer|halterung|"
                             r"lüfter|kühler|skin|folie|hülle|tasche|\bcase\b|cover|faceplate|netzteil|kabel|\bspiele?\b|"
                             r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad|wheel|pedal", re.I)
@@ -125,7 +131,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
         return evaluate_switch(title, price, shipping, vb)
     ship_in = SHIP_IN if shipping is None else shipping
     if _REJECT.search(title):
-        return _skip(title, price, "дефект / пошук / обмін / лише коробка")
+        return _skip(title, price, "дефект / пошук / обмін / лише коробка / гра чи колекційне")
     if _PS5_PRO.search(title):
         return _skip(title, price, "PS5 Pro — не купуємо: забирає бюджет, на KA вже по ринку")
     if _PS5_OTHER.search(_PS5.sub("", title)):
@@ -190,7 +196,7 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
         return None
     ship_in = real["ship_in"] if shipping is None else shipping
     if _REJECT.search(title):
-        return _skip(title, price, "дефект / пошук / обмін / лише коробка")
+        return _skip(title, price, "дефект / пошук / обмін / лише коробка / гра чи колекційне")
     if _is_accessory(title, _SWITCH_ACCESSORY, _SWITCH2 if real is SWITCH2 else _SWITCH1):
         return _skip(title, price, "схоже на гру чи аксесуар, а не на консоль")
     if price < real["min"]:

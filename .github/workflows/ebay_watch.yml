@@ -1,0 +1,75 @@
+name: ebay-watch
+
+# eBay.de як друге джерело купівлі (з 27.09.2026): найновіші «Sofort-Kaufen» оголошення RAM / Xbox Series X /
+# PS5 / Switch 2 з Німеччини кожні ~3 хв → ті самі оцінювачі й стелі, що для Kleinanzeigen → картка в Telegram.
+# Один запуск крутиться ~55 хв, у кінці сам запускає наступний (workflow_dispatch через GITHUB_TOKEN).
+# cron — лише запасний перезапуск, якщо ланцюжок обірвався. Зупинити: gh workflow disable ebay-watch
+# Квота Browse API: ~2 400 викликів/добу з 5 000.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Лише лог, без Telegram і без перезапуску"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ebay-watch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Self-check (unit tests)
+        run: python -m unittest test_ram_parse test_ram_alert test_console_alert test_ka_listing_check test_ebay_watch
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: ebay_watch_state.json
+          key: ebaywatch-${{ github.run_id }}
+          restore-keys: ebaywatch-
+
+      - name: Watch eBay
+        env:
+          EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+          EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python research/ebay_watch.py --state ebay_watch_state.json --minutes 7 --dry-run
+          else
+            python research/ebay_watch.py --state ebay_watch_state.json --minutes 55
+          fi
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ebay_watch_state.json
+          key: ebaywatch-${{ github.run_id }}
+
+      - name: Start next round
+        if: ${{ success() && inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ebay_watch.yml --ref main --repo ${{ github.repository }}

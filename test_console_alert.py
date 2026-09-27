@@ -210,5 +210,25 @@ class TestAccessoryStructure(unittest.TestCase):
             self.assertTrue(evaluate_console(t, 300).get("type"), t)
 
 
+class TestEbayTitles27(unittest.TestCase):
+    """Хибні «консолі» з категорії Konsolen на eBay.de (27.09): ігри-колекційки, послуги, дисковод, Portal, Japan."""
+
+    def test_not_consoles(self):
+        for t in ["The Blood of Dawnwalker Collector's Edition - [XBOX Series X]",
+                  "007 First Light Legacy Edition - [PlayStation 5]",
+                  "Gothic Remake Collector‘s Edition Neu Ps5 Playstation 5 Limited",
+                  "SONY PlayStation Porta Remote-Player für PS5 -Konsole ! TOP",
+                  "Playstation 5 Platinum 5x Legit timestamps",
+                  "Sony Disc-Laufwerk für PS5 Digital Edition Konsole (PlayStation 5)",
+                  "Gran Turismo Samlung Factory Seald Pixel VGA Wata PS5 4 3 2",
+                  "Nintendo Switch 2 Ersatzkonsole | JAPAN only | OVP | wie neu"]:
+            self.assertEqual(evaluate_console(t, 200)["verdict"], "SKIP", t)
+
+    def test_real_consoles_still_pass(self):
+        for t in ["Sony PlayStation 5 Slim Disc Edition Konsole 1TB", "Nintendo Switch 2 Konsole 256 GB mit OVP",
+                  "Microsoft Xbox Series X 1TB Konsole inkl. Controller"]:
+            self.assertTrue(evaluate_console(t, 250).get("type"), t)
+
+
 if __name__ == "__main__":
     unittest.main()
