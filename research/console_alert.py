@@ -156,12 +156,14 @@ _NEW_SEALED = re.compile(r"\bneu\b|originalverpackt|versiegelt|ungeöffnet|\bovp
 
 def evaluate_switch(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict | None:
     """Switch 2 або перша Switch (V1/V2, OLED, Lite). None — не Switch (далі оцінює RAM-логіка)."""
-    if _NOT_SWITCH.search(title):
+    # «HDMI-Switch 2x1», «TP-Link Switch 8 Port» — не консоль; але «Nintendo Switch … mit HDMI-Kabel» — консоль
+    if _NOT_SWITCH.search(title) and not re.search(r"nintendo", title, re.I):
         return None
     if _SWITCH2.search(title):
         real = SWITCH2
     elif _SWITCH1.search(title):
-        real = SWITCH_OLED if re.search(r"\boled\b", title, re.I) else SWITCH_LITE if re.search(r"\blite\b", title, re.I) \
+        oled = re.search(r"\boled\b", title, re.I) and not re.search(r"(?:nicht|kein)\s+oled", title, re.I)
+        real = SWITCH_OLED if oled else SWITCH_LITE if re.search(r"\blite\b", title, re.I) \
             else SWITCH_V2
     else:
         return None

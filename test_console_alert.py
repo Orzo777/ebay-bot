@@ -177,6 +177,10 @@ class TestFixes27(unittest.TestCase):
         self.assertEqual(evaluate_console("Nintendo Switch Spiele Paket", 60)["verdict"], "SKIP")
         self.assertIsNone(evaluate_console("TP-Link Switch 8 Port Gigabit", 25))
         self.assertIsNone(evaluate_console("FeinTech HDMI Switch 2x1", 25))
+        # 27.09, eBay: консоль з кабелем HDMI у назві — усе одно консоль; «Nicht OLED» — не OLED
+        self.assertEqual(evaluate_console("Nintendo Switch Oled Konsole schwarz mit Dock, 2 Joy-Con, HDMI Kabel", 170)["type"],
+                         "Nintendo Switch OLED (вживана)")
+        self.assertEqual(evaluate_console("Nintendo Switch 1 Version 2 (Nicht OLED)", 165)["type"], "Nintendo Switch V1/V2 (вживана)")
 
 
 if __name__ == "__main__":
