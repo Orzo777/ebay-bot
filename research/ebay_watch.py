@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
-from ram_alert import SEND_VERDICTS, _speed_label, desc_facts, evaluate, tier
+from ram_alert import PICKUP_COST, SEND_VERDICTS, _speed_label, broken_reason, desc_facts, evaluate, tier
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 # (запит, категорія, мін. ціна, макс. ціна). Верх — трохи вище найбільшої стелі «торгуйся» серед типів групи.
@@ -43,7 +43,15 @@ QUERIES = [
 FRESH_HOURS = 6        # старіше оголошення без здешевлення — хтось уже бачив, не сповіщаємо
 KEEP_DAYS = 7
 BAD_CONDITIONS = {"7000"}   # «als Ersatzteil / defekt»
-HAMBURG_ZIP = re.compile(r"^(?:20|21|22)\d{3}")
+HAMBURG_ZIP = re.compile(r"^(?:20|21|22)")   # API маскує індекс: «22***»
+# Самовивіз у Гамбурзі (27.09): оголошення з опцією «Abholung» у радіусі 30 км — ціна + дорога, без пересилки.
+# Окремі 2 запити (консолі разом, RAM разом) — через раз, щоб тримати квоту (~2 900 викликів/добу).
+PICKUP_QUERIES = [
+    ("(xbox series x, ps5, playstation 5, switch 2)", CONSOLE_CAT, 100, 430),
+    ("(ddr5, ddr4)", RAM_CAT, 15, 440),
+]
+PICKUP_FILTER = ("deliveryOptions:{SELLER_ARRANGED_LOCAL_PICKUP},pickupCountry:DE,pickupPostalCode:20095,"
+                 "pickupRadius:30,pickupRadiusUnit:km")
 _SB_NOTE = re.compile(r"\s*Лише «?Sicher bezahlen»?[^.!]*[.!]")   # поради для KA; на eBay оплата і так через eBay
 ITEM_URL = "https://api.ebay.com/buy/browse/v1/item/"
 CALLS = {"n": 0}
@@ -67,16 +75,18 @@ def listing_of(it: dict) -> dict:
                 offer=("BEST_OFFER" in (it.get("buyingOptions") or [])), cond=str(it.get("conditionId") or ""),
                 seller=sl.get("username") or "", fb=int(sl.get("feedbackScore") or 0),
                 pct=_num(sl.get("feedbackPercentage")), zip=str(loc.get("postalCode") or ""),
-                country=loc.get("country"))
+                country=loc.get("country"), pickup_ok=bool(it.get("pickupOptions")),
+                dist=_num((it.get("distanceFromPickupLocation") or {}).get("value")))
 
 
 def evaluate_ebay(lst: dict) -> dict:
     """Оцінка тими самими функціями, що й KA, але з eBay-вартістю купівлі: ціна + пересилка, без збору KA."""
     ship, pickup = lst["ship"], False
-    if ship is None:
-        if not HAMBURG_ZIP.match(lst["zip"]):
-            return dict(verdict="SKIP", reason="лише самовивіз, не в Гамбурзі", title=lst["title"], price=lst["price"])
-        ship, pickup = 0.0, True
+    can_pickup = lst.get("pickup_ok") or (ship is None and HAMBURG_ZIP.match(lst["zip"]))
+    if ship is None and not can_pickup:
+        return dict(verdict="SKIP", reason="лише самовивіз, не в Гамбурзі", title=lst["title"], price=lst["price"])
+    if can_pickup and (ship is None or PICKUP_COST < ship):   # забрати самому дешевше за пересилку
+        ship, pickup = PICKUP_COST, True
     if lst["cond"] in BAD_CONDITIONS:
         return dict(verdict="SKIP", reason="стан «на запчастини / дефект»", title=lst["title"], price=lst["price"])
     vb = lst["offer"]
@@ -126,14 +136,18 @@ def is_fresh(lst: dict, now: datetime, hours: float = FRESH_HOURS) -> bool:
 
 def decide(lst: dict, state: dict, now: datetime) -> str | None:
     """Чи варто взагалі оцінювати: 'new' — нове свіже, 'drop' — здешевлення вже баченого, None — ні.
-    Запам'ятовує ціну в state['items'] (id → [ціна, дата])."""
+    'pickup' — уже бачене, але щойно з'ясувалось, що його можна забрати в Гамбурзі (запит самовивозу — через раз).
+    Запам'ятовує ціну в state['items'] (id → [ціна, дата, самовивіз])."""
     items = state.setdefault("items", {})
     prev = items.get(lst["id"])
     total = lst["price"] + (lst["ship"] or 0)
-    items[lst["id"]] = [total, now.isoformat()]
+    pickup = bool(lst.get("pickup_ok")) or bool(prev and len(prev) > 2 and prev[2])
+    items[lst["id"]] = [total, now.isoformat(), pickup]
     if prev is None:
         return "new" if is_fresh(lst, now) else None
-    return "drop" if total < prev[0] - 0.5 else None
+    if total < prev[0] - 0.5:
+        return "drop"
+    return "pickup" if lst.get("pickup_ok") and not (len(prev) > 2 and prev[2]) and is_fresh(lst, now) else None
 
 
 def prune(state: dict, now: datetime, days: int = KEEP_DAYS):
@@ -155,7 +169,8 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
            "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>",
            "NEGOTIATE": "💬 <b>ЗАПРОПОНУЙ ЦІНУ — трохи дорожче стелі</b>"}[r["verdict"]]
     offer = offer_ebay(r)
-    ship_txt = "самовивіз у Гамбурзі" if r.get("pickup") else f"пересилка {r['ship_in']:.2f} €".replace(".", ",")
+    dist = f" ({lst['dist']:.0f} км)" if lst.get("dist") else ""
+    ship_txt = (f"🚶 самовивіз у Гамбурзі{dist}, дорога ≈ {PICKUP_COST:.0f} €" if r.get("pickup") else f"пересилка {r['ship_in']:.2f} €".replace(".", ","))
     seller = f"{esc(lst['seller'])} ({lst['fb']}" + (f", {lst['pct']:.0f}%" if lst["pct"] is not None else "") + ")"
     lines = [
         "🛒 <b>eBay</b> · " + tag + (" · 📉 ЗДЕШЕВШАЛО" if why == "drop" else ""),
@@ -194,10 +209,11 @@ def _client():
     return EbayClient()
 
 
-def fetch_new(client, q: str, cat: str, lo: int, hi: int) -> list[dict]:
+def fetch_new(client, q: str, cat: str, lo: int, hi: int, pickup: bool = False) -> list[dict]:
     from main import _request_with_backoff
+    flt = f"buyingOptions:{{FIXED_PRICE}},itemLocationCountry:DE,price:[{lo}..{hi}],priceCurrency:EUR"
     params = {"q": q, "category_ids": cat, "sort": "newlyListed", "limit": 100,
-              "filter": f"buyingOptions:{{FIXED_PRICE}},itemLocationCountry:DE,price:[{lo}..{hi}],priceCurrency:EUR"}
+              "filter": flt + ("," + PICKUP_FILTER if pickup else "")}
     CALLS["n"] += 1
     d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=client._headers(), params=params)
     return d.get("itemSummaries") or []
@@ -228,35 +244,48 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
     now = now or datetime.now(timezone.utc)
     first_run = not state.get("items")
     sent = 0
-    for q, cat, lo, hi in QUERIES:
+    state["round"] = state.get("round", 0) + 1
+    jobs = [(q, False) for q in QUERIES] + ([(q, True) for q in PICKUP_QUERIES] if state["round"] % 2 else [])
+    merged = {}   # одне оголошення може прийти з обох запитів — самовивіз «прилипає»
+    for (q, cat, lo, hi), pickup in jobs:
         try:
-            raw = fetch_new(client, q, cat, lo, hi)
+            raw = fetch_new(client, q, cat, lo, hi, pickup)
         except Exception as e:
             print(f"   [{q}] помилка API: {e}")
             continue
         for it in raw:
             lst = listing_of(it)
-            if lst["price"] is None or lst["country"] not in (None, "DE"):
-                continue
-            why = decide(lst, state, now)
-            if first_run or why is None:   # перший запуск лише запам'ятовує, що вже висить
-                continue
-            r = evaluate_ebay(lst)
-            print(f" - [{why}] {lst['title'][:70]} | {lst['price']:.0f}+{lst['ship'] or 0:.0f}€ -> {r['verdict']}"
-                  + (f" ({r['reason']})" if r.get("reason") else ""))
-            if r["verdict"] not in SEND_VERDICTS:
-                continue
-            desc = fetch_desc(client, lst["id"])
-            r["desc"] = desc
-            risk = risk_of(lst, desc, r.get("quick_sale", 0))
-            if risk["hard"]:
-                print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
-                continue
-            if dry_run:
-                print("   [DRY RUN] надіслав би картку")
+            lst["pickup_ok"] = lst["pickup_ok"] or pickup
+            if lst["id"] in merged:
+                merged[lst["id"]]["pickup_ok"] |= lst["pickup_ok"]
             else:
-                send_card(format_card(r, lst, risk, why, now), lst["url"])
-            sent += 1
+                merged[lst["id"]] = lst
+    for lst in merged.values():
+        if lst["price"] is None or lst["country"] not in (None, "DE"):
+            continue
+        why = decide(lst, state, now)
+        if first_run or why is None:   # перший запуск лише запам'ятовує, що вже висить
+            continue
+        r = evaluate_ebay(lst)
+        print(f" - [{why}] {lst['title'][:70]} | {lst['price']:.0f}+{lst['ship'] or 0:.0f}€ -> {r['verdict']}"
+              + (f" ({r['reason']})" if r.get("reason") else ""))
+        if r["verdict"] not in SEND_VERDICTS:
+            continue
+        desc = fetch_desc(client, lst["id"])
+        r["desc"] = desc
+        broken = broken_reason(desc)
+        if broken:   # несправне не купуємо (27.09)
+            print(f"   ДЕФЕКТ в описі — картку не надсилаю: «{broken}»")
+            continue
+        risk = risk_of(lst, desc, r.get("quick_sale", 0))
+        if risk["hard"]:
+            print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
+            continue
+        if dry_run:
+            print("   [DRY RUN] надіслав би картку")
+        else:
+            send_card(format_card(r, lst, risk, why, now), lst["url"])
+        sent += 1
     if first_run:
         print(f"   перший запуск: запам'ятав {len(state.get('items', {}))} оголошень, сповіщення — з наступного кругу")
     prune(state, now)

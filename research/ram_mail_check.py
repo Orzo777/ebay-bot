@@ -33,7 +33,7 @@ import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
 from pc_alert import evaluate_pc, pc_card_lines
-from ram_alert import SEND_VERDICTS, apply_pickup, evaluate, format_html, offer_template, seller_template
+from ram_alert import SEND_VERDICTS, apply_pickup, broken_reason, evaluate, format_html, offer_template, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
 
@@ -453,6 +453,10 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             continue
         if risk and risk.get("block"):   # PayPal Freunde, «без Sicher bezahlen», WhatsApp, свіжий акаунт — не показуємо
             print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
+            continue
+        broken = broken_reason((risk or {}).get("desc"))
+        if broken:   # несправне не купуємо (27.09)
+            print(f"   ДЕФЕКТ в описі — картку не надсилаю: «{broken}»")
             continue
         if pickup and _NO_PICKUP.search((risk or {}).get("desc") or ""):   # «nur Versand» — рахуємо як з пересилкою
             res = evaluate_console(lst["title"], lst["price"], vb=vb) or evaluate(lst["title"], lst["price"], vb=vb)

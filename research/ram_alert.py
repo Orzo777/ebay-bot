@@ -204,6 +204,22 @@ _DESC_NO_RECEIPT = re.compile(r"\b(?:keine?n?|ohne)\s+(?:\w+\s+)?(?:rechnung|kau
 _DESC_RECEIPT = re.compile(r"rechnung|kaufbeleg|quittung|kassenbon|kaufnachweis", re.I)
 
 
+# Несправне не купуємо зовсім (рішення 27.09: ремонт консолей не робимо). «keine Defekte», «nicht defekt»,
+# «Controller defekt» у наборі з робочою консоллю — НЕ дефект самого товару.
+_NEG_BEFORE = re.compile(r"(?:kein\w*|ohne|nicht|frei\s+von)\s+(?:\w+\s+){0,2}$", re.I)
+_PART_BEFORE = re.compile(r"(?:controller|joy-?con\w*|fernbedienung|kabel|ovp|verpackung|karton|hülle|dock\w*)\W+(?:\w+\W+){0,2}$", re.I)
+
+
+def broken_reason(desc: str | None) -> str | None:
+    """Фрагмент опису, де продавець пише про несправність самого товару, або None."""
+    for m in _DESC_BROKEN.finditer(desc or ""):
+        before = desc[max(0, m.start() - 40):m.start()]
+        if m.group(0).lower().startswith("defekt") and (_NEG_BEFORE.search(before) or _PART_BEFORE.search(before)):
+            continue
+        return desc[max(0, m.start() - 30):m.end() + 20].strip()
+    return None
+
+
 def desc_facts(desc: str | None, r: dict | None = None) -> dict:
     """Опис → {works: True/False/None, receipt: True/False/None, kit_ok: bool}. None — опис не згадує."""
     d = desc or ""

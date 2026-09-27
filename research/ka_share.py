@@ -16,7 +16,8 @@ sys.path.insert(0, "research")
 from console_alert import SHIP_IN as SHIP_IN_CONSOLE
 from console_alert import evaluate_console
 from ka_listing_check import UA, parse_listing, risk_lines
-from ram_alert import SEND_VERDICTS, SHIP_IN_RAM, evaluate, format_html, item_for_cost, offer_template, seller_template
+from ram_mail_check import _NO_PICKUP
+from ram_alert import SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, evaluate, format_html, item_for_cost, offer_template, seller_template
 
 _ID_RE = re.compile(r"kleinanzeigen\.de/s-anzeige/(?:[^/\s]+/)?(\d{8,})")
 _TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)
@@ -24,6 +25,9 @@ _PRICE_RE = re.compile(r'id="viewad-price"[^>]*>\s*([^<]*)<', re.S)
 _SHIP_RE = re.compile(r"Versand ab\s*([\d.,]+)\s*€")
 _PICKUP_RE = re.compile(r"Nur Abholung")
 _COMMERCIAL_RE = re.compile(r"Gewerblicher Nutzer")
+_LOC_RE = re.compile(r'id="viewad-locality"[^>]*>\s*([^<]*)<')
+# Гамбург і передмістя (самовивіз готівкою, 27.09): поштові індекси 20xxx–22xxx або «Hamburg» у місці
+_HH_RE = re.compile(r"^\s*2[0-2]\d{3}\b|hamburg", re.I)
 
 
 def listing_url(text: str) -> str | None:
@@ -54,7 +58,8 @@ def parse_page(page: str) -> dict | None:
     return dict(title=title, price=_num(num.group(1)) if num else None, vb="VB" in price_txt,
                 ship_from=_num(sm.group(1)) if sm else None, pickup_only=bool(_PICKUP_RE.search(page)) and not sm,
                 commercial=bool(_COMMERCIAL_RE.search(page)),
-                reserved=bool(re.search(r"Reserviert\s*•", t.group(1))))
+                reserved=bool(re.search(r"Reserviert\s*•", t.group(1))),
+                hamburg=bool(_HH_RE.search(html.unescape(lm.group(1)))) if (lm := _LOC_RE.search(page)) else False)
 
 
 def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
@@ -75,7 +80,9 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
     res = (evaluate_console(info["title"], info["price"], shipping=ship, vb=info["vb"])
            or evaluate(info["title"], info["price"], shipping=ship, vb=info["vb"]))
     notes = []
-    if info["pickup_only"]:
+    if info.get("hamburg"):   # поруч — забираємо самі, готівкою після огляду
+        apply_pickup(res)
+    if info["pickup_only"] and not info.get("hamburg"):
         notes.append("Лише самовивіз — пересилку не враховано, зважай на дорогу.")
     if info["commercial"]:
         notes.append("Комерційний продавець — у підписках ми таких не беремо; ціни зазвичай ринкові.")
@@ -86,6 +93,12 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
         if risk.get("block"):   # вигідна ціна не рятує: без захисту покупця це лотерея
             lines = [f"⛔ <b>Не бери — схоже на шахрая</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €"]
             return "\n".join(lines + ["   • " + escape(h) for h in risk["hard"]]), res
+        broken = broken_reason(risk.get("desc"))
+        if broken:   # несправне не купуємо (27.09)
+            return (f"⛔ <b>Не бери — в описі дефект</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €\n"
+                    f"   • «{escape(broken)}»"), res
+        if info.get("hamburg") and _NO_PICKUP.search(risk.get("desc") or ""):
+            notes.append("Продавець пише «nur Versand» — самовивозу не буде, рахуй із пересилкою.")
         res["risk_lines"] = risk_lines(risk)
         res["desc"] = risk.get("desc")
         res["notes"] = res.get("notes", []) + notes

@@ -101,3 +101,37 @@ class TestRisk(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPickupAndDefects(unittest.TestCase):
+    """27.09: самовивіз у Гамбурзі (замасковані індекси «22***») і відсів несправного за описом."""
+
+    def test_masked_zip_pickup_only(self):
+        r = evaluate_ebay(item("Xbox Series X Konsole", 250, ship=None, zip_="22***"))
+        self.assertTrue(r["pickup"])
+        self.assertAlmostEqual(r["buy_cost"], 256.0)
+
+    def test_pickup_cheaper_than_shipping(self):
+        lst = item("Xbox Series X Konsole", 300, ship="10.49", zip_="21***")
+        lst["pickup_ok"] = True
+        r = evaluate_ebay(lst)
+        self.assertTrue(r["pickup"])
+        self.assertAlmostEqual(r["buy_cost"], 306.0)
+        self.assertIn("🚶", format_card(r, lst, risk_of(lst, "", 545), "new", NOW))
+
+    def test_seen_then_pickup_revealed(self):
+        st = {}
+        lst = item("Xbox Series X", 300)
+        self.assertEqual(decide(lst, st, NOW), "new")
+        lst2 = dict(lst, pickup_ok=True)
+        self.assertEqual(decide(lst2, st, NOW), "pickup")
+        self.assertIsNone(decide(lst2, st, NOW))
+
+    def test_broken_reason(self):
+        from ram_alert import broken_reason
+        self.assertTrue(broken_reason("Die Konsole ist defekt, HDMI Port gebrochen"))
+        self.assertTrue(broken_reason("Laufwerk funktioniert nicht mehr"))
+        self.assertIsNone(broken_reason("Keine Defekte, läuft einwandfrei"))
+        self.assertIsNone(broken_reason("Konsole top, nur der zweite Controller ist defekt"))
+        self.assertIsNone(broken_reason("nicht defekt, nur selten benutzt"))
+        self.assertIsNone(broken_reason(None))
