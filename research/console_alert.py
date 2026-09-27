@@ -33,6 +33,27 @@ _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|fest
                         r"halterung|kühler|lüfter|skin|folie|hülle|tasche|\bcase\b|netzteil|kabel|\bspiele?\b|\bgame\b|"
                         r"fernbedienung|akku|ladestation|dock", re.I)
 _CONSOLE_WORD = re.compile(r"konsole|console|\d\s?tb\b|\bmit\b|\binkl|\+|\bbundle\b", re.I)
+# «1TB» НЕ ознака консолі: «Xbox Series X Speichererweiterung 1TB» — аксесуар
+_STRONG_CONSOLE = re.compile(r"konsole|console|handheld", re.I)
+_BUNDLE_LINK = re.compile(r"\bmit\b|\binkl|\+|\bund\b|&|,|\bbundle\b|\bsamt\b|\bplus\b|\bset\s+mit\b", re.I)
+_FOR_WORD = re.compile(r"\bfür\b|\bfor\b|\bpassend\b|kompatibel|\bzu[rm]?\b", re.I)
+
+
+def _is_accessory(title: str, acc_re: re.Pattern, name_re: re.Pattern) -> bool:
+    """Структурне правило (27.09: «Joy-Con Pair 2er-Set», «Lenkrad mit Pedalen … Switch», «PS5 Faceplate Cover Slim»
+    проходили як консолі). Аксесуар — якщо його названо ДО консолі або одразу ПІСЛЯ неї без «mit/inkl/+/und»;
+    консоль — якщо є «Konsole/Console/1TB» або аксесуар іде через «mit/inkl/+» («Xbox Series X mit Controller»)."""
+    acc = acc_re.search(title)
+    if not acc:
+        return False
+    if _STRONG_CONSOLE.search(title):
+        return False
+    name = name_re.search(title)
+    if not name:
+        return True
+    if acc.start() < name.start() or _FOR_WORD.search(title[:name.start()]):
+        return True   # «Lenkrad … Nintendo Switch», «Controller für PS5»
+    return not _BUNDLE_LINK.search(title[name.end():acc.start()])
 
 
 PACK = 3.0            # коробка + наповнювач для консолі
@@ -61,7 +82,7 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
         return _skip(title, total, "разом з іншою консоллю або не Series X")
     if _DIGITAL.search(title):
         return _skip(title, total, "Series X Digital — інша ціна продажу, не виміряна")
-    if _ACCESSORY.search(title) and not _CONSOLE_WORD.search(title):
+    if _is_accessory(title, _ACCESSORY, _SERIES_X):
         return _skip(title, total, "схоже на аксесуар, а не на консоль")
     if total < MIN_PRICE:
         return _skip(title, total, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
@@ -93,7 +114,7 @@ _PS5_PRO = re.compile(r"\bpro\b", re.I)
 _PS5_OTHER = re.compile(r"portal|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
 _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive|\bssd\b|festplatte|ständer|halterung|"
                             r"lüfter|kühler|skin|folie|hülle|tasche|\bcase\b|cover|faceplate|netzteil|kabel|\bspiele?\b|"
-                            r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad", re.I)
+                            r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad|wheel|pedal", re.I)
 # «Edition» НЕ ознака консолі: «DualSense LeBron James Limited Edition» — контролер (27.09)
 _PS5_CONSOLE = re.compile(r"konsole|console|\d\s?tb\b|825\s?gb|\bmit\b|\binkl|\+|\bbundle\b|\bslim\b", re.I)
 
@@ -111,7 +132,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
         return _skip(title, price, "PS Portal / VR / разом з іншою консоллю")
     digital = bool(_DIGITAL.search(title))
     # «Digital + Laufwerk» / «Laufwerk für PS5» — дисковод окремо: без слова «Konsole» це аксесуар
-    if _PS5_ACCESSORY.search(title) and not _PS5_CONSOLE.search(title):
+    if _is_accessory(title, _PS5_ACCESSORY, _PS5):
         return _skip(title, price, "схоже на аксесуар, а не на консоль")
     if price < MIN_PRICE:
         return _skip(title, price, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
@@ -146,9 +167,9 @@ _SWITCH2 = re.compile(r"switch\s?2\b", re.I)
 _SWITCH1 = re.compile(r"nintendo\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|konsole|console)", re.I)
 _NOT_SWITCH = re.compile(r"hdmi|kvm|netzwerk|\blan\b|\bports?\b|usb|splitter|umschalt|\d\s?x\s?\d|schalter|gigabit|\bpoe\b|"
                          r"tp-?link|netgear|cisco|ubiquiti|mikrotik|zyxel|d-?link", re.I)
-_SWITCH_ACCESSORY = re.compile(r"controller|joy-?con|\bspiele?\b|\bgame\b|edition\b(?!.*konsole)|dock\b|tasche|hülle|"
+_SWITCH_ACCESSORY = re.compile(r"controller|joy[\s-]?cons?\b|\bspiele?\b|\bgame\b|dock|tasche|hülle|"
                                r"\bcase\b|schutz|folie|grip|ladestation|kamera|micro\s?sd|\bssd\b|amiibo|halterung|kabel|"
-                               r"netzteil|ständer|skin|lenkrad", re.I)
+                               r"netzteil|ständer|skin|lenkrad|wheel|pedal|faceplate|cover", re.I)
 _SWITCH_CONSOLE = re.compile(r"konsole|console|\bmit\b|\binkl|\+|\bbundle\b|fanpaket|konsolenpaket|mario kart world\b(?!\s*(?:code|spiel))|"
                              r"\bset\b", re.I)
 _NEW_SEALED = re.compile(r"\bneu\b|originalverpackt|versiegelt|ungeöffnet|\bovp\b", re.I)
@@ -170,7 +191,7 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
     ship_in = real["ship_in"] if shipping is None else shipping
     if _REJECT.search(title):
         return _skip(title, price, "дефект / пошук / обмін / лише коробка")
-    if _SWITCH_ACCESSORY.search(title) and not _SWITCH_CONSOLE.search(title):
+    if _is_accessory(title, _SWITCH_ACCESSORY, _SWITCH2 if real is SWITCH2 else _SWITCH1):
         return _skip(title, price, "схоже на гру чи аксесуар, а не на консоль")
     if price < real["min"]:
         return _skip(title, price, f"дешевше €{real['min']} — гра, аксесуар, шахрайство або помилка в ціні", False)

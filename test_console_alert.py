@@ -183,5 +183,32 @@ class TestFixes27(unittest.TestCase):
         self.assertEqual(evaluate_console("Nintendo Switch 1 Version 2 (Nicht OLED)", 165)["type"], "Nintendo Switch V1/V2 (вживана)")
 
 
+class TestAccessoryStructure(unittest.TestCase):
+    # 27.09: сканування eBay показало аксесуари, що проходили як консолі
+    ACC = ["READY 2 GAMING HURRICANE WHEEL PRO Lenkrad mit Pedalen Nintendo Switch",
+           "Nintendo Switch Joy-Con Pair 2er-Set Pastel Pink Pastell Rosa NEU in OVP",
+           "Nintendo NES Controller 2er-Set für Nintendo Switch NEU/OVP",
+           "Nintendo Switch Mini-Dockingstation Switch 4K HDMI USB Ethernet JCD620",
+           "Nintendo Switch Joy Cons Pastell-Rosa",
+           "Playstation 5 PS5 Faceplate Cover Slim Marvel Wolverine Gelb Limited Edition",
+           "PS5 DualSense Controller LeBron James Limited Edition Neu OVP",
+           "Xbox Series X Speichererweiterung 1TB Seagate",
+           "Disc Laufwerk für PS5 Slim Digital"]
+    CON = ["Xbox Series X 1 TB, 2 Controller, 15 Spiele", "Xbox Series X mit Originell Kontroller",
+           "Microsoft Xbox Series X 1TB Black 4K Wi-Fi inkl. Controller", "PS5 Slim Disc Edition + Controller",
+           "PS5 Slim mit Laufwerk", "Nintendo Switch 2 + Mario Kart World", "Nintendo Switch Konsole mit Joy-Con",
+           "Nintendo Switch OLED Konsole mit Dock, 2 Joy-Con, HDMI Kabel", "Playstation 5 Konsole mit 2 Controllern",
+           "Nintendo Switch mit 2 Pro Controllern und original LAN Dockingstation"]
+
+    def test_accessories(self):
+        for t in self.ACC:
+            r = evaluate_console(t, 200)
+            self.assertTrue(r is None or r["verdict"] == "SKIP" and not r.get("type"), t)
+
+    def test_consoles(self):
+        for t in self.CON:
+            self.assertTrue(evaluate_console(t, 300).get("type"), t)
+
+
 if __name__ == "__main__":
     unittest.main()
