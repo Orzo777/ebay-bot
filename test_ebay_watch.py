@@ -158,3 +158,20 @@ class TestSellerMessage(unittest.TestCase):
         m = ebay_message(evaluate_ebay(lst))
         self.assertIn("Hamburg ab", m)
         self.assertLessEqual(len(m), 256)
+
+
+class TestDefectSymptoms(unittest.TestCase):
+    """27.09: PS5 «geht nach 5-30 Minuten von alleine aus … an Bastler» — несправна, навіть без слова «defekt»."""
+
+    def test_symptoms(self):
+        from ram_alert import broken_reason
+        for d in ["Sie geht an, aber nach 5-30 Minuten geht sie von alleine immer aus, verkaufe sie an Bastler",
+                  "Nach einer Weile schaltet sich die Konsole einfach ab", "Laufwerk liest keine Discs mehr",
+                  "PS5 zeigt nur Blue Light", "Verkauf für Bastler"]:
+            self.assertTrue(broken_reason(d), d)
+
+    def test_not_symptoms(self):
+        from ram_alert import broken_reason
+        for d in ["Läuft einwandfrei, wird nicht heiß, kein Stick Drift", "Konsole wurde gereinigt, leise und kühl",
+                  "Abholung in Hamburg oder Versand"]:
+            self.assertIsNone(broken_reason(d), d)

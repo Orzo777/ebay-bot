@@ -195,7 +195,12 @@ def offer_price(r: dict) -> int | None:
 
 # Що продавець уже написав в описі (сторінку оголошення бот і так відкриває для перевірки на шахраїв) —
 # про це не питаємо, а на картці показуємо. Вирази вузькі: «ohne Gewähr» (юридична формула) — не «не тестовано».
-_DESC_BROKEN = re.compile(r"funktioniert nicht|nicht funktionsfähig|\bdefekt|kaputt|startet nicht|kein bild", re.I)
+_DESC_BROKEN = re.compile(r"funktioniert nicht|nicht funktionsfähig|\bdefekt|kaputt|startet nicht|kein bild|"
+                          # симптоми без слова «defekt» (27.09: «geht nach 5–30 Minuten von alleine aus … an Bastler»)
+                          r"geht\s+(?:\w+\s+){0,3}(?:von\s+)?(?:alleine|allein|selbst|einfach)\s+(?:\w+\s+)?aus|"
+                          r"schaltet\s+sich\s+(?:\w+\s+){0,4}(?:ab|aus)\b|(?:für|an|als)\s+bastler|bastlerware|"
+                          r"überhitz|blue\s?light|blaue[sn]?\s+licht|stürzt\s+(?:\w+\s+){0,2}ab|hängt\s+sich\s+(?:\w+\s+)?auf|"
+                          r"liest\s+keine|zieht\s+(?:die\s+)?dis[ck]s?\s+nicht|kein\s+(?:ton|signal)", re.I)
 _DESC_UNTESTED = re.compile(r"ungetestet|nicht getestet|ungeprüft|nicht geprüft|(?:kann|konnte)\s+(?:\w+\s+)?nicht\s+test", re.I)
 _DESC_WORKS = re.compile(r"getestet|funktioniert|funktionsfähig|einwandfrei|fehlerfrei|problemlos|memtest|"
                          r"läuft\s+(?:stabil|super|perfekt|top|ohne)|keine\s+(?:probleme|fehler|mängel)", re.I)
