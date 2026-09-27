@@ -76,6 +76,9 @@ _SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
 IGNORE_SEARCH_RE = re.compile(r"„PCs in ")
 PC_BOT_TOKEN = os.getenv("PC_BOT_TOKEN", "")
 HINT_GAP_MIN = 45   # тиха підказка «глянь пошук» — не частіше разу на 45 хв на одну підписку
+# 27.09: вимкнено за рішенням користувача — у сповіщеннях KA майже завжди одне оголошення (пачок немає),
+# а підказки показували шум (контролери в підписці ps5). Код лишається; увімкнути — True.
+SEND_HINTS = False
 
 
 def _parse_price(s: str) -> float | None:
@@ -429,7 +432,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
     # кандидат ймовірно схований у тій самій пачці. Правильний товар, просто дорожчий, — не привід.
-    if hint_times is not None and not sent and not stale and sid and listings and wrong_type:
+    if SEND_HINTS and hint_times is not None and not sent and not stale and sid and listings and wrong_type:
         now = datetime.now(timezone.utc)
         if should_hint(sid, now, hint_times):
             hint_times[sid] = now.isoformat()

@@ -65,13 +65,14 @@ class TestThrottle(unittest.TestCase):
 class TestProcess(unittest.TestCase):
     def setUp(self):
         self.hints, self.cards = [], []
-        self._h, self._c, self._k = rmc.send_telegram_hint, rmc.send_telegram_card, rmc.check_listing
+        self._h, self._c, self._k, self._sh = rmc.send_telegram_hint, rmc.send_telegram_card, rmc.check_listing, rmc.SEND_HINTS
+        rmc.SEND_HINTS = True   # логіку підказок тестуємо, хоча в роботі вона вимкнена
         rmc.send_telegram_hint = lambda text, link: self.hints.append((text, link))
         rmc.send_telegram_card = lambda *a: self.cards.append(a)
         rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "приватний, на KA з 2019"}
 
     def tearDown(self):
-        rmc.send_telegram_hint, rmc.send_telegram_card, rmc.check_listing = self._h, self._c, self._k
+        rmc.send_telegram_hint, rmc.send_telegram_card, rmc.check_listing, rmc.SEND_HINTS = self._h, self._c, self._k, self._sh
 
     def test_non_deal_listing_gives_silent_hint(self):
         # реальний випадок 26.09 10:07: у листі Series S €219, а Series X €290 з тієї ж пачки — прихований
@@ -104,6 +105,11 @@ class TestProcess(unittest.TestCase):
             self.assertEqual(pcs, [])
         finally:
             rmc.send_pc_card, rmc.PC_BOT_TOKEN = old
+
+    def test_hints_off_in_production(self):
+        rmc.SEND_HINTS = False
+        rmc._process(ka_mail("X Box Series S", 219), 6, False, set(), {})
+        self.assertEqual(self.hints, [])
 
     def test_public_search_urls(self):
         self.assertIn("preis:20:256/ddr5-32gb/k0c225",
