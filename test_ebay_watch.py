@@ -135,3 +135,26 @@ class TestPickupAndDefects(unittest.TestCase):
         self.assertIsNone(broken_reason("Konsole top, nur der zweite Controller ist defekt"))
         self.assertIsNone(broken_reason("nicht defekt, nur selten benutzt"))
         self.assertIsNone(broken_reason(None))
+
+
+class TestSellerMessage(unittest.TestCase):
+    def test_card_has_seller_text_and_buttons(self):
+        from ebay_watch import ebay_message, keyboard
+        lst = item("Microsoft Xbox Series X 1TB Konsole", 355, ship="10.99", offer=True)
+        r = evaluate_ebay(lst)
+        r["desc"] = "Läuft einwandfrei, Rechnung vorhanden."
+        txt = format_card(r, lst, risk_of(lst, r["desc"], 545), "new", NOW)
+        self.assertIn("Текст продавцю", txt)
+        msg = ebay_message(r)
+        self.assertLessEqual(len(msg), 256)
+        self.assertIn("über eBay", msg)
+        self.assertNotIn("Rechnung?", msg)   # опис уже відповів
+        rows = keyboard(lst["url"], r)["inline_keyboard"]
+        self.assertEqual(len(rows), 3)       # посилання + текст + текст із пропозицією
+
+    def test_pickup_message(self):
+        from ebay_watch import ebay_message
+        lst = item("Xbox Series X Konsole", 300, ship=None, zip_="22***")
+        m = ebay_message(evaluate_ebay(lst))
+        self.assertIn("Hamburg ab", m)
+        self.assertLessEqual(len(m), 256)

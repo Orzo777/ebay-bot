@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
-from ram_alert import PICKUP_COST, SEND_VERDICTS, _speed_label, broken_reason, desc_facts, evaluate, tier
+from ram_alert import PICKUP_COST, SEND_VERDICTS, _questions, _speed_label, broken_reason, desc_facts, evaluate, tier
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 # (запит, категорія, мін. ціна, макс. ціна). Верх — трохи вище найбільшої стелі «торгуйся» серед типів групи.
@@ -108,6 +108,20 @@ def offer_ebay(r: dict) -> int | None:
     target = min(r["cap"], max(r["good"], r["buy_cost"] * 0.9))
     offer = int((target - r["ship_in"]) // 5 * 5)
     return offer if 0 < offer <= r["price"] * 0.95 else None
+
+
+def ebay_message(r: dict, offer: int | None = None) -> str:
+    """Текст продавцю через «Frage an den Verkäufer» / до Preisvorschlag (≤256 символів — ліміт кнопки копіювання).
+    Як і на KA: спершу рішення, потім умови, в кінці лише питання, на які опис не відповів. Оплата — тільки через eBay."""
+    what = r.get("item_acc", "den RAM")
+    head = (f"Hallo! Ich nehme {what} für {offer} € – Preisvorschlag schicke ich gleich." if offer is not None
+            else f"Hallo! Ich möchte {what} kaufen.")
+    terms = ("Ich hole heute oder morgen in Hamburg ab, bezahlt wird über eBay. Wann passt es Ihnen?" if r.get("pickup")
+             else "Ich bezahle sofort über eBay, bitte gut verpackt und versichert versenden.")
+    parts = [head, terms, *_questions(r), "Danke!"]
+    while len(" ".join(parts)) > 256 and len(parts) > 3:
+        parts.pop(-2)
+    return " ".join(parts)
 
 
 def risk_of(lst: dict, desc: str | None, quick_sale: float) -> dict:
@@ -199,7 +213,12 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
     for n in r.get("notes", []):
         lines.append(f"⚠️ {esc(n)}")
     lines += ["", f"<i>{esc(r['title'][:90])}</i>",
-              "Оплата лише через eBay (гарантія повернення грошей). Не пиши продавцю поза eBay."]
+              "Оплата лише через eBay (гарантія повернення грошей). Не пиши продавцю поза eBay.",
+              "", "✉️ Текст продавцю («Frage an den Verkäufer», натисни — скопіюється):",
+              f"<code>{esc(ebay_message(r))}</code>"]
+    if offer is not None:
+        lines += ["", f"✉️ З пропозицією {offer} € (потім «Preisvorschlag senden»):",
+                  f"<code>{esc(ebay_message(r, offer))}</code>"]
     return "\n".join(lines)
 
 
@@ -230,14 +249,26 @@ def fetch_desc(client, item_id: str) -> str | None:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def send_card(text: str, url: str):
+def keyboard(url: str, r: dict) -> dict:
+    rows = [[{"text": "🔗 Відкрити на eBay", "url": url}],
+            [{"text": "📋 Скопіювати текст продавцю", "copy_text": {"text": ebay_message(r)[:256]}}]]
+    offer = offer_ebay(r)
+    if offer is not None:
+        rows.append([{"text": f"📋 Текст із пропозицією {offer} €", "copy_text": {"text": ebay_message(r, offer)[:256]}}])
+    return {"inline_keyboard": rows}
+
+
+def send_card(text: str, url: str, r: dict):
     import requests
-    kb = {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": url}]]}
-    r = requests.post(f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
-                      data={"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML",
-                            "disable_web_page_preview": "true", "reply_markup": json.dumps(kb, ensure_ascii=False)},
-                      timeout=15)
-    r.raise_for_status()
+    kb = keyboard(url, r)
+    data = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": "true",
+            "reply_markup": json.dumps(kb, ensure_ascii=False)}
+    api = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    resp = requests.post(api, data=data, timeout=15)
+    if resp.status_code == 400:   # старий клієнт без copy_text — картка важливіша за кнопку
+        data["reply_markup"] = json.dumps({"inline_keyboard": kb["inline_keyboard"][:1]}, ensure_ascii=False)
+        resp = requests.post(api, data=data, timeout=15)
+    resp.raise_for_status()
 
 
 def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -> int:
@@ -284,7 +315,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         if dry_run:
             print("   [DRY RUN] надіслав би картку")
         else:
-            send_card(format_card(r, lst, risk, why, now), lst["url"])
+            send_card(format_card(r, lst, risk, why, now), lst["url"], r)
         sent += 1
     if first_run:
         print(f"   перший запуск: запам'ятав {len(state.get('items', {}))} оголошень, сповіщення — з наступного кругу")
