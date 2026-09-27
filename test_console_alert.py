@@ -232,3 +232,18 @@ class TestEbayTitles27(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBundleTitles(unittest.TestCase):
+    """27.09: «PS5 … Disk slim Version 2 Controller Bundle» (€280) бот назвав аксесуаром."""
+
+    def test_console_bundles(self):
+        for t in ["PS5 Sony Playstation 5 Disk slim Version 2 Controller Bundle",
+                  "PS5 Digital 2 Controller", "Xbox Series X 1TB 2 Controller",
+                  "Nintendo Switch 2 256GB Joy-Con Set"]:
+            self.assertTrue(evaluate_console(t, 280).get("type"), t)
+
+    def test_still_accessories(self):
+        for t in ["PS5 Slim Faceplate Cover", "PS5 Controller Bundle 2x", "PS5 Slim Controller",
+                  "PS5 Slim Disc Laufwerk", "Xbox Series X Speichererweiterung 1TB"]:
+            self.assertEqual(evaluate_console(t, 200)["verdict"], "SKIP", t)

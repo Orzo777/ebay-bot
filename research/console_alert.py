@@ -42,6 +42,12 @@ _BUNDLE_LINK = re.compile(r"\bmit\b|\binkl|\+|\bund\b|&|,|\bbundle\b|\bsamt\b|\b
 _FOR_WORD = re.compile(r"\bfür\b|\bfor\b|\bpassend\b|kompatibel|\bzu[rm]?\b", re.I)
 
 
+_MODEL_WORD = re.compile(r"\b(?:dis[ck]|digital|slim|oled|cfi-?\d{4}|\d{3,4}\s?gb|\d\s?tb|version|v2)\b", re.I)
+_BUNDLABLE = re.compile(r"controller|kontroller|dualsense|joy[\s-]?con|spiel|game|headset|kamera", re.I)
+_COUNT_BEFORE = re.compile(r"(?:\b\d|zwei|drei|vier|beide[n]?)\s*x?\s*$", re.I)
+_BUNDLE_WORD = re.compile(r"\b(?:bundle|set|paket)\b", re.I)
+
+
 def _is_accessory(title: str, acc_re: re.Pattern, name_re: re.Pattern) -> bool:
     """Структурне правило (27.09: «Joy-Con Pair 2er-Set», «Lenkrad mit Pedalen … Switch», «PS5 Faceplate Cover Slim»
     проходили як консолі). Аксесуар — якщо його названо ДО консолі або одразу ПІСЛЯ неї без «mit/inkl/+/und»;
@@ -59,6 +65,10 @@ def _is_accessory(title: str, acc_re: re.Pattern, name_re: re.Pattern) -> bool:
         return True
     if acc.start() < name.start() or _FOR_WORD.search(title[:name.start()]):
         return True   # «Lenkrad … Nintendo Switch», «Controller für PS5»
+    # «PS5 … Disk slim Version 2 Controller Bundle» (27.09): модель консолі + «2 Controller» / «… Bundle» — консоль у наборі
+    if (_MODEL_WORD.search(title[name.end():acc.start()]) and _BUNDLABLE.match(acc.group(0))
+            and (_COUNT_BEFORE.search(title[:acc.start()]) or _BUNDLE_WORD.search(title[acc.end():]))):
+        return False
     return not _BUNDLE_LINK.search(title[name.end():acc.start()])
 
 
