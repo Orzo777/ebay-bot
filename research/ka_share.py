@@ -67,8 +67,9 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
     if info["price"] is None:
         return (f"⏭ <i>{escape(info['title'][:90])}</i>\nЦіни немає («VB» без суми) — напиши продавцю, "
                 f"скільки хоче, і перешли мені ще раз з ціною в тексті."), None
-    is_console = evaluate_console(info["title"], info["price"]) is not None
-    default_ship = SHIP_IN_CONSOLE if is_console else SHIP_IN_RAM
+    probe = evaluate_console(info["title"], info["price"])
+    # своя пересилка для кожної консолі (Xbox/PS5 ~€11, Switch ~€7, Lite ~€5.5)
+    default_ship = (probe.get("ship_in") or SHIP_IN_CONSOLE) if probe is not None else SHIP_IN_RAM
     # «Versand ab X €» — найдешевший варіант продавця; консоль/кіт рідко дешевше нашої оцінки
     ship = 0.0 if info["pickup_only"] else max(default_ship, info["ship_from"] or 0.0)
     res = (evaluate_console(info["title"], info["price"], shipping=ship, vb=info["vb"])
@@ -93,6 +94,9 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
     if res.get("cap"):
         head += (f"\nДля {escape(res['type'])} вигідно лише до {int(item_for_cost(res['cap'], ship))} € "
                  f"в оголошенні (продається за {res['quick_sale']}–{res['median_sale']} €).")
+    elif res["verdict"] == "UNKNOWN" and not re.search(r"ddr|\bram\b|arbeitsspeicher|so-?dimm|speicher", info["title"], re.I):
+        head += ("\nЦей товар бот не оцінює. Оцінює: оперативку, Xbox Series X, PS5, Nintendo Switch / Switch 2 "
+                 "(і цілі ПК у ПК-боті). Інше ми досліджували — маржі на Kleinanzeigen немає.")
     elif res.get("reason"):
         head += f"\n{escape(res['reason'])}"
     return "\n".join([head] + [f"⚠️ {escape(n)}" for n in notes]), res

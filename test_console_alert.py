@@ -154,12 +154,29 @@ class TestSwitch2(unittest.TestCase):
         self.assertEqual(evaluate_console("Pokémon Legenden: Z-A - Nintendo Switch 2 Edition", 35)["verdict"], "SKIP")
         self.assertEqual(evaluate_console("Nintendo Switch 2 Pro Controller", 60)["verdict"], "SKIP")
         self.assertIsNone(evaluate_console("FeinTech SW212 HDMI 2.1 Switch 2x1 + Audio Extractor", 25))
-        self.assertIsNone(evaluate_console("Nintendo Switch OLED", 200))
+        self.assertEqual(evaluate_console("Nintendo Switch OLED", 200)["verdict"], "SKIP")   # з 27.09 оцінюється, але дорого
 
     def test_sealed_cheap_warns(self):
         r = evaluate_console("Nintendo Switch 2 – neu & originalverpackt", 230)
         self.assertIn("шахрай", r["notes"][0])
         self.assertIn("die Switch 2", seller_template(r))
+
+
+class TestFixes27(unittest.TestCase):
+    def test_controller_limited_edition_is_not_ps5(self):
+        # 27.09: «PS5 DualSense Controller LeBron James Limited Edition Neu OVP» 200 € прийшов у підписку PS5
+        r = evaluate_console("PS5 DualSense Controller LeBron James Limited Edition Neu OVP", 200)
+        self.assertEqual(r["verdict"], "SKIP")
+
+    def test_switch_titles_from_share(self):
+        # 27.09 «Поділитися → бот»: «Switch 2 zu verkaufen» і «Switch v2 Zelda Fanpaket» не розпізнавались
+        self.assertEqual(evaluate_console("Switch 2 zu verkaufen", 180)["type"], "Nintendo Switch 2 (вживана)")
+        self.assertEqual(evaluate_console("Nintendo Switch v2 Zelda Fanpaket", 150)["type"], "Nintendo Switch V1/V2 (вживана)")
+        self.assertEqual(evaluate_console("Nintendo Switch OLED weiß", 150)["type"], "Nintendo Switch OLED (вживана)")
+        self.assertEqual(evaluate_console("Nintendo Switch Lite türkis", 60)["type"], "Nintendo Switch Lite (вживана)")
+        self.assertEqual(evaluate_console("Nintendo Switch Spiele Paket", 60)["verdict"], "SKIP")
+        self.assertIsNone(evaluate_console("TP-Link Switch 8 Port Gigabit", 25))
+        self.assertIsNone(evaluate_console("FeinTech HDMI Switch 2x1", 25))
 
 
 if __name__ == "__main__":

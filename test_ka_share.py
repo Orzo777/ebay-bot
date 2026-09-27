@@ -73,6 +73,15 @@ class TestEvaluate(unittest.TestCase):
         self.assertIn("схоже на шахрая", msg)
         self.assertNotIn("Запропонуй", msg)
 
+    def test_switch_share_gives_ceiling(self):
+        msg, res = evaluate_listing(page("Nintendo Switch v2 Zelda Fanpaket", "150 €"), "u")
+        self.assertIn("вигідно лише до", msg)
+        self.assertEqual(res["ship_in"], 7.0)
+
+    def test_unsupported_item_explained(self):
+        msg, _ = evaluate_listing(page("Canon EOS 250D Kamera", "300 €"), "u")
+        self.assertIn("бот не оцінює", msg)
+
     def test_no_price(self):
         msg, res = evaluate_listing(page("Xbox Series X", "VB"), "u")
         self.assertIsNone(res)

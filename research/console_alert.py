@@ -94,13 +94,14 @@ _PS5_OTHER = re.compile(r"portal|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstatio
 _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive|\bssd\b|festplatte|ständer|halterung|"
                             r"lüfter|kühler|skin|folie|hülle|tasche|\bcase\b|cover|faceplate|netzteil|kabel|\bspiele?\b|"
                             r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad", re.I)
-_PS5_CONSOLE = re.compile(r"konsole|console|\d\s?tb\b|825\s?gb|\bmit\b|\binkl|\+|\bbundle\b|\bslim\b|\bedition\b", re.I)
+# «Edition» НЕ ознака консолі: «DualSense LeBron James Limited Edition» — контролер (27.09)
+_PS5_CONSOLE = re.compile(r"konsole|console|\d\s?tb\b|825\s?gb|\bmit\b|\binkl|\+|\bbundle\b|\bslim\b", re.I)
 
 
 def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict | None:
     """None — не PS5 (далі оцінює RAM-логіка); інакше словник у форматі ram_alert.evaluate()."""
     if not _PS5.search(title):
-        return evaluate_switch2(title, price, shipping, vb)
+        return evaluate_switch(title, price, shipping, vb)
     ship_in = SHIP_IN if shipping is None else shipping
     if _REJECT.search(title):
         return _skip(title, price, "дефект / пошук / обмін / лише коробка")
@@ -131,45 +132,64 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
                 buy_cost=cost, ship_in=ship_in, vb=vb)
 
 
-# ---------------- Nintendo Switch 2 (додано 26.09.2026) ----------------
-# Terapeak, продані вживані, 30 днів: ≥34 шт., p25 €382, медіана €389 (−3% за 3 міс.). На KA трапляються €220–270,
-# але «нова в плівці» за пів ціни (роздріб ~€500 з 1.09.2026) — типовий шаблон шахраїв. OLED/Lite/контролери
-# не беремо: на KA дорожчі за стелю. Легша за Xbox/PS5: DHL Paket до 5 кг €7.69, пересилка до нас ~€7.
-SWITCH2 = dict(p25=382, med=389, st=25, name="Nintendo Switch 2 (вживана)")
-SHIP_SWITCH, SHIP_IN_SWITCH = 7.69, 7.0
+# ---------------- Nintendo Switch 2 і перша Switch (26–27.09.2026) ----------------
+# Terapeak, продані вживані, 30 днів. Switch 2: ≥34 шт., p25 €382 (−3% за 3 міс.); на KA €180–270 трапляються,
+# але «нова в плівці» за пів ціни (роздріб ~€500) — типовий шаблон шахраїв. Перша Switch дешевшає (OLED −17%,
+# Lite −23% за рік) і на KA зазвичай дорожча за стелю — оцінюємо, щоб дати пораду «вигідно лише до …»,
+# картки йдуть лише при реальній маржі. Легші за Xbox/PS5: DHL Paket до 5 кг €7.69 (Lite — до 2 кг €6.19).
+SWITCH2 = dict(p25=382, med=389, st=25, name="Nintendo Switch 2 (вживана)", ship=7.69, ship_in=7.0, min=150)
+SWITCH_OLED = dict(p25=162, med=172, st=25, name="Nintendo Switch OLED (вживана)", ship=7.69, ship_in=7.0, min=60)
+SWITCH_V2 = dict(p25=131, med=140, st=20, name="Nintendo Switch V1/V2 (вживана)", ship=7.69, ship_in=7.0, min=50)
+SWITCH_LITE = dict(p25=82, med=92, st=25, name="Nintendo Switch Lite (вживана)", ship=6.19, ship_in=5.5, min=30)
+SHIP_SWITCH, SHIP_IN_SWITCH = SWITCH2["ship"], SWITCH2["ship_in"]
 _SWITCH2 = re.compile(r"switch\s?2\b", re.I)
+_SWITCH1 = re.compile(r"nintendo\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|konsole|console)", re.I)
+_NOT_SWITCH = re.compile(r"hdmi|kvm|netzwerk|\blan\b|\bports?\b|usb|splitter|umschalt|\d\s?x\s?\d|schalter|gigabit|\bpoe\b|"
+                         r"tp-?link|netgear|cisco|ubiquiti|mikrotik|zyxel|d-?link", re.I)
 _SWITCH_ACCESSORY = re.compile(r"controller|joy-?con|\bspiele?\b|\bgame\b|edition\b(?!.*konsole)|dock\b|tasche|hülle|"
                                r"\bcase\b|schutz|folie|grip|ladestation|kamera|micro\s?sd|\bssd\b|amiibo|halterung|kabel|"
                                r"netzteil|ständer|skin|lenkrad", re.I)
-_SWITCH_CONSOLE = re.compile(r"konsole|console|\bmit\b|\binkl|\+|\bbundle\b|mario kart world\b(?!\s*(?:code|spiel))|\bset\b", re.I)
+_SWITCH_CONSOLE = re.compile(r"konsole|console|\bmit\b|\binkl|\+|\bbundle\b|fanpaket|konsolenpaket|mario kart world\b(?!\s*(?:code|spiel))|"
+                             r"\bset\b", re.I)
 _NEW_SEALED = re.compile(r"\bneu\b|originalverpackt|versiegelt|ungeöffnet|\bovp\b", re.I)
 
 
-def evaluate_switch2(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict | None:
-    if not _SWITCH2.search(title) or not re.search(r"nintendo|switch\s?2\s*(?:konsole|console|\+|mit|mario)", title, re.I):
+def evaluate_switch(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict | None:
+    """Switch 2 або перша Switch (V1/V2, OLED, Lite). None — не Switch (далі оцінює RAM-логіка)."""
+    if _NOT_SWITCH.search(title):
         return None
-    ship_in = SHIP_IN_SWITCH if shipping is None else shipping
+    if _SWITCH2.search(title):
+        real = SWITCH2
+    elif _SWITCH1.search(title):
+        real = SWITCH_OLED if re.search(r"\boled\b", title, re.I) else SWITCH_LITE if re.search(r"\blite\b", title, re.I) \
+            else SWITCH_V2
+    else:
+        return None
+    ship_in = real["ship_in"] if shipping is None else shipping
     if _REJECT.search(title):
         return _skip(title, price, "дефект / пошук / обмін / лише коробка")
-    if re.search(r"\boled\b|\blite\b", title, re.I) and not _SWITCH2.search(title):
-        return _skip(title, price, "Switch OLED/Lite — не беремо")
     if _SWITCH_ACCESSORY.search(title) and not _SWITCH_CONSOLE.search(title):
         return _skip(title, price, "схоже на гру чи аксесуар, а не на консоль")
-    if price < MIN_PRICE:
-        return _skip(title, price, f"дешевше €{MIN_PRICE} — гра, аксесуар, шахрайство або помилка в ціні", False)
-    real = SWITCH2
-    net_q = real["p25"] - costs(real["p25"], SHIP_SWITCH)
+    if price < real["min"]:
+        return _skip(title, price, f"дешевше €{real['min']} — гра, аксесуар, шахрайство або помилка в ціні", False)
+    net_q = real["p25"] - costs(real["p25"], real["ship"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb)
-    notes = ["Перевір: консоль і Joy-Con 2 працюють, немає блокування акаунта Nintendo. Лише «Sicher bezahlen» або самовивіз."]
-    if _NEW_SEALED.search(title) and price < 350:
+    two = real is SWITCH2
+    notes = [("Перевір: консоль і Joy-Con 2 працюють" if two else "Перевір: Joy-Con без дрифту, екран і роз'єм цілі")
+             + ", немає блокування акаунта Nintendo. Сильно вживана (подряпини, дрифт) продається дешевше за «швидку» ціну. "
+             "Лише «Sicher bezahlen» або самовивіз."]
+    if two and _NEW_SEALED.search(title) and price < 350:
         notes.insert(0, "«Нова / в плівці» за таку ціну — майже напевно шахрай (нова коштує ~€500). Лише Sicher bezahlen!")
     return dict(verdict=verdict, type=real["name"], price=price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
-                brand="Nintendo", title=title, notes=notes, net_q=net_q, item_acc="die Switch 2",
-                check_q="Funktionieren Konsole und Joy-Con einwandfrei, keine Kontosperre?",
+                brand="Nintendo", title=title, notes=notes, net_q=net_q, item_acc="die Switch 2" if two else "die Switch",
+                check_q="Funktionieren Konsole und Joy-Con einwandfrei (kein Drift), keine Kontosperre?",
                 buy_cost=cost, ship_in=ship_in, vb=vb)
+
+
+evaluate_switch2 = evaluate_switch   # стара назва (тести, ka_share)
 
 
 if __name__ == "__main__":
