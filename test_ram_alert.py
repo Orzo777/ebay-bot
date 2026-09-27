@@ -130,3 +130,37 @@ class TestDedup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPickup(unittest.TestCase):
+    """Самовивіз у Гамбурзі (27.09): без пересилки й збору, готівкою; текст продавцю — «заберу й заплачу бар»."""
+
+    def test_pickup_cheaper_than_shipping(self):
+        from ram_alert import PICKUP_COST, apply_pickup, buyer_message
+        ship = evaluate("Kingston Fury Beast DDR5 32GB (2x16GB) 6000", 230)
+        pick = apply_pickup(evaluate("Kingston Fury Beast DDR5 32GB (2x16GB) 6000", 230))
+        self.assertAlmostEqual(pick["buy_cost"], 230 + PICKUP_COST)
+        self.assertLess(pick["buy_cost"], ship["buy_cost"])
+        msg = buyer_message(pick)
+        self.assertIn("bar", msg)
+        self.assertNotIn("Sicher bezahlen", msg)
+        self.assertLessEqual(len(msg), 256)
+
+    def test_pickup_can_turn_skip_into_negotiate(self):
+        from ram_alert import apply_pickup
+        from console_alert import evaluate_console
+        self.assertEqual(evaluate_console("Xbox Series X 1TB Konsole", 415, vb=True)["verdict"], "SKIP")
+        self.assertIn(apply_pickup(evaluate_console("Xbox Series X 1TB Konsole", 415, vb=True))["verdict"],
+                      ("BUY", "NEGOTIATE"))
+
+    def test_hamburg_caps_match_model(self):
+        import ram_mail_check as m
+        from ram_alert import NEGOTIATE_UP, PICKUP_COST, REAL, costs
+        import console_alert as ca
+
+        def mx(p25, c):
+            return int((p25 - c) / 1.3 * NEGOTIATE_UP - PICKUP_COST)
+        self.assertEqual(m.HAMBURG_MAX["xbox"], mx(ca.XBOX_SERIES_X["p25"], ca.costs(ca.XBOX_SERIES_X["p25"])))
+        self.assertEqual(m.HAMBURG_MAX["ddr5"], max(mx(v["p25"], costs(v["p25"])) for k, v in REAL.items() if k[0] == "ddr5"))
+        self.assertTrue(m.is_pickup_search("Neue Anzeigen für „Konsolen - xbox series x in Hamburg“"))
+        self.assertIn("l9409r30", m.public_search_url("Neue Anzeigen für „Konsolen - ps5 in Hamburg“"))

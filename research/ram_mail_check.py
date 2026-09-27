@@ -33,7 +33,7 @@ import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
 from pc_alert import evaluate_pc, pc_card_lines
-from ram_alert import SEND_VERDICTS, evaluate, format_html, offer_template, seller_template
+from ram_alert import SEND_VERDICTS, apply_pickup, evaluate, format_html, offer_template, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
 
@@ -220,8 +220,37 @@ _CONSOLE_SEARCH = {
 }
 
 
+# Підписки з самовивозом (27.09): ті самі товари в Гамбурзі +30 км, БЕЗ фільтра «Versand möglich». Верх ціни —
+# стеля «торгуйся» для самовивозу (без пересилки й збору), тому вищий за загальнонімецькі підписки.
+_HAMBURG = "l9409r30"
+_HAMBURG_SEARCH = {
+    "ddr5": "/s-pc-zubehoer-software/hamburg/anbieter:privat/anzeige:angebote/preis:20:{ddr5}/ddr5/k0c225" + _HAMBURG,
+    "ddr4": "/s-pc-zubehoer-software/hamburg/anbieter:privat/anzeige:angebote/preis:30:{ddr4}/ddr4/k0c225" + _HAMBURG,
+    "xbox series x": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:150:{xbox}/xbox-series-x/k0c279" + _HAMBURG
+                     + "+konsolen.art_s:xbox+konsolen.model_s:series_x",
+    "ps5": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:150:{ps5}/ps5/k0c279" + _HAMBURG
+           + "+konsolen.art_s:playstation",
+    "switch 2": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:150:{switch2}/switch-2/k0c279" + _HAMBURG
+                + "+konsolen.art_s:nintendo+konsolen.model_s:switch_2",
+}
+HAMBURG_MAX = dict(ddr5=430, ddr4=207, xbox=425, ps5=343, switch2=299)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
+_PICKUP_SUBJECT = re.compile(r"\bin Hamburg\b", re.I)
+_NO_PICKUP = re.compile(r"nur\s+(?:per\s+)?versand|keine\s+abholung|kein(?:e)?\s+selbstabholung", re.I)
+
+
+def is_pickup_search(subject: str) -> bool:
+    return bool(_PICKUP_SUBJECT.search(subject))
+
+
+def hamburg_search_urls() -> dict:
+    return {k: _KA + v.format(**HAMBURG_MAX) for k, v in _HAMBURG_SEARCH.items()}
+
+
 def public_search_url(subject: str) -> str | None:
     name = search_name(subject).strip().lower()
+    if is_pickup_search(subject):
+        name = re.sub(r"\s+in hamburg.*$", "", name)
+        return hamburg_search_urls().get(name)
     if name in _RAM_SEARCH:
         lo, hi = _RAM_SEARCH[name]
         return (f"{_KA}/s-pc-zubehoer-software/anbieter:privat/anzeige:angebote/preis:{lo}:{hi}/"
@@ -406,6 +435,9 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             continue
         vb = lst.get("vb", False)
         res = evaluate_console(lst["title"], lst["price"], vb=vb) or evaluate(lst["title"], lst["price"], vb=vb)
+        pickup = is_pickup_search(subject)
+        if pickup:   # підписка «… in Hamburg»: забираємо самі, готівкою
+            apply_pickup(res)
         reason = f" ({res['reason']})" if res.get("reason") else ""
         print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
         shown, shown_verdict = lst, res["verdict"]
@@ -422,6 +454,11 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if risk and risk.get("block"):   # PayPal Freunde, «без Sicher bezahlen», WhatsApp, свіжий акаунт — не показуємо
             print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
             continue
+        if pickup and _NO_PICKUP.search((risk or {}).get("desc") or ""):   # «nur Versand» — рахуємо як з пересилкою
+            res = evaluate_console(lst["title"], lst["price"], vb=vb) or evaluate(lst["title"], lst["price"], vb=vb)
+            if res["verdict"] not in SEND_VERDICTS:
+                print("   продавець не віддає самовивозом, а з пересилкою невигідно")
+                continue
         res["risk_lines"] = risk_lines(risk)
         res["desc"] = (risk or {}).get("desc")   # що продавець уже написав — не питаємо
         if dry_run:

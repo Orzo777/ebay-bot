@@ -100,6 +100,31 @@ def item_for_cost(total: float, ship_in: float) -> float:
     return (total - ship_in - BUY_FEE_FIXED) / (1 + BUY_FEE_PCT)
 
 
+# Самовивіз у Гамбурзі (підписки «… in Hamburg», з 27.09): платимо готівкою при зустрічі, тож ні пересилки, ні
+# збору «Sicher bezahlen»; лише дорога (HVV туди й назад). Шахрайство з передоплатою тут неможливе: гроші — після огляду.
+PICKUP_COST = 6.0
+
+
+def total_for(r: dict, item: float) -> float:
+    """Повна вартість купівлі за ціни товару item (з урахуванням самовивозу)."""
+    return item + PICKUP_COST if r.get("pickup") else buy_cost(item, r.get("ship_in", 0.0))
+
+
+def item_for(r: dict, total: float) -> float:
+    """Ціна в оголошенні, що дає таку повну вартість (з урахуванням самовивозу)."""
+    return total - PICKUP_COST if r.get("pickup") else item_for_cost(total, r.get("ship_in", 0.0))
+
+
+def apply_pickup(r: dict) -> dict:
+    """Перерахунок вердикту для самовивозу. SKIP/UNKNOWN без цін лишаються як є."""
+    if "net_q" not in r:
+        return r
+    cost = r["price"] + PICKUP_COST
+    r.update(pickup=True, buy_cost=cost, ship_in=0.0, profit_est=r["net_q"] - cost,
+             verdict=tier(cost, r["cap"], r["good"], r["excellent"], r.get("vb", False)))
+    return r
+
+
 def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict:
     ship_in = SHIP_IN_RAM if shipping is None else shipping
     total_price = price
@@ -163,9 +188,8 @@ def offer_price(r: dict) -> int | None:
     округлюємо ВНИЗ до цілих 5 € — продавець бачить круглу суму, а разом виходить не більше цілі."""
     if r.get("verdict") not in ("BUY", "NEGOTIATE"):
         return None
-    ship = r.get("ship_in", 0.0)
     target = min(r["cap"], max(r["good"], r.get("buy_cost", r["price"]) * 0.9))
-    offer = int(item_for_cost(target, ship) // 5 * 5)
+    offer = int(item_for(r, target) // 5 * 5)
     return offer if 0 < offer <= r["price"] * 0.95 else None   # торг на 5 € виглядає дріб'язково — купуй як є
 
 
@@ -217,7 +241,13 @@ def buyer_message(r: dict, offer: int | None = None) -> str:
     what = r.get("item_acc", "den RAM")
     head = (f"Hallo! Ich nehme {what} für {offer} € und kaufe sofort – bitte für mich reservieren."
             if offer is not None else f"Hallo! Ich nehme {what} und kaufe sofort – bitte für mich reservieren.")
-    parts = [head, 'Ich zahle per „Sicher bezahlen", Versand und Gebühr übernehme ich.', *_questions(r), "Danke!"]
+    if r.get("pickup"):
+        head = (f"Hallo! Ich nehme {what} für {offer} € – bitte für mich reservieren."
+                if offer is not None else f"Hallo! Ich nehme {what} – bitte für mich reservieren.")
+        terms = "Ich hole heute oder morgen in Hamburg ab und zahle bar. Wann passt es Ihnen?"
+    else:
+        terms = 'Ich zahle per „Sicher bezahlen", Versand und Gebühr übernehme ich.'
+    parts = [head, terms, *_questions(r), "Danke!"]
     while len(" ".join(parts)) > 256 and len(parts) > 3:   # задовге — спершу жертвуємо останнім питанням (чек)
         parts.pop(-2)
     return " ".join(parts)
@@ -261,7 +291,7 @@ def _speed_label(st: float) -> str:
 
 def _item_cap(r: dict, key: str) -> int:
     """Стеля як ціна В ОГОЛОШЕННІ (пересилку й Sicher bezahlen уже враховано)."""
-    return int(item_for_cost(r[key], r.get("ship_in", 0.0)))
+    return int(item_for(r, r[key]))
 
 
 def format_html(r: dict) -> str:
@@ -280,11 +310,12 @@ def format_html(r: dict) -> str:
         *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
         f"<b>{escape(r['type'])}</b>",
         f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>" + (" VB" if r.get("vb") else "")
-        + (f" (з пересилкою і Sicher bezahlen ≈ {r['buy_cost']:.0f} €)" if r.get("buy_cost") else ""),
+        + ((f" 🚶 самовивіз, готівкою (з дорогою ≈ {r['buy_cost']:.0f} €)" if r.get("pickup")
+            else f" (з пересилкою і Sicher bezahlen ≈ {r['buy_cost']:.0f} €)") if r.get("buy_cost") else ""),
         "",
         profit,
-        *([f"🤝 Запропонуй <b>{offer} €</b> (разом ≈ {buy_cost(offer, r.get('ship_in', 0)):.0f} €) "
-           f"→ заробіток ≈ <b>{r['net_q'] - buy_cost(offer, r.get('ship_in', 0)):.0f} €</b>"]
+        *([f"🤝 Запропонуй <b>{offer} €</b> (разом ≈ {total_for(r, offer):.0f} €) "
+           f"→ заробіток ≈ <b>{r['net_q'] - total_for(r, offer):.0f} €</b>"]
           if offer is not None and r.get("net_q") else []),
         f"🛒 Ціна в оголошенні до {_item_cap(r, 'cap')} € (добре ≤ {_item_cap(r, 'good')}, "
         f"супер ≤ {_item_cap(r, 'excellent')})",
