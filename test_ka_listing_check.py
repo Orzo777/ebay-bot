@@ -122,3 +122,26 @@ class TestRisk(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBuyNow(unittest.TestCase):
+    """27.09: «Direkt kaufen» (buyNowEnabled) — лот можна купити одразу, без відповіді продавця."""
+
+    def _page(self, flag):
+        return ('<p id="viewad-description-text">Läuft einwandfrei, mit OVP und Rechnung.</p>'
+                'Aktiv seit 01.01.2020 <input type="hidden" name="buyNowEnabled" value="false"/>'
+                '<script>var cfg = {isBuyNowEnabled: %s, buyerFeeInEuroCent: 725};</script>' % flag)
+
+    def test_flag(self):
+        from ka_listing_check import parse_listing
+        self.assertTrue(parse_listing(self._page("true"), 300, 545)["buy_now"])
+        self.assertFalse(parse_listing(self._page("false"), 300, 545)["buy_now"])
+
+    def test_card_line(self):
+        from console_alert import evaluate_console
+        from ram_alert import format_html
+        r = evaluate_console("Xbox Series X 1TB Konsole", 250)
+        r["buy_now"] = True
+        self.assertIn("Direkt kaufen", format_html(r))
+        r["buy_now"] = False
+        self.assertNotIn("Direkt kaufen", format_html(r))

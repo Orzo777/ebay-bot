@@ -18,6 +18,8 @@ UA = "Mozilla/5.0 (compatible; ka-alert-bot/1.0; personal use, one listing page 
 _DESC_RE = re.compile(r'id="viewad-description-text"[^>]*>(.*?)</p>', re.S)
 _SINCE_RE = re.compile(r"Aktiv seit\s*(\d{2})\.(\d{2})\.(\d{4})")
 _COMMERCIAL_RE = re.compile(r"Gewerblicher Nutzer")
+# «Direkt kaufen» (продавець увімкнув купівлю одразу через «Sicher bezahlen»): лот стає твоїм без чекання відповіді
+_BUY_NOW_RE = re.compile(r'isBuyNowEnabled:\s*true')   # у JS-конфігу сторінки; прихований input buyNowEnabled завжди false
 _GONE_RE = re.compile(r"nicht mehr verfügbar|wurde gelöscht|Anzeige ist deaktiviert|existiert nicht mehr", re.I)
 
 # «Жорсткі» ознаки — оголошення відкидається одразу, картки не буде: нормальний продавець лишається в чаті KA
@@ -107,7 +109,8 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
     if level == "high" and not hard:
         hard.append("забагато ознак шахрайства разом")
     # block: у підписках картки не буде зовсім; лишаються 🟢 і 🟡 лише з «м'яких» ознак (молодий акаунт, короткий опис)
-    return dict(level=level, score=score, reasons=reasons, seller=seller, block=bool(hard), hard=hard, desc=desc)
+    return dict(level=level, score=score, reasons=reasons, seller=seller, block=bool(hard), hard=hard, desc=desc,
+                buy_now=bool(_BUY_NOW_RE.search(page)))
 
 
 def check_listing(link: str | None, price: float, quick_sale: float) -> dict | None:

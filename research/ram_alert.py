@@ -328,6 +328,8 @@ def format_html(r: dict) -> str:
               else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)")
     lines = [
         tag,
+        *(["⚡ <b>Є «Direkt kaufen»</b> — тисни «Kaufen» в оголошенні: лот твій одразу, без чекання відповіді "
+            "(оплата через «Sicher bezahlen», з пересилкою)"] if r.get("buy_now") and r["verdict"] != "NEGOTIATE" else []),
         *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
         f"<b>{escape(r['type'])}</b>",
         f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>" + (" VB" if r.get("vb") else "")

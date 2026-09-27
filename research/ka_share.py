@@ -101,6 +101,7 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
             notes.append("Продавець пише «nur Versand» — самовивозу не буде, рахуй із пересилкою.")
         res["risk_lines"] = risk_lines(risk)
         res["desc"] = risk.get("desc")
+        res["buy_now"] = bool(risk.get("buy_now"))
         res["notes"] = res.get("notes", []) + notes
         return format_html(res), res
     head = f"⏭ <b>Не бери</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €" + (" VB" if info["vb"] else "")
