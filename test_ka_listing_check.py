@@ -73,6 +73,22 @@ class TestRisk(unittest.TestCase):
         self.assertTrue(r["block"])
         self.assertIn("відмовляється від «Sicher bezahlen»", r["hard"])
 
+    def test_known_template_and_systemkauf(self):
+        # 27.09: той самий текст під ~10 різними оголошеннями
+        tpl = ("Hallo zusammen, Bitte vor dem Anschreiben kurz alles durchlesen - so sparen wir uns beiden unnötige Zeit. "
+               "Ich bin ein ehrlicher Verkäufer und möchte von Anfang an klare und faire Bedingungen schaffen. "
+               "Der Preis ist bereits sehr fair angesetzt und meine Bewertungen sprechen für sich. Zahlungsmöglichkeiten: "
+               "Barzahlung bei Abholung. Andere Zahlungsarten, insbesondere PayPal Waren &amp; Dienstleistungen oder der "
+               "Systemkauf, werden nicht angeboten. Ich verkaufe meine Xbox Series X 1TB.")
+        r = parse_listing(page(tpl), 300, 545, TODAY)
+        self.assertTrue(r["block"])
+        self.assertTrue(any("шаблон" in h for h in r["hard"]))
+        self.assertTrue(any("Sicher bezahlen" in h for h in r["hard"]))
+
+    def test_direkt_kaufen_possible_is_fine(self):
+        r = parse_listing(page("Direkt kaufen möglich, kein Versand ins Ausland. Konsole läuft einwandfrei, mit OVP."), 300, 545, TODAY)
+        self.assertFalse(r["block"])
+
     def test_honest_texts_not_blocked(self):
         # вузькі вирази: звичайні формулювання чесних продавців не блокуються
         for desc in [HONEST,

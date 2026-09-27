@@ -32,6 +32,16 @@ _OK_NEG = r"(?!\s*(?:problem|thema|garantie|gewährleistung|rücknahme|umtausch|
 _SB = r"(?:sicher(?:es)?\s*(?:be)?zahl\w*|bezahlfunktion|käuferschutz)"
 _NO_PROTECTION = re.compile(_SB + r"[^.!,;]{0,80}\b(?:nicht|kein\w*)\b" + _OK_NEG + "|"
                             r"\b(?:nicht|kein\w*|ohne)\b[^.!,;]{0,40}" + _SB, re.I)
+# Відмова від захисту іншими словами: «PayPal Waren & Dienstleistungen oder der Systemkauf werden nicht angeboten»
+# (Systemkauf / Direkt kaufen = купівля через Kleinanzeigen із захистом). Потрібне саме «не пропоную / не можливо».
+_NO_SYSTEM = re.compile(r"(?:systemkauf|waren\s*(?:&|und)\s*dienstleistung\w*|direkt\s*kaufen)[^.!]{0,80}\b(?:nicht|kein\w*)\s+"
+                        r"(?:an)?(?:geboten|möglich|akzeptiert|in\s*frage|infrage)|\b(?:kein\w*|ohne)\s+(?:systemkauf|direkt\s*kaufen)",
+                        re.I)
+# Текст-шаблон, що ходить під десятками оголошень (27.09, користувач бачив ~10 разів): лише F&F, «Preis fest», блокування.
+# Беремо кілька характерних фраз разом — одна фраза сама по собі може трапитись і в чесного продавця.
+_TEMPLATE_PHRASES = [r"vor dem anschreiben kurz alles durchlesen", r"unnötige zeit", r"ich bin ein ehrlicher verkäufer",
+                     r"meine bewertungen sprechen für sich", r"systemkauf", r"gegebenenfalls direkt blockiert",
+                     r"klare und faire bedingungen"]
 _STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur versand|keine abholung|"
                     r"keine besichtigung|dringend", re.I)
 
@@ -75,10 +85,14 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
         score += 2
         reasons.append("оплата переказом / PayPal Freunde")
         hard.append("хоче оплату переказом / PayPal Freunde (без захисту покупця)")
-    if _NO_PROTECTION.search(desc):
+    if _NO_PROTECTION.search(desc) or _NO_SYSTEM.search(desc):
         score += 1
         reasons.append("відмовляється від «Sicher bezahlen» / захисту покупця")
         hard.append("відмовляється від «Sicher bezahlen»")
+    if sum(1 for ph in _TEMPLATE_PHRASES if re.search(ph, desc, re.I)) >= 3:
+        score += 2
+        reasons.append("стандартний текст-шаблон, що ходить під багатьма оголошеннями")
+        hard.append("відомий текст-шаблон (лише PayPal Freunde / без захисту покупця)")
     story = sorted({s.group(0).lower() for s in _STORY.finditer(desc)})
     if story:
         score += min(len(story), 2)
