@@ -79,12 +79,12 @@ class TestProcess(unittest.TestCase):
         self.assertEqual((sent, len(self.cards), len(self.hints)), (0, 0, 1))
         self.assertIn("xbox series x", self.hints[0][0])
         self.assertIn("не той товар", self.hints[0][0])
-        self.assertTrue(self.hints[0][1].endswith("id=767883050"))
+        self.assertIn("model_s:series_x", self.hints[0][1])   # публічний пошук, не m-suche-verwenden (500 без входу)
 
     def test_deal_gives_card_not_hint(self):
         sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 250), 6, False, set(), {})
         self.assertEqual((sent, len(self.hints)), (1, 0))
-        self.assertTrue(self.cards[0][3].endswith("id=767883050"))   # кнопка «інші нові збіги»
+        self.assertIn("/s-konsolen/xbox/", self.cards[0][3])   # кнопка «інші нові збіги» — публічна сторінка
 
     def test_scam_seller_gives_no_card(self):
         rmc.check_listing = lambda *a: {"level": "medium", "score": 3, "reasons": ["x"], "seller": "приватний",
@@ -104,6 +104,12 @@ class TestProcess(unittest.TestCase):
             self.assertEqual(pcs, [])
         finally:
             rmc.send_pc_card, rmc.PC_BOT_TOKEN = old
+
+    def test_public_search_urls(self):
+        self.assertIn("preis:20:256/ddr5-32gb/k0c225",
+                      rmc.public_search_url("Neue Treffer zu deiner Suche „PC-Zubehör & Software - ddr5 32gb in Ganz Deutschland“"))
+        self.assertIn("model_s:switch_2", rmc.public_search_url("Neue Treffer zu deiner Suche „Konsolen - switch 2 in Ganz Deutschland“"))
+        self.assertIsNone(rmc.public_search_url("Neue Treffer zu deiner Suche „щось нове“"))
 
     def test_pc_filter_real_titles(self):
         # 26.09: у ПК-бот прийшов «Raspberry Pi 3 Model B im transparenten Gehäuse» — не ПК

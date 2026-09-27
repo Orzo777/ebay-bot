@@ -198,6 +198,34 @@ def search_link(body: str) -> tuple[str | None, str | None]:
     return m.group(1), f"https://www.kleinanzeigen.de/m-suche-verwenden.html?id={m.group(1)}"
 
 
+# Кнопка «інші нові збіги»: m-suche-verwenden (збережена підписка) відкривається лише з входом у KA — у браузері
+# Telegram входу немає, і KA часто віддає помилку 500 (27.09). Тому ведемо на ПУБЛІЧНУ сторінку пошуку з тими ж
+# фільтрами (найновіші зверху). Бот цих сторінок не відкриває — це лише посилання для людини.
+_RAM_SEARCH = {  # назва підписки → межі ціни (як у KA, 26.09)
+    "arbeitsspeicher ddr5": (20, 108), "ddr5 16gb": (10, 108), "ddr5 sodimm 16gb": (10, 81), "ddr5 sodimm 32gb": (20, 191),
+    "ddr5 2x16gb": (20, 256), "ddr5 32gb": (20, 256), "ddr5 2x32gb": (40, 427), "ddr5 64gb": (40, 427),
+    "ddr4 2x16gb": (15, 87), "ddr4 sodimm 32gb": (15, 89), "ddr4 64gb": (30, 202),
+}
+_KA = "https://www.kleinanzeigen.de"
+_CONSOLE_SEARCH = {
+    "xbox series x": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:150:402/xbox-series-x/"
+                     "k0c279+konsolen.art_s:xbox+konsolen.model_s:series_x+konsolen.versand_s:ja",
+    "ps5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:150:323/ps5/"
+           "k0c279+konsolen.art_s:playstation+konsolen.versand_s:ja",
+    "switch 2": "/s-konsolen/nintendo/anbieter:privat/anzeige:angebote/preis:150:285/switch-2/"
+                "k0c279+konsolen.art_s:nintendo+konsolen.model_s:switch_2+konsolen.versand_s:ja",
+}
+
+
+def public_search_url(subject: str) -> str | None:
+    name = search_name(subject).strip().lower()
+    if name in _RAM_SEARCH:
+        lo, hi = _RAM_SEARCH[name]
+        return (f"{_KA}/s-pc-zubehoer-software/anbieter:privat/anzeige:angebote/preis:{lo}:{hi}/"
+                f"{name.replace(' ', '-')}/k0c225+pc_zubehoer_software.versand_s:ja")
+    return _KA + _CONSOLE_SEARCH[name] if name in _CONSOLE_SEARCH else None
+
+
 def search_name(subject: str) -> str:
     m = re.search(r"„(.+?)“", subject)
     name = m.group(1) if m else subject
@@ -355,6 +383,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
     body = _body_text(msg)
     listings = extract_listings(subject, body)
     sid, slink = search_link(body)
+    slink = public_search_url(subject) or slink   # публічна сторінка: відкривається без входу в KA
     shown, shown_verdict, wrong_type = None, None, False
     if dry_run:   # діагностика: чи не губимо оголошення, які є в листі, але не розпізнані парсером
         ad_ids = sorted(set(re.findall(r"/s-anzeige/(?:[^/\"'\s]+/)?(\d{8,})", body)))
