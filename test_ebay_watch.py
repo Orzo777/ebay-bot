@@ -175,3 +175,26 @@ class TestDefectSymptoms(unittest.TestCase):
         for d in ["Läuft einwandfrei, wird nicht heiß, kein Stick Drift", "Konsole wurde gereinigt, leise und kühl",
                   "Abholung in Hamburg oder Versand"]:
             self.assertIsNone(broken_reason(d), d)
+
+
+class TestNegotiateFixedPrice(unittest.TestCase):
+    """28.09: «ЗАПРОПОНУЙ ЦІНУ» без Preisvorschlag не мав тексту з сумою."""
+
+    def test_fixed_price_negotiate_has_offer_text(self):
+        from ebay_watch import ebay_message, keyboard, offer_ebay
+        lst = item("Microsoft Xbox Series X 1TB Konsole", 390, ship="10.99", offer=False)
+        r = evaluate_ebay(lst)
+        self.assertEqual(r["verdict"], "NEGOTIATE")
+        o = offer_ebay(r)
+        self.assertIsNotNone(o)
+        self.assertIn(f"für {o} €", ebay_message(r, o))
+        self.assertIn("Preis an", ebay_message(r, o))
+        self.assertEqual(len(keyboard(lst["url"], r)["inline_keyboard"]), 3)
+        self.assertIn(f"{o} €", format_card(r, lst, risk_of(lst, "", 545), "new", NOW))
+
+    def test_too_cheap_headline(self):
+        from ram_alert import evaluate, format_html
+        r = evaluate("ADATA Premier DDR5-5600 16GB RAM Kit (2x 8GB)", 30)
+        html_ = format_html(r)
+        self.assertIn("ПІДОЗРІЛО ДЕШЕВО", html_)
+        self.assertNotIn("ВІДМІННО", html_)

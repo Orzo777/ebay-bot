@@ -190,7 +190,25 @@ def offer_price(r: dict) -> int | None:
         return None
     target = min(r["cap"], max(r["good"], r.get("buy_cost", r["price"]) * 0.9))
     offer = int(item_for(r, target) // 5 * 5)
+    if r["verdict"] == "NEGOTIATE":   # «торгуйся» без суми безглуздий: щонайменше −5% від ціни
+        offer = min(offer, int(r["price"] * 0.95 // 5 * 5))
     return offer if 0 < offer <= r["price"] * 0.95 else None   # торг на 5 € виглядає дріб'язково — купуй як є
+
+
+# Ціна нижче третини ринку (28.09: «ADATA DDR5 2×8» за €30 при ринку €150–180 → «ВІДМІННО — БЕРИ»). Так буває,
+# коли продавець не знає ціни, але частіше — помилка в назві (одна планка / інший тип), шахрай або «Suche».
+TOO_CHEAP = 0.35
+
+
+def too_cheap(r: dict) -> bool:
+    return bool(r.get("quick_sale")) and r["price"] < TOO_CHEAP * r["quick_sale"]
+
+
+def cheap_headline(r: dict, ebay: bool = False) -> str:
+    pay = "оплата лише через eBay" if ebay else "лише «Sicher bezahlen»"
+    return (f"⚠️ <b>ПІДОЗРІЛО ДЕШЕВО — {100 * r['price'] / r['quick_sale']:.0f}% ринку.</b> Або продавець не знає ціни, "
+            f"або помилка в назві (одна планка, інший тип), або шахрай. Перевір фото етикетки, {pay}."
+            if too_cheap(r) else "")
 
 
 # Що продавець уже написав в описі (сторінку оголошення бот і так відкриває для перевірки на шахраїв) —
@@ -248,6 +266,8 @@ def _questions(r: dict) -> list[str]:
         q.append(f'Ist es genau EIN Riegel mit {r["total"]} GB?')
     elif r.get("kit_unknown") and not f["kit_ok"]:
         q.append(f'Sind es 2x{r["total"] // 2} GB oder mehr Riegel?')
+    if too_cheap(r) and r.get("item_acc", "den RAM") == "den RAM":
+        q.append("Können Sie ein Foto vom Aufkleber schicken?")
     if f["works"] is None:
         q.append(r.get("check_q", "Lief er fehlerfrei?"))
     if f["receipt"] is None:
@@ -323,6 +343,8 @@ def format_html(r: dict) -> str:
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — БЕРИ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — БЕРИ</b>",
            "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>",
            "NEGOTIATE": "💬 <b>ТОРГУЙСЯ — трохи дорожче стелі</b>"}[r["verdict"]]
+    if too_cheap(r):
+        tag = cheap_headline(r)
     offer = offer_price(r)
     profit = (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" if r["verdict"] != "NEGOTIATE"
               else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)")

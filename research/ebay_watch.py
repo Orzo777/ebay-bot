@@ -6,7 +6,7 @@
 
 Відмінності від KA:
   • повна вартість = ціна + пересилка з оголошення (на eBay.de покупець не платить збору за захист покупця);
-  • «торгуйся» лише якщо в оголошенні є «Preisvorschlag» (BEST_OFFER), інакше купувати за ціною;
+  • «торгуйся»: з «Preisvorschlag» (BEST_OFFER) — кнопкою eBay, без нього — питанням «знизите до X €?»;
   • продавцю нічого не пишемо — «Sofort-Kaufen»; оплата через eBay, гарантія повернення грошей eBay;
   • перевірка на шахраїв: опис (getItem, 1 виклик лише для кандидата) на WhatsApp / PayPal Freunde / переказ,
     і відгуки продавця;
@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
-from ram_alert import PICKUP_COST, SEND_VERDICTS, _questions, _speed_label, broken_reason, desc_facts, evaluate, tier
+from ram_alert import PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts, evaluate, tier
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 # (запит, категорія, мін. ціна, макс. ціна). Верх — трохи вище найбільшої стелі «торгуйся» серед типів групи.
@@ -102,11 +102,14 @@ def evaluate_ebay(lst: dict) -> dict:
 
 
 def offer_ebay(r: dict) -> int | None:
-    """Сума для «Preisvorschlag» (лише якщо продавець його дозволив): повна вартість ~10% нижче, не нижче «добре»."""
-    if r.get("verdict") not in ("BUY", "NEGOTIATE") or not r.get("vb"):
+    """Зустрічна сума: повна вартість ~10% нижче, не нижче «добре». З «Preisvorschlag» — через кнопку eBay; без нього —
+    питанням продавцю (він може знизити ціну в оголошенні). Для «МОЖНА» без Preisvorschlag не торгуємось — купуй."""
+    if r.get("verdict") not in ("BUY", "NEGOTIATE") or (r["verdict"] == "BUY" and not r.get("vb")):
         return None
     target = min(r["cap"], max(r["good"], r["buy_cost"] * 0.9))
     offer = int((target - r["ship_in"]) // 5 * 5)
+    if r["verdict"] == "NEGOTIATE":
+        offer = min(offer, int(r["price"] * 0.95 // 5 * 5))
     return offer if 0 < offer <= r["price"] * 0.95 else None
 
 
@@ -114,10 +117,14 @@ def ebay_message(r: dict, offer: int | None = None) -> str:
     """Текст продавцю через «Frage an den Verkäufer» / до Preisvorschlag (≤256 символів — ліміт кнопки копіювання).
     Як і на KA: спершу рішення, потім умови, в кінці лише питання, на які опис не відповів. Оплата — тільки через eBay."""
     what = r.get("item_acc", "den RAM")
-    head = (f"Hallo! Ich nehme {what} für {offer} € – Preisvorschlag schicke ich gleich." if offer is not None
-            else f"Hallo! Ich möchte {what} kaufen.")
+    if offer is None:
+        head = f"Hallo! Ich möchte {what} kaufen."
+    elif r.get("vb"):
+        head = f"Hallo! Ich nehme {what} für {offer} € – Preisvorschlag schicke ich gleich."
+    else:   # Preisvorschlag вимкнений: продавець може знизити ціну в оголошенні
+        head = f"Hallo! Würden Sie {what} für {offer} € verkaufen? Passen Sie den Preis an, dann kaufe ich sofort."
     terms = ("Ich hole heute oder morgen in Hamburg ab, bezahlt wird über eBay. Wann passt es Ihnen?" if r.get("pickup")
-             else "Ich bezahle sofort über eBay, bitte gut verpackt und versichert versenden.")
+             else "Bezahlung über eBay, bitte gut verpackt und versichert versenden.")
     parts = [head, terms, *_questions(r), "Danke!"]
     while len(" ".join(parts)) > 256 and len(parts) > 3:
         parts.pop(-2)
@@ -182,6 +189,8 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — КУПУЙ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — КУПУЙ</b>",
            "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>",
            "NEGOTIATE": "💬 <b>ЗАПРОПОНУЙ ЦІНУ — трохи дорожче стелі</b>"}[r["verdict"]]
+    if too_cheap(r):
+        tag = cheap_headline(r, ebay=True)
     offer = offer_ebay(r)
     dist = f" ({lst['dist']:.0f} км)" if lst.get("dist") else ""
     ship_txt = (f"🚶 самовивіз у Гамбурзі{dist}, дорога ≈ {PICKUP_COST:.0f} €" if r.get("pickup") else f"пересилка {r['ship_in']:.2f} €".replace(".", ","))
@@ -194,7 +203,8 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
         "",
         (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" if r["verdict"] != "NEGOTIATE"
          else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)"),
-        *([f"🤝 Preisvorschlag <b>{offer} €</b> (разом ≈ {offer + r['ship_in']:.0f} €) → заробіток ≈ "
+        *([(f"🤝 Preisvorschlag <b>{offer} €</b>" if lst["offer"] else f"🤝 Напиши продавцю: <b>{offer} €</b> "
+            "(Preisvorschlag вимкнений — хай знизить ціну)") + f" (разом ≈ {offer + r['ship_in']:.0f} €) → заробіток ≈ "
            f"<b>{r['net_q'] - offer - r['ship_in']:.0f} €</b>"] if offer is not None else []),
         f"🛒 Разом з пересилкою до {r['cap']:.0f} € (добре ≤ {r['good']:.0f}, супер ≤ {r['excellent']:.0f})",
         f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
@@ -217,7 +227,8 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
               "", "✉️ Текст продавцю («Frage an den Verkäufer», натисни — скопіюється):",
               f"<code>{esc(ebay_message(r))}</code>"]
     if offer is not None:
-        lines += ["", f"✉️ З пропозицією {offer} € (потім «Preisvorschlag senden»):",
+        lines += ["", f"✉️ З пропозицією {offer} €" + (" (потім «Preisvorschlag senden»):" if lst["offer"]
+                                                       else " (питання продавцю, потім купуй за новою ціною):"),
                   f"<code>{esc(ebay_message(r, offer))}</code>"]
     return "\n".join(lines)
 
