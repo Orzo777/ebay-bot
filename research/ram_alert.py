@@ -125,6 +125,10 @@ def apply_pickup(r: dict) -> dict:
     return r
 
 
+# Ціна-заглушка (28.09: «RAM 1x32Gb 2x16Gb DDR 4» за 1 € → «ВІДМІННО»): дешевше 10 € або 15% ринку — не ціна.
+PLACEHOLDER_MIN, PLACEHOLDER_SHARE = 10.0, 0.15
+
+
 def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict:
     ship_in = SHIP_IN_RAM if shipping is None else shipping
     total_price = price
@@ -134,18 +138,28 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     if p["ecc"]:
         return dict(verdict="SKIP", reason="ECC/серверна пам'ять — поза нашими прибутковими типами", title=title,
                     price=total_price, wrong_type=True)
+    if p.get("mixed"):
+        return dict(verdict="SKIP", reason="дві різні планки (різні бренди) — не заводський кіт, продається дешевше",
+                    title=title, price=total_price, wrong_type=True)
     key = (p["gen"], p["form"], p["ecc"], p["total"], p["modules"])
     real = REAL.get(key)
     kit_unknown = False
-    if not real and p["modules"] == 1 and p["total"] > MAX_SINGLE_GB.get(p["gen"], 32):
-        real = REAL.get(key[:4] + (2,))
-        kit_unknown = real is not None
+    # Кількість планок не вказана: «32GB DDR5 Corsair» / «64GB Kit» майже завжди 2 планки (28.09: 7 з ~60 оголошень DDR5
+    # на KA писали лише «32GB» і бот їх відкидав як «тип, що не купуємо»). «(1x64GB)» — точно одна, не вгадуємо.
+    if p["modules"] == 1 and not p.get("explicit_single"):
+        two = REAL.get(key[:4] + (2,))
+        big = p["total"] > MAX_SINGLE_GB.get(p["gen"], 32) or p["total"] >= 32
+        if two and (p.get("kit_word") or (not real and big)):
+            real, kit_unknown = two, True
     if not real:
         return dict(verdict="SKIP",
                     reason=f"{p['gen'].upper()} {'ноутбучна' if p['form'] == 'sodimm' else p['form'].upper()} "
                            f"{p['total']} ГБ ({p['modules']} план.) — цей тип не купуємо: на eBay продається дешево "
                            f"або рідко (заміри 21–26.09)",
                     title=title, price=total_price, wrong_type=True)
+    if price < max(PLACEHOLDER_MIN, PLACEHOLDER_SHARE * real["p25"]):
+        return dict(verdict="SKIP", reason=f"ціна {price:.0f} € — заглушка («1 €», «VB»), а не справжня ціна",
+                    title=title, price=total_price, wrong_type=False)
     net_q = real["p25"] - costs(real["p25"])
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
     cost = buy_cost(price, ship_in)

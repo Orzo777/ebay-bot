@@ -247,3 +247,18 @@ class TestBundleTitles(unittest.TestCase):
         for t in ["PS5 Slim Faceplate Cover", "PS5 Controller Bundle 2x", "PS5 Slim Controller",
                   "PS5 Slim Disc Laufwerk", "Xbox Series X Speichererweiterung 1TB"]:
             self.assertEqual(evaluate_console(t, 200)["verdict"], "SKIP", t)
+
+
+class TestAudit28(unittest.TestCase):
+    """Прогін 626 реальних оголошень KA (28.09)."""
+
+    def test_consoles(self):
+        for t in ["Xbox Series X 1TB SSD", "Xbox Series X 1TB SSD Bundle inkl. Forza Horizon 5",
+                  "X-Box Serie x   Kaum bespielt - 1 TB", "Nintendo Switch Komplettset - 7 Spiele",
+                  "Sony PS5 Slim 1TB SSD Disc Edition"]:
+            self.assertTrue(evaluate_console(t, 300).get("type"), t)
+
+    def test_accessories(self):
+        for t in ["WD Black SN850 1TB SSD für PS5", "Seagate Speichererweiterung 1TB SSD für Xbox Series X",
+                  "PS5 1TB SSD Erweiterung", "Xbox Series X/S Controller schwarz"]:
+            self.assertEqual(evaluate_console(t, 200)["verdict"], "SKIP", t)

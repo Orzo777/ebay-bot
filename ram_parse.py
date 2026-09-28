@@ -16,13 +16,20 @@ SPEEDS = {
 }
 
 # --- відсів шуму (не модуль пам'яті, лот-набір, дефект) ---
+# Завжди не модуль пам'яті (або пам'ять разом з дорожчою залізякою).
 JUNK = re.compile(
-    r"\b(k[üu]e?hler|heatsink|heat ?spreader|cooler|rgb[- ]?(strip|kit|licht)|kabel|adapter|halter|blende|leer|dummy|attrappe|"
-    r"festplatte|ssd|hdd|nvme|mainboard|motherboard|cpu|prozessor|grafikkarte|gpu|rtx|gtx|radeon|core i\d|ryzen|xeon e\d|"
-    r"windows|win ?1[01]|display|bildschirm|tablet|smartphone|handy|gaming[- ]?pc|komplett|barebone|gehäuse|netzteil|"
-    r"tester|testkarte|schutz|verpackung|karton|box only|sticker|aufkleber)\b", re.I)
+    r"\b(rgb[- ]?(strip|kit|licht)|halter|blende|leer|dummy|attrappe|festplatte|ssd|hdd|nvme|mainboard|motherboard|"
+    r"grafikkarte|gpu|rtx|gtx|radeon|smartphone|handy|komplett|barebone|gehaeuse|netzteil|tester|testkarte|"
+    r"box only|sticker)\b|\bnur\s+(?:die\s+)?(?:ovp|verpackung|karton)|\bleere?\s+(?:ovp|verpackung|karton)", re.I)
+# Не модуль, лише якщо стоїть ДО першого «DDR»: «Gaming PC 7800X3D 64GB DDR5» — ПК, а «32 GB DDR4 … – Gaming PC»,
+# «DDR5 … für Ryzen», «… + UDIMM Adapter» — сама пам'ять (28.09: такі оголошення бот відкидав).
+JUNK_BEFORE_DDR = re.compile(
+    r"\b(k[uü]e?hler|heatsink|heat ?spreader|cooler|kabel|adapter|cpu|prozessor|core (?:i\d|ultra)|ryzen|xeon e?\d|"
+    r"windows|win ?1[01]|display|bildschirm|tablet|gaming[- ]?pc|pc[- ]?bundle|aufr[uü]e?st)\b", re.I)
 DEFECT = re.compile(r"\b(defekt|bastler|ersatzteil|kaputt|nicht funktionsf|for parts|not working|funktioniert nicht|teildefekt)\b", re.I)
-LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|diverse|paket|bundle|st[üu]ck|stk)\b|\b\d{2,3}\s?x\b", re.I)
+# «2 Stk», «2 Stück» — це кіт, а не лот (28.09); лот — від 5 штук або слова «Konvolut», «Posten»…
+LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|diverse|paket|bundle)\b|\b\d{2,3}\s?x\b|"
+                  r"\b(?:[5-9]|\d{2,})\s?(?:stk|stueck|st[uü]ck)\b", re.I)
 
 SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b", re.I)
 SODIMM = re.compile(r"so-?\s?dimm|\b(laptop|notebook|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b", re.I)
@@ -50,10 +57,15 @@ BRANDS = [
 _BRANDS = [(n, re.compile(rx, re.I)) for n, rx in BRANDS]
 CHIP_OEM = {"Samsung", "SK Hynix", "Micron", "Nanya", "Elpida", "Qimonda", "Infineon", "Dell", "HP", "Lenovo", "Apple", "Supermicro", "SMART"}
 
-_KIT1 = re.compile(r"(?<![\d.])(\d)\s?x\s?(\d{1,3})\s?(?:gb|g\b)", re.I)          # 2x16GB, 2 x 16 GB
-_KIT2 = re.compile(r"(?<![\d.])(\d{1,3})\s?gb\s?x\s?(\d)\b", re.I)                # 16GB x2
+_KIT1 = re.compile(r"(?<![\d.])(\d)\s*x\s*(\d{1,3})\s?-?\s?(?:gb|g\b)", re.I)     # 2x16GB, 2 x 16 GB, 3x  32GB
+_KIT2 = re.compile(r"(?<![\d.])(\d{1,3})\s?-?\s?gb\s?x\s?(\d)\b", re.I)          # 16GB x2
 _KIT3 = re.compile(r"\((\d)\s?x\s?(\d{1,3})\)", re.I)                              # (2x16)
-_SINGLE = re.compile(r"(?<![\d.x])(\d{1,3})\s?gb\b(?!\s?/\s?s)", re.I)     # «GB/s» — швидкість, не ємність
+_SINGLE = re.compile(r"(?<![\d.x])(\d{1,3})\s?-?\s?gb\b(?!\s?/\s?s)", re.I)  # «64-GB-Kit»; «GB/s» — швидкість
+# «2x Corsair … 16GB … insg. 32GB», «2 Stk 16GB», «2er-Set»: кількість окремо від ємності
+_COUNT = re.compile(r"(?:^|[\s(])([2-4])\s?(?:x|stk\.?|stueck|st[uü]ck|er[- ]?(?:set|kit|pack))(?=[\s)]|$)", re.I)
+_CAP_COUNT = re.compile(r"(\d{1,3})\s?gb\s*\(?\s*([2-4])\s?(?:stk\.?|stueck|st[uü]ck)(?=[\s).,]|$)", re.I)
+# «nicht 32GB 64GB» — SEO-хвіст у назві (28.09: «48GB DDR5 … nicht 32GB 64GB» не розпізнавався)
+_SEO_NOT = re.compile(r"\bnicht\s+(?:\d{1,3}\s?gb[\s,/+&]*(?:und|oder)?\s*)+", re.I)
 _DDR = re.compile(r"ddr\s?-?\s?([2345])l?\b|\bpc([2345])l?\s?-", re.I)
 
 
@@ -91,6 +103,24 @@ def parse_capacity(t: str):
     if len(kit_set) > 1:
         return None, None, "кілька різних кітів"
     singles = {int(x) for x in _SINGLE.findall(t)}
+    explicit_one = {m for n, m in kits if n == 1}     # «(1x64GB)» — саме одна планка, не кіт
+    if not kit_set and len(explicit_one) == 1 and singles <= explicit_one:
+        v = next(iter(explicit_one))
+        return (v, 1, None) if v in SANE_GB else (None, None, f"нереальна ємність {v}")
+    ca = _CAP_COUNT.search(t)          # «32GB (2 Stk)» — 32 разом у двох планках
+    if not kit_set and ca and int(ca.group(1)) % int(ca.group(2)) == 0:
+        kit_set = {(int(ca.group(2)), int(ca.group(1)) // int(ca.group(2)))}
+    cm = _COUNT.search(t)
+    if not kit_set and cm and singles:
+        n = int(cm.group(1))
+        per = [m for m in singles if n * m in singles]          # «2x … 16GB … insg. 32GB» — однозначно 2×16
+        if len(per) == 1 and len(singles) == 2:
+            kit_set = {(n, per[0])}
+        elif len(singles) == 1:
+            # «2x Corsair … 32GB»: 2×16 чи 2×32 — невідомо; беремо дешевший варіант (разом 32), щоб не переоцінити
+            m = next(iter(singles))
+            if m % n == 0 and m // n in SANE_GB:
+                kit_set = {(n, m // n)}
     if kit_set:
         n, m = next(iter(kit_set))
         total = n * m
@@ -113,13 +143,15 @@ def parse_capacity(t: str):
 def parse_title(title: str):
     """→ dict(gen, form, ecc, total, modules, kit, speed, brand, oem) або (None, причина)."""
     t = (title or "").lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("×", "x")
+    t = _SEO_NOT.sub(" ", t)
     if DEFECT.search(t):
         return None, "дефект/запчастина"
-    if JUNK.search(t):
+    first_ddr = _DDR.search(t)
+    if JUNK.search(t) or JUNK_BEFORE_DDR.search(t[:first_ddr.start()] if first_ddr else t):
         return None, "не модуль (аксесуар/комплект/ПК)"
     if LOTS.search(t):
         return None, "лот/пакет"
-    if re.search(r"\blpddr|soldered|onboard", t):
+    if re.search(r"\blpddr|soldered|onboard|\bl?camm2?\b", t):   # CAMM — окремий ноутбучний формат, не SO-DIMM
         return None, "LPDDR/впаяна"
     m = _DDR.search(t)
     if not m:
@@ -141,5 +173,13 @@ def parse_title(title: str):
         if rx.search(head):
             brand = name
             break
+    # «2x 16GB (G.Skill Aegis & Crucial Ballistix)» — дві різні планки, не заводський кіт: продається дешевше (28.09)
+    mixed = False
+    if mods > 1 and re.search(r"&|\+|\bund\b|/", head):
+        found = {n for n, rx in _BRANDS if n not in CHIP_OEM and rx.search(head)} - {"HyperX"}
+        mixed = len(found) >= 2
+    # «32GB Kit» без «2x16»: кількість планок невідома, але їх більше однієї
+    kit_word = mods == 1 and bool(re.search(r"\bkit\b|\bset\b|dual[- ]?(?:kit|channel)", t))
+    explicit_single = mods == 1 and bool(re.search(r"(?<![\d.])1\s*x\s*\d{1,3}\s?gb|\bein(?:e|en|zelne[rn]?)?\s+(?:riegel|modul)", t))
     return dict(gen=gen, form=form, ecc=ecc, total=total, modules=mods, kit=mods > 1, speed=parse_speed(t, gen),
-                brand=brand, oem=brand in CHIP_OEM), None
+                brand=brand, oem=brand in CHIP_OEM, mixed=mixed, kit_word=kit_word, explicit_single=explicit_single), None

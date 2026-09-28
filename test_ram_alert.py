@@ -164,3 +164,34 @@ class TestPickup(unittest.TestCase):
         self.assertEqual(m.HAMBURG_MAX["ddr5"], max(mx(v["p25"], costs(v["p25"])) for k, v in REAL.items() if k[0] == "ddr5"))
         self.assertTrue(m.is_pickup_search("Neue Anzeigen für „Konsolen - xbox series x in Hamburg“"))
         self.assertIn("l9409r30", m.public_search_url("Neue Anzeigen für „Konsolen - ps5 in Hamburg“"))
+
+
+class TestAudit28Ram(unittest.TestCase):
+    """Прогін 626 реальних оголошень KA (28.09): назви, які бот розумів неправильно."""
+
+    def test_parse(self):
+        from ram_parse import parse_title
+        cases = {"2x Corsair Vengeance DDR5 16GB 5600MHz SODIMM RAM insg. 32GB neu": (32, 2),
+                 "3x  32GB DDR5 SODIMM": (96, 3), "Crucial 64GB DDR5 RAM (1x64GB) 5600MHz SODIMM": (64, 1),
+                 "NEU Corsair Vengeance DDR5 48GB (2x24GB) 5600MHz nicht 32GB 64GB": (48, 2),
+                 "G.Skill 64-GB-Kit DDR 5 RAM": (64, 1), "32 GB DDR4 RAM 3200 MHz – 2x16 GB – Gaming PC": (32, 2),
+                 "Corsair Vengeance 64GB Verpackung geöffnet DDR4": (64, 1),
+                 "Samsung 16GB (2 Stk) DDR5 SODIMM 5600": (16, 2)}
+        for t, (tot, mods) in cases.items():
+            p, why = parse_title(t)
+            self.assertIsNotNone(p, f"{t}: {why}")
+            self.assertEqual((p["total"], p["modules"]), (tot, mods), t)
+        for t in ["Gaming PC 7800x3d 64GB DDR5-6000 RTX4080 Super", "10 Stück DDR4 8GB",
+                  "PC-Hardware-Bundle – Ryzen 7 3700X + 32 GB DDR4 + B550 Mainboard"]:
+            self.assertIsNone(parse_title(t)[0], t)
+
+    def test_evaluate(self):
+        self.assertEqual(evaluate("2x 16GB DDR4 RAM (G.Skill Aegis & Crucial Ballistix)", 65)["verdict"], "SKIP")
+        self.assertEqual(evaluate("RAM 1x32Gb 2x16Gb DDR 4", 1)["verdict"], "SKIP")        # ціна-заглушка
+        r = evaluate("Kingston FURY Beast DDR5 32GB 5600 MHz CL40", 200)                  # кіт 2x16 без «2x16»
+        self.assertTrue(r["verdict"].startswith("BUY") and r["kit_unknown"])
+        r = evaluate("Kingston FURY Beast DDR5 16 GB Kit – 5200 MHz – CL40", 80)
+        self.assertEqual(r["type"], evaluate("Kingston FURY Beast DDR5 2x8GB", 80)["type"])
+        self.assertIn("48", evaluate("48GB DDR5-6800 CL34 RGB – SK Hynix M-Die nicht 32GB 64GB", 250)["type"])
+        r = evaluate("Crucial 64GB DDR5 RAM (1x64GB) 5600MHz SODIMM", 300)
+        self.assertEqual(r["verdict"], "SKIP")                                              # 1x64 — не кіт 2x32

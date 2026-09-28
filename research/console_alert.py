@@ -23,9 +23,9 @@ SHIP_IN = 11.0   # пересилка, яку покупець платить п
 MIN_PRICE = 150  # дешевше — аксесуар, «Suche», шахрайство або помилка в ціні
 SUSPICIOUS_BELOW = 250  # навіть за старими цінами (до 1.08) вживана Series X коштувала €330+
 
-_SERIES_X = re.compile(r"series\s*x\b", re.I)
-_X_AND_S = re.compile(r"series\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|series\s*s\s*(?:/|\||&|und|oder|,)\s*x\b", re.I)
-_OTHER_CONSOLE = re.compile(r"series\s*s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
+_SERIES_X = re.compile(r"serie[sn]?\s*x\b", re.I)
+_X_AND_S = re.compile(r"serie[sn]?\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|serie[sn]?\s*s\s*(?:/|\||&|und|oder|,)\s*x\b", re.I)
+_OTHER_CONSOLE = re.compile(r"serie[sn]?\s*s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
 _REJECT = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|"
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
                      # eBay (27.09): ігри-колекційки та послуги в категорії Konsolen; японська Switch 2 — лише японська мова
@@ -37,7 +37,9 @@ _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|fest
                         r"fernbedienung|akku|ladestation|dock", re.I)
 _CONSOLE_WORD = re.compile(r"konsole|console|\d\s?tb\b|\bmit\b|\binkl|\+|\bbundle\b", re.I)
 # «1TB» НЕ ознака консолі: «Xbox Series X Speichererweiterung 1TB» — аксесуар
-_STRONG_CONSOLE = re.compile(r"konsole|console|handheld", re.I)
+_STRONG_CONSOLE = re.compile(r"konsole|console|handheld|komplett-?(?:set|paket)", re.I)
+# «1TB SSD», «825 GB SSD» — пам'ять самої консолі, а не аксесуар «SSD» (28.09: «Xbox Series X 1TB SSD» → «аксесуар»)
+_OWN_STORAGE = re.compile(r"\b\d+(?:[.,]\d)?\s?(?:tb|gb)\s+(?:ssd|festplatte|hdd|speicher)\b", re.I)
 _BUNDLE_LINK = re.compile(r"\bmit\b|\binkl|\+|\bund\b|&|,|\bbundle\b|\bsamt\b|\bplus\b|\bset\s+mit\b", re.I)
 _FOR_WORD = re.compile(r"\bfür\b|\bfor\b|\bpassend\b|kompatibel|\bzu[rm]?\b", re.I)
 
@@ -52,6 +54,9 @@ def _is_accessory(title: str, acc_re: re.Pattern, name_re: re.Pattern) -> bool:
     """Структурне правило (27.09: «Joy-Con Pair 2er-Set», «Lenkrad mit Pedalen … Switch», «PS5 Faceplate Cover Slim»
     проходили як консолі). Аксесуар — якщо його названо ДО консолі або одразу ПІСЛЯ неї без «mit/inkl/+/und»;
     консоль — якщо є «Konsole/Console/1TB» або аксесуар іде через «mit/inkl/+» («Xbox Series X mit Controller»)."""
+    nm = name_re.search(title)   # «1TB SSD» ПІСЛЯ назви консолі — її власна пам'ять; «WD 1TB SSD für PS5» — аксесуар
+    if nm and not _FOR_WORD.search(title[:nm.start()]):
+        title = title[:nm.end()] + _OWN_STORAGE.sub(" ", title[nm.end():])
     acc = acc_re.search(title)
     if not acc:
         return False
@@ -130,7 +135,7 @@ _PS5_PRO = re.compile(r"\bpro\b", re.I)
 _PS5_OTHER = re.compile(r"portal|porta\s+remote|remote[\s-]?play|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
 _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive|\bssd\b|festplatte|ständer|halterung|"
                             r"lüfter|kühler|skin|folie|hülle|tasche|\bcase\b|cover|faceplate|netzteil|kabel|\bspiele?\b|"
-                            r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad|wheel|pedal", re.I)
+                            r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad|wheel|pedal|erweiterung|expansion", re.I)
 # «Edition» НЕ ознака консолі: «DualSense LeBron James Limited Edition» — контролер (27.09)
 _PS5_CONSOLE = re.compile(r"konsole|console|\d\s?tb\b|825\s?gb|\bmit\b|\binkl|\+|\bbundle\b|\bslim\b", re.I)
 
@@ -185,7 +190,7 @@ _NOT_SWITCH = re.compile(r"hdmi|kvm|netzwerk|\blan\b|\bports?\b|usb|splitter|ums
                          r"tp-?link|netgear|cisco|ubiquiti|mikrotik|zyxel|d-?link", re.I)
 _SWITCH_ACCESSORY = re.compile(r"controller|joy[\s-]?cons?\b|\bspiele?\b|\bgame\b|dock|tasche|hülle|"
                                r"\bcase\b|schutz|folie|grip|ladestation|kamera|micro\s?sd|\bssd\b|amiibo|halterung|kabel|"
-                               r"netzteil|ständer|skin|lenkrad|wheel|pedal|faceplate|cover", re.I)
+                               r"netzteil|ständer|skin|lenkrad|wheel|pedal|faceplate|cover|erweiterung", re.I)
 _SWITCH_CONSOLE = re.compile(r"konsole|console|\bmit\b|\binkl|\+|\bbundle\b|fanpaket|konsolenpaket|mario kart world\b(?!\s*(?:code|spiel))|"
                              r"\bset\b", re.I)
 _NEW_SEALED = re.compile(r"\bneu\b|originalverpackt|versiegelt|ungeöffnet|\bovp\b", re.I)
