@@ -116,15 +116,41 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
     return "\n".join([head] + [f"⚠️ {escape(n)}" for n in notes]), res
 
 
+def _send(html_text: str, kb: dict):
+    import json
+
+    import requests
+
+    import config
+    api = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    data = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
+            "disable_web_page_preview": "true", "reply_markup": json.dumps(kb, ensure_ascii=False)}
+    r = requests.post(api, data=data, timeout=15)
+    if r.status_code == 400:
+        data["reply_markup"] = json.dumps({"inline_keyboard": kb["inline_keyboard"][:1]}, ensure_ascii=False)
+        r = requests.post(api, data=data, timeout=15)
+    r.raise_for_status()
+
+
 def main(text: str):
     import requests
 
     from ram_mail_check import send_telegram_card, send_telegram_text
 
+    from ebay_watch import ebay_item_id, keyboard, share_ebay
+    eid = ebay_item_id(text)
+    if eid:   # посилання eBay (28.09): та сама оцінка, що й у сканері eBay; аукціон — з максимальною ставкою
+        msg, res, lst = share_ebay(eid)
+        if res and res.get("verdict") in SEND_VERDICTS and lst:
+            _send(msg, keyboard(lst["url"], res))
+        else:
+            send_telegram_text(msg, (lst or {}).get("url"))
+        print(msg)
+        return
     url = listing_url(text)
     if not url:
-        send_telegram_text("Не бачу посилання на оголошення Kleinanzeigen. Поділись оголошенням (кнопка «Teilen») "
-                           "або встав посилання виду kleinanzeigen.de/s-anzeige/…")
+        send_telegram_text("Не бачу посилання на оголошення Kleinanzeigen чи eBay. Поділись оголошенням (кнопка «Teilen») "
+                           "або встав посилання виду kleinanzeigen.de/s-anzeige/… чи ebay.de/itm/…")
         return
     r = requests.get(url, headers={"User-Agent": UA, "Accept-Language": "de-DE"}, timeout=15)
     if r.status_code != 200:

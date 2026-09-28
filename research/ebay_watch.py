@@ -282,6 +282,125 @@ def send_card(text: str, url: str, r: dict):
     resp.raise_for_status()
 
 
+# ----------------------------------------------------------------------------- «поділитися → бот» для eBay (28.09)
+_EBAY_ID = re.compile(r"ebay\.[a-z.]+/itm/(?:[^/\s?]+/)?(\d{9,14})")
+_EBAY_SHORT = re.compile(r"https?://(?:www\.)?ebay\.(?:us|to)/\S+")
+
+
+def ebay_item_id(text: str) -> str | None:
+    """Номер оголошення з посилання eBay; коротке посилання із застосунку (ebay.us/…) розкриваємо редиректом."""
+    m = _EBAY_ID.search(text or "")
+    if m:
+        return m.group(1)
+    s = _EBAY_SHORT.search(text or "")
+    if s:
+        import requests
+        try:
+            final = requests.get(s.group(0), timeout=10, allow_redirects=True).url
+        except Exception:
+            return None
+        m = _EBAY_ID.search(final)
+        return m.group(1) if m else None
+    return None
+
+
+def auction_lines(r: dict, it: dict, now: datetime) -> list[str]:
+    """Аукціон: показана ціна — поточна ставка, не кінцева. Радимо максимальну ставку (eBay сам підніматиме до неї)."""
+    bids = it.get("bidCount") or 0
+    try:
+        end = datetime.fromisoformat(it["itemEndDate"].replace("Z", "+00:00"))
+        left = end - now
+        left_txt = (f"{left.days} дн. {left.seconds // 3600} год" if left.days else f"{left.seconds // 3600} год "
+                    f"{left.seconds % 3600 // 60} хв")
+    except (KeyError, ValueError, TypeError):
+        left_txt = "?"
+    max_bid = int((r["cap"] - r["ship_in"]) // 1)
+    good_bid = int((r["good"] - r["ship_in"]) // 1)
+    lines = [f"🔨 <b>Аукціон</b>: зараз {r['price']:.0f} € ({bids} ставок), до кінця {left_txt}.",
+             "Кінцева ціна зазвичай доростає до ринкової — поточна ставка нічого не означає."]
+    if r["price"] >= max_bid:
+        lines.append(f"⛔ Уже дорожче вигідного: максимум для нас {max_bid} € (з пересилкою {r['cap']:.0f} €).")
+    else:
+        lines.append(f"👉 Постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €) і забудь — eBay підніматиме "
+                     f"її сам лише до потрібної. Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €.")
+    return lines
+
+
+def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[str, dict | None, dict | None]:
+    """Оцінка одного оголошення eBay (посилання, яким поділились із ботом) → (html, результат, оголошення)."""
+    from main import _request_with_backoff
+    now = now or datetime.now(timezone.utc)
+    client = client or _client()
+    try:
+        it = _request_with_backoff("GET", ITEM_URL + "get_item_by_legacy_id", headers=client._headers(),
+                                   params={"legacy_item_id": item_id})
+    except Exception as e:
+        return f"⚫ Оголошення eBay не відкривається ({e.__class__.__name__}) — можливо, його вже зняли.", None, None
+    lst = listing_of(it)
+    auction = "AUCTION" in (it.get("buyingOptions") or []) and "FIXED_PRICE" not in (it.get("buyingOptions") or [])
+    r = evaluate_ebay(lst)
+    esc = html.escape
+    if "net_q" not in r:
+        return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price'] or 0:.0f} €\n"
+                f"{esc(r.get('reason', ''))}"), r, lst
+    desc = fetch_desc(client, lst["id"])
+    r["desc"] = desc
+    broken = broken_reason(desc)
+    risk = risk_of(lst, desc, r.get("quick_sale", 0))
+    if broken:
+        return f"⛔ <b>Не бери — в описі дефект</b> · <i>{esc(lst['title'][:90])}</i>\n   • «{esc(broken)}»", r, lst
+    if risk["hard"]:
+        return ("⛔ <b>Не бери — схоже на шахрая</b> · <i>" + esc(lst["title"][:90]) + "</i>\n"
+                + "\n".join("   • " + esc(h) for h in risk["hard"])), r, lst
+    if auction:
+        head = [f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", "",
+                *auction_lines(r, it, now), f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
+                f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]]]
+        return "\n".join(head), dict(r, verdict="AUCTION"), lst
+    if r["verdict"] not in SEND_VERDICTS:
+        return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price']:.0f} € + пересилка "
+                f"{lst['ship'] or 0:.2f} €\nВигідно лише до {r['cap']:.0f} € разом з пересилкою "
+                f"(продається за {r['quick_sale']}–{r['median_sale']} €)."), r, lst
+    return format_card(r, lst, risk, "share", now), r, lst
+
+
+# Аукціони (28.09): поточна ставка — не ціна. Сповіщаємо ОДИН раз, коли до кінця ≤ 3 год, а ставка ще нижча за нашу
+# межу: користувач ставить максимальну ставку й забуває (eBay сам торгується за нього до цієї суми).
+AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 480), ("(xbox series x, ps5, playstation 5, switch 2)", CONSOLE_CAT, 1, 420)]
+AUCTION_HOURS = 3.0
+
+
+def fetch_auctions(client, q: str, cat: str, lo: int, hi: int) -> list[dict]:
+    from main import _request_with_backoff
+    params = {"q": q, "category_ids": cat, "sort": "endingSoonest", "limit": 100,
+              "filter": f"buyingOptions:{{AUCTION}},itemLocationCountry:DE,price:[{lo}..{hi}],priceCurrency:EUR"}
+    CALLS["n"] += 1
+    d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=client._headers(), params=params)
+    return d.get("itemSummaries") or []
+
+
+def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict] | None:
+    """Аукціон, що закінчується ≤ AUCTION_HOURS і досі дешевший за нашу максимальну ставку (раз на оголошення)."""
+    done = state.setdefault("auctions", {})
+    if it.get("itemId") in done:
+        return None
+    try:
+        end = datetime.fromisoformat(it["itemEndDate"].replace("Z", "+00:00"))
+    except (KeyError, ValueError, TypeError):
+        return None
+    if not (timedelta(0) < end - now <= timedelta(hours=AUCTION_HOURS)):
+        return None
+    it = dict(it, price=it.get("currentBidPrice") or it.get("price"))
+    lst = listing_of(it)
+    if lst["price"] is None or lst["country"] not in (None, "DE"):
+        return None
+    r = evaluate_ebay(lst)
+    if "net_q" not in r or lst["price"] + r["ship_in"] >= 0.9 * r["cap"]:
+        return None
+    done[it["itemId"]] = now.isoformat()
+    return lst, r
+
+
 def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
     first_run = not state.get("items")
@@ -328,6 +447,37 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         else:
             send_card(format_card(r, lst, risk, why, now), lst["url"], r)
         sent += 1
+    if state["round"] % 2 == 0:   # аукціони — через раз, по черзі із запитами самовивозу
+        for q, cat, lo, hi in AUCTION_QUERIES:
+            try:
+                raw = fetch_auctions(client, q, cat, lo, hi)
+            except Exception as e:
+                print(f"   [аукціони {q}] помилка API: {e}")
+                continue
+            for it in raw:
+                cand = auction_candidate(it, state, now)
+                if not cand:
+                    continue
+                lst, r = cand
+                desc = fetch_desc(client, lst["id"])
+                r["desc"] = desc
+                risk = risk_of(lst, desc, r.get("quick_sale", 0))
+                print(f" - [аукціон] {lst['title'][:70]} | ставка {lst['price']:.0f}€ -> макс. {r['cap'] - r['ship_in']:.0f}€")
+                if broken_reason(desc) or risk["hard"]:
+                    print("   дефект / шахрай — пропускаю")
+                    continue
+                esc = html.escape
+                text = "\n".join([f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", "",
+                                   *auction_lines(r, it, now), f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
+                                   f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})",
+                                   *[f"⚠️ {esc(s)}" for s in risk["soft"]]])
+                if dry_run:
+                    print("   [DRY RUN] надіслав би картку аукціону")
+                else:
+                    send_card(text, lst["url"], dict(r, verdict="BUY"))
+                sent += 1
+        cut = (now - timedelta(days=2)).isoformat()
+        state["auctions"] = {k: v for k, v in state.get("auctions", {}).items() if v >= cut}
     if first_run:
         print(f"   перший запуск: запам'ятав {len(state.get('items', {}))} оголошень, сповіщення — з наступного кругу")
     prune(state, now)

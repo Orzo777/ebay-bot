@@ -25,10 +25,16 @@ _GONE_RE = re.compile(r"nicht mehr verfügbar|wurde gelöscht|Anzeige ist deakti
 # «Жорсткі» ознаки — оголошення відкидається одразу, картки не буде: нормальний продавець лишається в чаті KA
 # і погоджується на «Sicher bezahlen». Регулярні вирази навмисно вузькі: «E-Mail-Rechnung», «HDMI-Signal»,
 # «Gutschein dabei», «Sicher bezahlen möglich, keine Rücknahme» — НЕ шахрайство.
-_CONTACT = re.compile(r"whats\s?app|telegram|\b[\w.+-]+@[a-z0-9-]+\.[a-z]{2,}|\+\d{2}\s?\d{2,}|\b01[5-7]\d[\s/]?\d{3}|"
-                      r"handynummer|meine nummer|schreib(?:t)? mir (?:auf|per|über)|kontaktier\w* mich (?:auf|per|über)", re.I)
-_PAYMENT = re.compile(r"freunde\s*(?:&|und)\s*familie|paypal\s*(?:an\s*)?(?:freunde|friends|family)|\bf\s?&\s?f\b|vorkasse|"
-                      r"nur\s+(?:per\s+)?überweisung|western union|paysafe", re.I)
+_CONTACT = re.compile(r"whats\s?app|\bwa\b\s*:|telegram|threema|\b[\w.+-]+@[a-z0-9-]+\.[a-z]{2,}|\+\d{2}\s?\d{2,}|"
+                      r"\b01[5-7]\d[\s/]?\d{3}|handynummer|meine nummer|telefonnummer|\btel\.?\s*:?\s*0\d|"
+                      r"schreib(?:t)? mir (?:auf|per|über)|kontaktier\w* mich (?:auf|per|über)|"
+                      r"ruf\w*\s+(?:sie\s+)?mich\s+an\b|\bsms\b|insta(?:gram)?\s*:", re.I)   # «Rechnung per E-Mail» — не контакт
+# Оплата без захисту покупця. Шахраї маскують «PayPal»: «Pay Pal», «P@yPal», «PP», «F+F», «FnF» (28.09).
+_PP = r"(?:pay\s*\.?\s*pal|p\s*@\s*y\s*pal|\bpp\b)"
+_PAYMENT = re.compile(r"(?:freunde|familie)\s*(?:&|und|\+|/)\s*(?:familie|freunde)|" + _PP + r"\s*(?:an\s*|als\s*|über\s*)?"
+                      r"(?:freunde|friends|family|familie|privat)|\bf\s?[&+]\s?f\b|\bfnf\b|vorkasse|nur\s+(?:per\s+)?überweisung|"
+                      r"western union|paysafe|\bwero\b|echtzeit-?überweisung|sofortüberweisung|überweisung\s+(?:vorab|vorher|im\s+voraus)|"
+                      r"\banzahlung|\bkaution|treuhand|zahlungs-?link|link\s+(?:zur|für\s+die)\s+zahlung|als\s+geschenk\s+senden", re.I)
 _OK_NEG = r"(?!\s*(?:problem|thema|garantie|gewährleistung|rücknahme|umtausch|haftung))"
 # «Sicher bezahlen» пишуть по-різному: «Sicher zahlen», «sicheres Bezahlen», «Sicherbezahlen» (26.09: «kein Sicher zahlen»)
 _SB = r"(?:sicher(?:es)?\s*(?:be)?zahl\w*|bezahlfunktion|käuferschutz)"
@@ -44,8 +50,19 @@ _NO_SYSTEM = re.compile(r"(?:systemkauf|waren\s*(?:&|und)\s*dienstleistung\w*|di
 _TEMPLATE_PHRASES = [r"vor dem anschreiben kurz alles durchlesen", r"unnötige zeit", r"ich bin ein ehrlicher verkäufer",
                      r"meine bewertungen sprechen für sich", r"systemkauf", r"gegebenenfalls direkt blockiert",
                      r"klare und faire bedingungen"]
-_STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur versand|keine abholung|"
-                    r"keine besichtigung|dringend", re.I)
+_STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur versand|keine abholung|abholung nicht|"
+                    r"keine besichtigung|dringend|bundeswehr|soldat|krankenhaus|spedition|kurier|versand nur|nur per post|"
+                    r"wohne (?:jetzt |nun |derzeit )?(?:in|im)\s+(?:ausland|england|spanien|polen|frankreich|italien)", re.I)
+_TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)
+
+
+def _title_of(page: str) -> str:
+    m = _TITLE_RE.search(page)
+    return html.unescape(re.sub(r"<[^>]+>", " ", m.group(1))) if m else ""
+
+
+# «Neu / OVP / versiegelt» дешевше ринку — улюблена приманка (PS5 Slim «unausgepackt» за €280 від акаунта 15 дн., 27.09)
+_NEW_BAIT = re.compile(r"\bneu\b|neuwertig|originalverpackt|versiegelt|ungeöffnet|unausgepackt|\bovp\b|sealed", re.I)
 
 
 def parse_listing(page: str, price: float, quick_sale: float, today: date | None = None) -> dict:
@@ -99,6 +116,19 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
     if story:
         score += min(len(story), 2)
         reasons.append("типові фрази шахраїв: " + ", ".join(story))
+    # Молодий акаунт + ціна помітно нижче ринку: так виглядає більшість «вигідних» шахрайських оголошень (27–28.09:
+    # Xbox €250 від акаунта 0 дн., PS5 €230 — 0 дн., PS5 €280 — 15 дн.). Чесний новачок рідко продає настільки дешево.
+    if m and quick_sale and age_days < 60 and price < 0.75 * quick_sale:
+        score += 2
+        reasons.append(f"акаунт {age_days} дн. і ціна {100 * price / quick_sale:.0f}% ринку")
+        hard.append(f"молодий акаунт ({age_days} дн.) і ціна нижче 75% ринку")
+    if quick_sale and price < 0.7 * quick_sale and _NEW_BAIT.search(desc + " " + _title_of(page)):
+        score += 1
+        reasons.append("«нове / в плівці» набагато дешевше ринку")
+        if m and age_days < 180:
+            hard.append("«нове / в плівці» за ціною нижче 70% ринку від молодого акаунта")
+    if len(desc) < 30 and m and age_days < 90 and quick_sale and price < 0.8 * quick_sale:
+        hard.append("порожній опис, молодий акаунт і ціна нижче ринку")
     if quick_sale and price < 0.4 * quick_sale:
         score += 2
         reasons.append(f"ціна {price:.0f} € — менше 40% ринку")

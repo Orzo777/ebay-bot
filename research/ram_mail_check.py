@@ -208,6 +208,8 @@ _RAM_SEARCH = {  # назва підписки → межі ціни (як у KA
     "arbeitsspeicher ddr5": (20, 108), "ddr5 16gb": (10, 108), "ddr5 sodimm 16gb": (10, 81), "ddr5 sodimm 32gb": (20, 191),
     "ddr5 2x16gb": (20, 256), "ddr5 32gb": (20, 256), "ddr5 2x32gb": (40, 427), "ddr5 64gb": (40, 427),
     "ddr4 2x16gb": (15, 87), "ddr4 sodimm 32gb": (15, 89), "ddr4 64gb": (30, 202),
+    # 28.09: «Laptop/Notebook RAM» без «SO-DIMM» і «32GB» без «2x16» не ловила жодна підписка; для 2x24 підписки не було
+    "ddr4 32gb": (15, 93), "ddr5 48gb": (20, 311),
 }
 _KA = "https://www.kleinanzeigen.de"
 _CONSOLE_SEARCH = {
@@ -217,6 +219,12 @@ _CONSOLE_SEARCH = {
            "k0c279+konsolen.art_s:playstation+konsolen.versand_s:ja",
     "switch 2": "/s-konsolen/nintendo/anbieter:privat/anzeige:angebote/preis:150:285/switch-2/"
                 "k0c279+konsolen.art_s:nintendo+konsolen.model_s:switch_2+konsolen.versand_s:ja",
+    # 28.09: ~20% консолей продавці публікують без фільтра моделі — дублюємо підписки за назвою (KA ігнорує «x», «2», «5»,
+    # тож нижня межа €230 відсікає Series S / Switch OLED / PS4, а решту відсіює бот)
+    "xbox series": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:230:402/xbox-series/"
+                   "k0c279+konsolen.art_s:xbox+konsolen.versand_s:ja",
+    "playstation 5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:230:323/playstation-5/"
+                     "k0c279+konsolen.art_s:playstation+konsolen.versand_s:ja",
 }
 
 
@@ -232,6 +240,10 @@ _HAMBURG_SEARCH = {
            + "+konsolen.art_s:playstation",
     "switch 2": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:150:{switch2}/switch-2/k0c279" + _HAMBURG
                 + "+konsolen.art_s:nintendo+konsolen.model_s:switch_2",
+    "xbox series": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:230:{xbox}/xbox-series/k0c279" + _HAMBURG
+                   + "+konsolen.art_s:xbox",
+    "playstation 5": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:230:{ps5}/playstation-5/k0c279" + _HAMBURG
+                     + "+konsolen.art_s:playstation",
 }
 HAMBURG_MAX = dict(ddr5=430, ddr4=207, xbox=425, ps5=343, switch2=299)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
 _PICKUP_SUBJECT = re.compile(r"\bin Hamburg\b", re.I)

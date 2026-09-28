@@ -198,3 +198,29 @@ class TestNegotiateFixedPrice(unittest.TestCase):
         html_ = format_html(r)
         self.assertIn("ПІДОЗРІЛО ДЕШЕВО", html_)
         self.assertNotIn("ВІДМІННО", html_)
+
+
+class TestAuctions(unittest.TestCase):
+    """28.09: аукціони — сповіщення за ≤3 год до кінця, якщо ставка ще нижча за межу; раз на оголошення."""
+
+    def _it(self, bid, hours_left):
+        from datetime import timedelta
+        end = (NOW + timedelta(hours=hours_left)).isoformat().replace("+00:00", "Z")
+        return dict(itemId="v1|9|0", title="Corsair Vengeance DDR5 32GB (2x16GB) 6000MHz", currentBidPrice={"value": str(bid)},
+                    itemEndDate=end, buyingOptions=["AUCTION"], conditionId="3000", itemWebUrl="https://www.ebay.de/itm/9",
+                    shippingOptions=[{"shippingCost": {"value": "6.19"}}], seller={"username": "s", "feedbackScore": 100},
+                    itemLocation={"postalCode": "10***", "country": "DE"})
+
+    def test_candidate(self):
+        from ebay_watch import auction_candidate
+        st = {}
+        self.assertIsNone(auction_candidate(self._it(140, 30), st, NOW))    # ще далеко до кінця
+        self.assertIsNotNone(auction_candidate(self._it(140, 2), st, NOW))  # ≤3 год, ставка нижча межі
+        self.assertIsNone(auction_candidate(self._it(140, 2), st, NOW))     # вдруге — ні
+        self.assertIsNone(auction_candidate(dict(self._it(300, 2), itemId="v1|8|0"), {}, NOW))   # уже дорого
+
+    def test_share_link_ids(self):
+        from ebay_watch import ebay_item_id
+        self.assertEqual(ebay_item_id("https://www.ebay.de/itm/257771018556?_skw=ddr5&hash=x"), "257771018556")
+        self.assertEqual(ebay_item_id("https://www.ebay.de/itm/Corsair-DDR5/168736560292"), "168736560292")
+        self.assertIsNone(ebay_item_id("https://www.kleinanzeigen.de/s-anzeige/x/3525219406-279-1"))

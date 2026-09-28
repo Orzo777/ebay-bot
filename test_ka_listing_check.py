@@ -43,7 +43,7 @@ class TestRisk(unittest.TestCase):
         self.assertTrue(any("40%" in x for x in r["reasons"]))
 
     def test_young_account_alone_is_low(self):
-        r = parse_listing(page(HONEST, since="01.08.2026"), 300, 509, TODAY)
+        r = parse_listing(page(HONEST, since="01.08.2026"), 400, 509, TODAY)   # ціна ~ринкова (79%)
         self.assertEqual(r["level"], "low")
         self.assertTrue(any("молодий" in x for x in r["reasons"]))
 
@@ -52,7 +52,7 @@ class TestRisk(unittest.TestCase):
         r = parse_listing(page('Versand nur über PayPal als „Freunde &amp; Familie". Andere Zahlungswege wie „PayPal '
                                'Käuferschutz" oder die Bezahlfunktion von Kleinanzeigen kommen für mich nicht infrage.'),
                           350, 509, TODAY)
-        self.assertEqual(r["level"], "medium")   # «жовтий», але з жорсткими ознаками — все одно відкидаємо
+        self.assertIn(r["level"], ("medium", "high"))   # з жорсткими ознаками — відкидаємо за будь-якого рівня
         self.assertTrue(r["block"])
         self.assertTrue(any("Sicher bezahlen" in x for x in r["reasons"]))
 
@@ -100,9 +100,27 @@ class TestRisk(unittest.TestCase):
             self.assertFalse(r["block"], desc)
 
     def test_young_account_or_short_text_only_warns(self):
-        r = parse_listing(page("Xbox Series X", since="01.08.2026"), 300, 509, TODAY)
+        r = parse_listing(page("Xbox Series X", since="01.08.2026"), 420, 509, TODAY)   # ціна ~ринкова (83%)
         self.assertEqual(r["level"], "medium")
         self.assertFalse(r["block"])
+
+    def test_young_account_cheap_is_blocked(self):
+        """28.09: молодий акаунт + ціна нижче 75% ринку — типовий шахрай (Xbox €250 / 0 дн., PS5 €280 / 15 дн.)."""
+        r = parse_listing(page(HONEST, since="01.08.2026"), 300, 509, TODAY)
+        self.assertTrue(r["block"])
+        r = parse_listing(page(HONEST, since="01.08.2020"), 300, 509, TODAY)   # старий акаунт — не блокуємо
+        self.assertFalse(r["block"])
+
+    def test_new_sealed_bait(self):
+        r = parse_listing(page("Die PS5 ist noch unausgepackt und originalverpackt, Versand möglich.", since="12.04.2026"),
+                          280, 438, TODAY)
+        self.assertTrue(r["block"])
+
+    def test_masked_payment_and_contacts(self):
+        for d in ["Zahlung nur per Pay Pal an Freunde, Versand sofort.", "Bezahlung über Wero oder Echtzeitüberweisung.",
+                  "Bitte 50 € Anzahlung, Rest bei Versand.", "Zahlung per PP F+F bitte.", "Meldet euch per Threema.",
+                  "Tel.: 0171 2345678"]:
+            self.assertTrue(parse_listing(page(d + " Top Zustand, kaum benutzt, mit OVP."), 400, 509, TODAY)["block"], d)
 
     def test_gone_listing(self):
         r = parse_listing("<html>Diese Anzeige ist nicht mehr verfügbar</html>", 300, 509, TODAY)

@@ -32,7 +32,9 @@ LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|
                   r"\b(?:[5-9]|\d{2,})\s?(?:stk|stueck|st[uü]ck)\b", re.I)
 
 SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b", re.I)
-SODIMM = re.compile(r"so-?\s?dimm|\b(laptop|notebook|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b", re.I)
+SODIMM = re.compile(r"so-?\s?dimm|\b(laptop|notebook|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
+                    # номери ноутбучних модулів: Samsung M425R/M471A/M474A, Crucial …S5/…SFRA, Kingston KF…S…/KVR…S…
+                    r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}", re.I)
 
 # (канонічна назва, regex) — порядок = пріоритет; бренди модулів раніше за виробників чипів
 BRANDS = [
@@ -60,6 +62,7 @@ CHIP_OEM = {"Samsung", "SK Hynix", "Micron", "Nanya", "Elpida", "Qimonda", "Infi
 _KIT1 = re.compile(r"(?<![\d.])(\d)\s*x\s*(\d{1,3})\s?-?\s?(?:gb|g\b)", re.I)     # 2x16GB, 2 x 16 GB, 3x  32GB
 _KIT2 = re.compile(r"(?<![\d.])(\d{1,3})\s?-?\s?gb\s?x\s?(\d)\b", re.I)          # 16GB x2
 _KIT3 = re.compile(r"\((\d)\s?x\s?(\d{1,3})\)", re.I)                              # (2x16)
+_KIT4 = re.compile(r"(?<![\d.])([2-4])\s*x\s*(\d{1,2})(?![\d.])(?!\s*(?:mhz|mt|cl|gb))", re.I)   # «16GB 2x8 5600MHz»
 _SINGLE = re.compile(r"(?<![\d.x])(\d{1,3})\s?-?\s?gb\b(?!\s?/\s?s)", re.I)  # «64-GB-Kit»; «GB/s» — швидкість
 # «2x Corsair … 16GB … insg. 32GB», «2 Stk 16GB», «2er-Set»: кількість окремо від ємності
 _COUNT = re.compile(r"(?:^|[\s(])([2-4])\s?(?:x|stk\.?|stueck|st[uü]ck|er[- ]?(?:set|kit|pack))(?=[\s)]|$)", re.I)
@@ -96,6 +99,30 @@ def parse_speed(t: str, gen: str):
     return None
 
 
+# Назва без «DDR4/DDR5» (28.09: ~9% оголошень, «Corsair Vengeance pro 32gb 3600mhz»): покоління з номера моделі
+# або частоти. Лише однозначні ознаки; DDR3 (до 2133 МГц) не вгадуємо.
+_GEN5_HINT = re.compile(r"\bf5-\d|\bkf5\d|\bcm[khtwp]\d+gx5|\bct\d+g5|\bct2k\d+g5|trident\s*z5|ripjaws\s*[sm]5|"
+                        r"flare\s*x5|\bm32[35]r|\bm42[05]r|\bpc5\b", re.I)
+_GEN4_HINT = re.compile(r"\bf4-\d|\bkf4\d|\bcm[khtwp]\d+gx4|\bct\d+g4|\bct2k\d+g4|\bm378a|\bm471a|\bpc4\b|"
+                        r"ballistix|vengeance\s*lpx|ripjaws\s*v\b|trident\s*z\s*(?:neo|rgb|royal)", re.I)
+
+
+def guess_gen(t: str) -> str | None:
+    if _GEN5_HINT.search(t):
+        return "ddr5"
+    if _GEN4_HINT.search(t):
+        return "ddr4"
+    m = re.search(r"(?<!\d)(\d{4})\s?(?:mhz|mt/?s)", t)
+    if m and re.search(r"\bram\b|arbeitsspeicher|dimm|riegel|speicher|\bkit\b|vengeance|fury|trident|ripjaws|dominator|"
+                       r"t-?force|viper|aegis|lancer", t):
+        v = int(m.group(1))
+        if 4800 <= v <= 8800:
+            return "ddr5"
+        if 2400 <= v <= 4600:
+            return "ddr4"
+    return None
+
+
 def parse_capacity(t: str):
     """→ (total_gb, modules, None) або (None, None, причина)."""
     kits = [(int(a), int(b)) for a, b in _KIT1.findall(t)] + [(int(b), int(a)) for a, b in _KIT2.findall(t)]         + [(int(a), int(b)) for a, b in _KIT3.findall(t)]
@@ -103,6 +130,10 @@ def parse_capacity(t: str):
     if len(kit_set) > 1:
         return None, None, "кілька різних кітів"
     singles = {int(x) for x in _SINGLE.findall(t)}
+    if not kit_set:   # «2x8» без «GB», якщо сума збігається з указаною ємністю
+        k4 = {(int(a), int(b)) for a, b in _KIT4.findall(t) if int(a) * int(b) in singles}
+        if len(k4) == 1:
+            kit_set = k4
     explicit_one = {m for n, m in kits if n == 1}     # «(1x64GB)» — саме одна планка, не кіт
     if not kit_set and len(explicit_one) == 1 and singles <= explicit_one:
         v = next(iter(explicit_one))
@@ -154,9 +185,9 @@ def parse_title(title: str):
     if re.search(r"\blpddr|soldered|onboard|\bl?camm2?\b", t):   # CAMM — окремий ноутбучний формат, не SO-DIMM
         return None, "LPDDR/впаяна"
     m = _DDR.search(t)
-    if not m:
+    gen = "ddr" + (m.group(1) or m.group(2)) if m else guess_gen(t)
+    if not gen:
         return None, "покоління не вказано"
-    gen = "ddr" + (m.group(1) or m.group(2))
     total, mods, why = parse_capacity(t)
     if total is None:
         return None, why
