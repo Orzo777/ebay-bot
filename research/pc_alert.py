@@ -30,7 +30,17 @@ _GPU = re.compile(r"(gtx|rtx|rx)\s?-?(\d{3,4})", re.I)
 _RAM = re.compile(r"(\d{1,2})\s?gb\s?(?:ddr\d\s?)?(?:ram|arbeitsspeicher|speicher)?", re.I)
 
 
+# Старе залізо (28.09, 260 живих оголошень ПК-бота): продається за копійки, розбирати нема на що
+OLD_HW = re.compile(r"core\s?2|\bduo\b|\bquad\b|phenom|athlon|\bamd\s*a\d{1,2}\b|\ba(?:4|6|8|10|12)-\d{4}|pentium|celeron|"
+                    r"\bi[357][\s-]?[2-5]\d{3}\b|\bi[357]\s*[2-5]\.?\s?gen|xeon\s*e[35]-?\d{4}\b(?!\s*v[3-9])|\bddr[23]\b|"
+                    r"windows\s?(?:xp|vista|7)\b|"
+                    # моделі з процесорами 2–4-го покоління: EliteDesk/ProDesk G1, Compaq, старі OptiPlex, Esprimo P5x0/P7x0
+                    r"(?:elite|pro)\s?desk\s*\d{3}\s*g1\b|compaq|optiplex\s*(?:3010|7010|9010|3020|7020|9020|[3-9]90)\b|"
+                    r"esprimo\s*p\s?-?(?:5[0-2]0|7[0-2]0)\b|\bfx[\s-]?\d{4}\b", re.I)
+
+
 def parse_pc(title: str) -> dict:
+    title = re.sub(r"[\u2010-\u2015\u2212]", "-", title or "")   # «i5‑4460» з нерозривним дефісом
     cpu = None
     m = _INTEL.search(title)
     if m:
@@ -62,6 +72,10 @@ def _net(sale: float, ship: float) -> float:
 
 def evaluate_pc(title: str, price: float) -> dict:
     p = parse_pc(title)
+    if p["cpu"] and p["cpu"][0] in ("i3", "i5", "i7") and p["cpu"][1] <= 5 and not p["gpu"]:
+        return dict(verdict="SKIP", parsed=p, cost=price + PICKUP, reason=f"старе покоління ({p['cpu'][0]} {p['cpu'][1]}-го)")
+    if OLD_HW.search(title) and not (p["gpu"] in GAMING_PC_BY_GPU):
+        return dict(verdict="SKIP", parsed=p, cost=price + PICKUP, reason="старе залізо — не варте перепродажу")
     options = []   # (опис, чистими після продажу)
     if p["gpu"] in GAMING_PC_BY_GPU:
         options.append((f"ігровий ПК з {p['gpu'].upper()} цілим ~€{GAMING_PC_BY_GPU[p['gpu']]}",

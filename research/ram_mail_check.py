@@ -320,13 +320,27 @@ def send_telegram_hint(html_text: str, link: str):
 # У категорію «PCs» продавці кладуть і дрібниці: Raspberry Pi, тонкі клієнти, порожні корпуси, периферію.
 # Для ПК-бота потрібен цілий комп'ютер (його розбирають на RAM/відеокарту або перепродують).
 _PC_NOT_PC = re.compile(r"raspberry|\bpi\s?[2-5]\b|arduino|banana\s?pi|orange\s?pi|odroid|jetson|"
-                        r"thin\s?client|futro|\bt6[2-4]0\b|wyse|igel", re.I)
+                        r"thin\s?client|futro|\bt6[2-4]0\b|wyse|igel|"
+                        # 28.09 (260 живих оголошень): iMac/AIO, ноутбуки, монітори, проєктори, сервери, ретро, консолі
+                        r"\bi\s?\.?\s?mac\b|macbook|mac\s?pro|all[- ]?in[- ]?one|\baio\b|laptop|leptop|notebook|netbook|"
+                        r"thinkpad|ideapad|elitebook|latitude|probook|chromebook|surface|beamer|projektor|"
+                        r"computermonitor|\bserver\b|proliant|poweredge|commodore|\bc64\b|amiga|atari|pocket\s?computer|"
+                        r"taschencomputer|einplatinen|cubie|apple|\bps[2-5]\b|playstation|xbox|nintendo|dokkan|\bipad\b|tablet|"
+                        r"wlan-?karte|netzwerkkarte|mount\b|halterung|fernbedienung|cachemodul|\braid\b|\bsdram\b|gddr", re.I)
+_PC_BROKEN = re.compile(r"defekt|bastler|kaputt|caput|wasserschaden|ausschlacht|ersatzteil|ohne\s+(?:cpu|prozessor|mainboard|"
+                        r"netzteil)|geht nicht|startet nicht", re.I)
 # Запчастина — лише якщо названа ПЕРШОЮ («Netzteil für PC»), а не в комплекті («Gaming PC mit Netzteil»)
-_PC_PART = re.compile(r"netzteil|mainboard|motherboard|lüfter|kühler|tastatur|maus\b|headset|webcam|kabel|adapter|"
+_PC_PART = re.compile(r"netzteil|\bssd\b|mainboard|motherboard|lüfter|kühler|tastatur|maus\b|headset|webcam|kabel|adapter|"
                       r"drucker|lautsprecher|dvd|laufwerk|spiel\b|software|windows\s?(?:1[01]|key|lizenz)|"
                       r"grafikkarte|prozessor|\bcpu\b|arbeitsspeicher|festplatte", re.I)
 _PC_WORD = re.compile(r"\bpc\b|computer|rechner|gaming|tower|desktop|workstation", re.I)
 _PC_CASE = re.compile(r"gehäuse|\bcase\b", re.I)
+# Начинка без слова «gaming»: «Gaming-Tastatur», «Gaming PC Gehäuse» — не ознака цілого ПК (28.09)
+_PC_INSIDES_STRICT = re.compile(r"\bi[3579]\b|i[3579]-?\d|ryzen|core|xeon|pentium|celeron|athlon|intel|amd|\d+\s?gb|gtx|rtx|"
+                                r"\brx\s?\d|radeon|geforce|\bssd\b|\bhdd\b|festplatte", re.I)
+_PC_WHOLE = re.compile(r"tower|desktop|rechner|komplett|system|workstation|midi|büro|office|gaming[- ]?pc|\bpc\s+(?:mit|inkl|\+)", re.I)
+_PC_COMPONENT = re.compile(r"lüfter|\bfan\b|\d{3,4}\s?w\b|dockingstation|\bnas\b|ständer|taschenrechner|reparatur|"
+                           r"service", re.I)
 _PC_HAS_INSIDES = re.compile(r"\bi[3579]\b|i[3579]-?\d|ryzen|core|xeon|pentium|celeron|athlon|intel|amd|"
                              r"\d+\s?gb|gtx|rtx|\brx\s?\d|radeon|geforce|ssd|gaming|komplett", re.I)
 _PC_MONITOR = re.compile(r"monitor|bildschirm", re.I)
@@ -334,7 +348,7 @@ _PC_MONITOR = re.compile(r"monitor|bildschirm", re.I)
 
 # Мініпк користувачу не потрібні (26.09): ноутбучна пам'ять, відеокарту не поставиш, на розбір малоцінні.
 # Назва часто не містить «mini» («Terra PC / i5-6400 / … / 25x22x10cm») — тоді ловимо за розмірами корпусу.
-_PC_MINI = re.compile(r"\bmini\b|mini-?pc|minipc|\bmicro\b|\btiny\b|\bnuc\b|\busff\b|\bdm\b|desktop\s?mini|"
+_PC_MINI = re.compile(r"ultra[- ]?slim|\busdt\b|\bmini\b|mini-?pc|minipc|\bmicro\b|\btiny\b|\bnuc\b|\busff\b|\bdm\b|desktop\s?mini|"
                       r"\bm\d{3}q\b|esprimo\s*q|\bq\d{3}\b|mac\s?mini|beelink|minisforum|gmktec|zbox|\bbrix\b|"
                       r"chuwi|trigkey|acemagic|geekom|asus\s*pn\d", re.I)
 _PC_DIMS = re.compile(r"(\d{1,3}(?:[.,]\d)?)\s*[x×]\s*(\d{1,3}(?:[.,]\d)?)\s*[x×]\s*(\d{1,3}(?:[.,]\d)?)\s*cm", re.I)
@@ -350,15 +364,21 @@ def _is_mini_pc(title: str) -> bool:
 def pc_skip_reason(title: str) -> str | None:
     """None — схоже на цілий ПК; інакше причина, чому не шлемо."""
     if _PC_NOT_PC.search(title):
-        return "не комп'ютер (Raspberry Pi / тонкий клієнт)"
+        return "не настільний ПК (ноутбук, iMac/AIO, монітор, сервер, консоль, деталь…)"
+    if _PC_BROKEN.search(title):
+        return "несправний / на запчастини"
     if _is_mini_pc(title):
         return "мініпк — не беремо"
     part, pc = _PC_PART.search(title), _PC_WORD.search(title)
     if part and (not pc or part.start() < pc.start()):
         return "запчастина або периферія, не цілий ПК"
-    if _PC_CASE.search(title) and not _PC_HAS_INSIDES.search(title):
+    # «Pc Netzteil Inter-Tech 650W», «5x RGB PC-Lüfter» (28.09): деталь після «PC» і жодної ознаки начинки / цілого системника
+    if (part or _PC_COMPONENT.search(title)) and not _PC_INSIDES_STRICT.search(title) and not _PC_WHOLE.search(title):
+        return "запчастина або периферія, не цілий ПК"
+    if _PC_CASE.search(title) and not _PC_INSIDES_STRICT.search(title):
         return "лише корпус"
-    if _PC_MONITOR.search(title) and not pc and not _PC_HAS_INSIDES.search(title):
+    if _PC_MONITOR.search(title) and not _PC_INSIDES_STRICT.search(title) and not re.search(r"\b(?:mit|inkl\.?|\+|und)\s+"
+                                                                                             r"(?:\w+\s+)?monitor", title, re.I):
         return "лише монітор"
     return None
 
@@ -397,16 +417,32 @@ def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: s
             continue
         if stale:
             continue
-        ev = evaluate_pc(lst["title"], lst["price"])   # ціле / на запчастини, самовивіз; невигідне — не шлемо
-        print(f"   оцінка: {ev['verdict']}" + (f", заробіток ≈ {ev['profit']:.0f} € ({ev['how']})" if "profit" in ev else ""))
-        if ev["verdict"] == "SKIP":
+        if 0 < lst["price"] <= 1:   # «1 €» / «1 € VB» — заглушка, а не ціна (0 = «Zu verschenken» — справжнє)
+            print("   пропускаю: ціна-заглушка")
             continue
-        lst["pc_eval"] = ev
+        ev = evaluate_pc(lst["title"], lst["price"])   # ціле / на запчастини, самовивіз; невигідне — не шлемо
+        if ev["verdict"] == "SKIP":
+            print(f"   оцінка: SKIP ({ev.get('reason') or 'невигідно'})")
+            continue
         # та сама перевірка продавця, що й в основному боті: без «Sicher bezahlen» / PayPal Freunde — не показуємо
         risk = check_listing(lst.get("link"), lst["price"], 0)
         if risk and (risk["level"] == "gone" or risk.get("block")):
             print("   пропускаю: " + ("оголошення зняте" if risk["level"] == "gone" else "ШАХРАЙ — " + "; ".join(risk["hard"])))
             continue
+        desc = (risk or {}).get("desc") or ""
+        if _PC_BROKEN.search(desc) and broken_reason(desc):
+            print(f"   пропускаю: в описі дефект «{broken_reason(desc)}»")
+            continue
+        if ev["verdict"] == "UNKNOWN" and desc:   # процесор/відеокарта часто лише в описі (28.09: 209 з 260 «невідомо»)
+            ev = evaluate_pc(lst["title"] + " | " + desc, lst["price"])
+            if ev["verdict"] == "SKIP":
+                print(f"   за описом: SKIP ({ev.get('reason') or 'невигідно'})")
+                continue
+        if ev["verdict"] == "UNKNOWN" and not (_PC_WORD.search(lst["title"]) and lst["price"] <= 40):
+            print("   невідомо, і не схоже на дешевий цілий ПК — не шлю")
+            continue
+        print(f"   оцінка: {ev['verdict']}" + (f", заробіток ≈ {ev['profit']:.0f} € ({ev['how']})" if "profit" in ev else ""))
+        lst["pc_eval"] = ev
         if dry_run or not PC_BOT_TOKEN:
             print("   [ПК-бот] " + ("DRY RUN" if dry_run else "немає секрету PC_BOT_TOKEN — пропускаю"))
             continue
