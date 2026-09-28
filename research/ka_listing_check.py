@@ -31,10 +31,12 @@ _CONTACT = re.compile(r"whats\s?app|\bwa\b\s*:|telegram|threema|\b[\w.+-]+@[a-z0
                       r"ruf\w*\s+(?:sie\s+)?mich\s+an\b|\bsms\b|insta(?:gram)?\s*:", re.I)   # «Rechnung per E-Mail» — не контакт
 # Оплата без захисту покупця. Шахраї маскують «PayPal»: «Pay Pal», «P@yPal», «PP», «F+F», «FnF» (28.09).
 _PP = r"(?:pay\s*\.?\s*pal|p\s*@\s*y\s*pal|\bpp\b)"
-_PAYMENT = re.compile(r"(?:freunde|familie)\s*(?:&|und|\+|/)\s*(?:familie|freunde)|" + _PP + r"\s*(?:an\s*|als\s*|über\s*)?"
-                      r"(?:freunde|friends|family|familie|privat)|\bf\s?[&+]\s?f\b|\bfnf\b|vorkasse|nur\s+(?:per\s+)?überweisung|"
+# «PayPal FF», «Paypal per Freunde», «PP an Freunde» — між PayPal і «Freunde» буває 0–2 слова (28.09, живі описи)
+_PAYMENT = re.compile(r"(?:freunde|familie)\s*(?:&|und|\+|/)\s*(?:familie|freunde)|" + _PP + r"\W{0,3}(?:\w+\W+){0,2}?"
+                      r"(?:freunde|friends|family|familie|privat|ff|fnf)\b|\bf\s?[&+]\s?f\b|\bfnf\b|vorkasse|nur\s+(?:per\s+)?überweisung|"
                       r"western union|paysafe|\bwero\b|echtzeit-?überweisung|sofortüberweisung|überweisung\s+(?:vorab|vorher|im\s+voraus)|"
                       r"\banzahlung|\bkaution|treuhand|zahlungs-?link|link\s+(?:zur|für\s+die)\s+zahlung|als\s+geschenk\s+senden", re.I)
+_TRANSFER = re.compile(r"überweisung", re.I)
 _OK_NEG = r"(?!\s*(?:problem|thema|garantie|gewährleistung|rücknahme|umtausch|haftung))"
 # «Sicher bezahlen» пишуть по-різному: «Sicher zahlen», «sicheres Bezahlen», «Sicherbezahlen» (26.09: «kein Sicher zahlen»)
 _SB = r"(?:sicher(?:es)?\s*(?:be)?zahl\w*|bezahlfunktion|käuferschutz)"
@@ -51,7 +53,7 @@ _TEMPLATE_PHRASES = [r"vor dem anschreiben kurz alles durchlesen", r"unnötige z
                      r"meine bewertungen sprechen für sich", r"systemkauf", r"gegebenenfalls direkt blockiert",
                      r"klare und faire bedingungen"]
 _STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur versand|keine abholung|abholung nicht|"
-                    r"keine besichtigung|dringend|bundeswehr|soldat|krankenhaus|spedition|kurier|versand nur|nur per post|"
+                    r"keine besichtigung|dringend|bundeswehr|soldat|krankenhaus|spedition|kurier|versand\s+nur\s+(?:gegen|per|bei|mit|über)|nur per post|"
                     r"wohne (?:jetzt |nun |derzeit )?(?:in|im)\s+(?:ausland|england|spanien|polen|frankreich|italien)", re.I)
 _TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)
 
@@ -100,6 +102,9 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
         score += 2
         reasons.append("у описі кличе писати поза Kleinanzeigen")
         hard.append("кличе писати поза Kleinanzeigen")
+    if not _PAYMENT.search(desc) and _TRANSFER.search(desc):   # «PayPal oder Überweisung» — не блок, але попередження
+        score += 1
+        reasons.append("пропонує переказ (без захисту покупця) — плати лише через «Sicher bezahlen»")
     if _PAYMENT.search(desc):
         score += 2
         reasons.append("оплата переказом / PayPal Freunde")

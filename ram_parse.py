@@ -104,7 +104,8 @@ def parse_speed(t: str, gen: str):
 _GEN5_HINT = re.compile(r"\bf5-\d|\bkf5\d|\bcm[khtwp]\d+gx5|\bct\d+g5|\bct2k\d+g5|trident\s*z5|ripjaws\s*[sm]5|"
                         r"flare\s*x5|\bm32[35]r|\bm42[05]r|\bpc5\b", re.I)
 _GEN4_HINT = re.compile(r"\bf4-\d|\bkf4\d|\bcm[khtwp]\d+gx4|\bct\d+g4|\bct2k\d+g4|\bm378a|\bm471a|\bpc4\b|"
-                        r"ballistix|vengeance\s*lpx|ripjaws\s*v\b|trident\s*z\s*(?:neo|rgb|royal)", re.I)
+                        r"ballistix|vengeance\s*lpx|vengeance\s*rgb\s*pro|ripjaws\s*v\b|trident\s*z\s*(?:neo|rgb|royal)|"
+                        r"\baegis\b|t-?force\s*vulcan\s*z|viper\s*steel", re.I)
 
 
 def guess_gen(t: str) -> str | None:
@@ -174,6 +175,8 @@ def parse_capacity(t: str):
 def parse_title(title: str):
     """→ dict(gen, form, ecc, total, modules, kit, speed, brand, oem) або (None, причина)."""
     t = (title or "").lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("×", "x")
+    t = re.sub(r"[‐-―−]", "-", t)          # «8‑GB‑DDR4»: нерозривні/довгі дефіси → звичайні (28.09)
+    t = re.sub(r"(?<=\d)\s*\*\s*(?=\d)", "x", t)           # «2*8GB» = «2x8GB»
     t = _SEO_NOT.sub(" ", t)
     if DEFECT.search(t):
         return None, "дефект/запчастина"

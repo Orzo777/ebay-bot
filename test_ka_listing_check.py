@@ -163,3 +163,23 @@ class TestBuyNow(unittest.TestCase):
         self.assertIn("Direkt kaufen", format_html(r))
         r["buy_now"] = False
         self.assertNotIn("Direkt kaufen", format_html(r))
+
+
+class TestPass2Descriptions(unittest.TestCase):
+    """28.09, прохід по 391 живому опису."""
+
+    def test_payment_variants(self):
+        for d in ["Versicherter Versand per DHL, PayPal FF auch möglich.", "Versand nur bei Paypal per Freunde.",
+                  "Zahlung per PP an Freunde bitte."]:
+            self.assertTrue(parse_listing(page(d + " Top Zustand, kaum benutzt."), 400, 509, TODAY)["block"], d)
+
+    def test_honest_not_blocked(self):
+        for d in ["Kein Versand nur Abholung. Top Zustand, kaum benutzt, mit OVP.",
+                  "Zahlung ist per PayPal sowie per Überweisung möglich. Top Zustand, kaum benutzt."]:
+            self.assertFalse(parse_listing(page(d), 450, 509, TODAY)["block"], d)
+
+    def test_broken_negations(self):
+        from ram_alert import broken_reason
+        self.assertIsNone(broken_reason("Funktioniert einwandfrei, leise, kein Überhitzen, 2 Controller."))
+        self.assertIsNone(broken_reason("Nicht kaputt, nur Kratzer am Gehäuse."))
+        self.assertTrue(broken_reason("Nach 10 Minuten überhitzt die Konsole."))

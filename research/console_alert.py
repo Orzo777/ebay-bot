@@ -24,12 +24,13 @@ MIN_PRICE = 150  # дешевше — аксесуар, «Suche», шахрай�
 SUSPICIOUS_BELOW = 250  # навіть за старими цінами (до 1.08) вживана Series X коштувала €330+
 
 _SERIES_X = re.compile(r"serie[sn]?\s*x\b", re.I)
-_X_AND_S = re.compile(r"serie[sn]?\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|serie[sn]?\s*s\s*(?:/|\||&|und|oder|,)\s*x\b", re.I)
-_OTHER_CONSOLE = re.compile(r"serie[sn]?\s*s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
+# «Series» саме по собі НЕ «Series S» (28.09: «Elite Controller Series 2» відкидав справжні Xbox Series X) — потрібен пробіл
+_X_AND_S = re.compile(r"serie[sn]?\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|\bserie[sn]?\s+s\s*(?:/|\||&|und|oder|,)\s*x\b", re.I)
+_OTHER_CONSOLE = re.compile(r"\bserie[sn]?\s+s\b|\bseries-s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
 _REJECT = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|"
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
                      # eBay (27.09): ігри-колекційки та послуги в категорії Konsolen; японська Switch 2 — лише японська мова
-                     r"collector|legacy\s+edition|steelbook|\bwata\b|\bvga\b|graded|samm?lung|samlung|\blegit\b|"
+                     r"collector|legacy\s+edition|\bwata\b|\bvga\b|graded|samm?lung|samlung|\blegit\b|"
                      r"timestamp|troph|\bjapan", re.I)
 _DIGITAL = re.compile(r"digital", re.I)
 _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|festplatte|\bssd\b|lenkrad|wheel|ständer|"
@@ -130,7 +131,7 @@ PS5_DISC = dict(p25=438, med=460, st=30, name="PS5 з дисководом (вж
 PS5_DIGITAL = dict(p25=399, med=419, st=25, name="PS5 Digital (вживана)")   # 102 продані / 30 дн.
 PS5_SUSPICIOUS_BELOW = 280
 
-_PS5 = re.compile(r"\bps\s?5\b|playstation\s*5", re.I)
+_PS5 = re.compile(r"\bps\s?-?5\b|play\s?-?station\s*-?5|playst\w*ion\s*5", re.I)   # «Play Station 5», «Playsttstion 5»
 _PS5_PRO = re.compile(r"\bpro\b", re.I)
 _PS5_OTHER = re.compile(r"portal|porta\s+remote|remote[\s-]?play|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
 _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive|\bssd\b|festplatte|ständer|halterung|"

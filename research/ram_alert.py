@@ -251,7 +251,9 @@ def broken_reason(desc: str | None) -> str | None:
     """Фрагмент опису, де продавець пише про несправність самого товару, або None."""
     for m in _DESC_BROKEN.finditer(desc or ""):
         before = desc[max(0, m.start() - 40):m.start()]
-        if m.group(0).lower().startswith("defekt") and (_NEG_BEFORE.search(before) or _PART_BEFORE.search(before)):
+        if _NEG_BEFORE.search(before):   # «kein Überhitzen», «keine Defekte», «nicht defekt» (28.09)
+            continue
+        if m.group(0).lower().startswith("defekt") and _PART_BEFORE.search(before):
             continue
         return desc[max(0, m.start() - 30):m.end() + 20].strip()
     return None
@@ -260,7 +262,7 @@ def broken_reason(desc: str | None) -> str | None:
 def desc_facts(desc: str | None, r: dict | None = None) -> dict:
     """Опис → {works: True/False/None, receipt: True/False/None, kit_ok: bool}. None — опис не згадує."""
     d = desc or ""
-    works = (False if _DESC_BROKEN.search(d) or _DESC_UNTESTED.search(d)
+    works = (False if broken_reason(d) or _DESC_UNTESTED.search(d)
              else True if _DESC_WORKS.search(d) else None)
     receipt = False if _DESC_NO_RECEIPT.search(d) else True if _DESC_RECEIPT.search(d) else None
     kit_ok = False
