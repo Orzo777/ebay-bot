@@ -259,6 +259,53 @@ def broken_reason(desc: str | None) -> str | None:
     return None
 
 
+# ---- уточнення за описом (28.09, контрольний прохід по 395 свіжих оголошеннях підписок) ----
+# Назва часто неповна: «DDR5 RAM 16gb» — а в описі «mein alter Laptop RAM»; «32GB DDR4 RAM» — «bestehend aus 4x 8GB»;
+# «SK hynix 2x 32 GB … 239 €» — «Preis für einen Speicherriegel»; «XBOX Series X 1TB» — «ich suche …».
+_D_WANTED = re.compile(r"^\W{0,5}(?:hallo\W+|moin\W+|hi\W+)?(?:ich\s+)?such(?:e|en)\b|\bich\s+suche\s+(?:eine|einen|ein|die|den)\b",
+                       re.I)
+_D_PER_UNIT = re.compile(r"preis\s+(?:ist\s+)?(?:pro|je|für\s+(?:einen|ein|eine|1))\s+(?:riegel|stück|modul|stick|speicherriegel)|"
+                         r"\bje\s+(?:riegel|stück|modul)\b|einzelpreis|stückpreis|preis\s+pro\s+stück", re.I)
+_D_LAPTOP = re.compile(r"so-?\s?dimm|(?:für|aus|im|in)\s+(?:\w+\s+){0,2}(?:laptop|notebook)|laptop-?(?:ram|speicher)|"
+                       r"notebook-?(?:ram|speicher)", re.I)
+_D_NOT_LAPTOP = re.compile(r"(?:nicht|kein\w*)\s+(?:\w+\s+){0,2}(?:für\s+)?(?:laptop|notebook)|desktop|\budimm", re.I)
+_D_SINGLE = re.compile(r"\b1\s*x\s*(\d{1,3})\s?gb|\bein(?:en|zelne[nr]?|zeln)?\s+(?:\w+\s+){0,2}(?:riegel|modul|stick)\b|"
+                       r"einzelner|einzelnes", re.I)
+_D_KIT = re.compile(r"(?<![\d.])([2-8])\s*(?:x|mal|\*)\s*(\d{1,3})\s?gb", re.I)
+
+
+def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | None, evaluate_fn) -> dict:
+    """Перерахунок з урахуванням опису. Повертає новий результат (або той самий, якщо опис нічого не змінює)."""
+    d = desc or ""
+    if not d or res.get("verdict") not in SEND_VERDICTS:
+        return res
+    if _D_WANTED.search(d[:120]):
+        return dict(verdict="SKIP", reason="це оголошення «шукаю», а не продаж", title=title, price=price)
+    extra = []
+    is_ram = "total" in res
+    if is_ram:
+        total = res["total"]
+        k = next(((int(n), int(m)) for n, m in _D_KIT.findall(d) if int(n) * int(m) == total), None)
+        if k:
+            extra.append(f"{k[0]}x{k[1]}GB")
+        elif (res.get("kit_unknown") or res.get("single_module_warning")) and _D_SINGLE.search(d):
+            extra.append(f"1x{total}GB")
+        if "SO-DIMM" not in res.get("type", "") and _D_LAPTOP.search(d) and not _D_NOT_LAPTOP.search(d):
+            extra.append("SO-DIMM")
+    new_price = price
+    if _D_PER_UNIT.search(d):
+        mods = int(extra[0].split("x")[0]) if extra and "x" in extra[0] and not extra[0].startswith("SO") else \
+            (2 if res.get("kit_unknown") else res.get("modules", 1) or 1)
+        new_price = price * max(mods, 2)
+    if not extra and new_price == price:
+        return res
+    new = evaluate_fn(title + " " + " ".join(extra), new_price, vb=vb)
+    if new.get("verdict") == "SKIP" and not new.get("reason"):
+        new["reason"] = "за описом — інший тип або ціна"
+    new["refined"] = ", ".join(extra + ([f"ціна за штуку → разом {new_price:.0f} €"] if new_price != price else []))
+    return new
+
+
 def desc_facts(desc: str | None, r: dict | None = None) -> dict:
     """Опис → {works: True/False/None, receipt: True/False/None, kit_ok: bool}. None — опис не згадує."""
     d = desc or ""

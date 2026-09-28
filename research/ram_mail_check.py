@@ -33,7 +33,7 @@ import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
 from pc_alert import evaluate_pc, pc_card_lines
-from ram_alert import SEND_VERDICTS, apply_pickup, broken_reason, evaluate, format_html, offer_template, seller_template
+from ram_alert import SEND_VERDICTS, apply_pickup, broken_reason, evaluate, refine_by_desc, format_html, offer_template, seller_template
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
 
@@ -511,6 +511,13 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             if res["verdict"] not in SEND_VERDICTS:
                 print("   продавець не віддає самовивозом, а з пересилкою невигідно")
                 continue
+        res = refine_by_desc(res, lst["title"], lst["price"], vb, (risk or {}).get("desc"),
+                             lambda t, p, vb=False: evaluate_console(t, p, vb=vb) or evaluate(t, p, vb=vb))
+        if pickup:
+            apply_pickup(res)
+        if res["verdict"] not in SEND_VERDICTS:   # опис уточнив тип/ціну: ноутбучна, 1 планка, ціна за штуку, «шукаю»
+            print(f"   за описом: {res['verdict']} ({res.get('reason') or res.get('refined', '')})")
+            continue
         res["risk_lines"] = risk_lines(risk)
         res["desc"] = (risk or {}).get("desc")   # що продавець уже написав — не питаємо
         res["buy_now"] = bool((risk or {}).get("buy_now"))
