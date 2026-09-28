@@ -195,3 +195,19 @@ class TestAudit28Ram(unittest.TestCase):
         self.assertIn("48", evaluate("48GB DDR5-6800 CL34 RGB – SK Hynix M-Die nicht 32GB 64GB", 250)["type"])
         r = evaluate("Crucial 64GB DDR5 RAM (1x64GB) 5600MHz SODIMM", 300)
         self.assertEqual(r["verdict"], "SKIP")                                              # 1x64 — не кіт 2x32
+
+
+class TestPass3Parse(unittest.TestCase):
+    def test_titles(self):
+        from ram_parse import parse_title
+        cases = {"16GB Corsair DDR4-3200 RGB Kit": (16, 1), "16GB G.Skill Aegis - 2mal 8 GB DDR4-3200": (16, 2),
+                 "Corsair Vengeance RGB Pro CMW32GX4M2Z3600C18  DDR4 3600 MHz": (32, 2),
+                 "Kingston FURY KF432C16BBK2/32 DDR4": (32, 2), "G.Skill F4-3200C16D-32GVK Ripjaws": (32, 2),
+                 "Crucial CT2K16G4DFD832A DDR4": (32, 2), "16GB (2*8GB) SO-DIMM PC4-3200 SK Hynix": (16, 2),
+                 "Crucial 8‑GB‑DDR4‑2133 Desktop‑RAM‑Modul": (8, 1), "Samsung RAM 16GB 2x8 5600MHz Laptop DDR5": (16, 2)}
+        for t, exp in cases.items():
+            p, why = parse_title(t)
+            self.assertIsNotNone(p, f"{t}: {why}")
+            self.assertEqual((p["total"], p["modules"]), exp, t)
+        self.assertIsNone(parse_title("Corsair Light Enhancement Kit DDR4")[0])
+        self.assertEqual(parse_title("Samsung M425R2GA3BB0-CQK 16GB DDR5")[0]["form"], "sodimm")

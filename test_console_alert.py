@@ -262,3 +262,32 @@ class TestAudit28(unittest.TestCase):
         for t in ["WD Black SN850 1TB SSD für PS5", "Seagate Speichererweiterung 1TB SSD für Xbox Series X",
                   "PS5 1TB SSD Erweiterung", "Xbox Series X/S Controller schwarz"]:
             self.assertEqual(evaluate_console(t, 200)["verdict"], "SKIP", t)
+
+
+class TestPass3Ebay(unittest.TestCase):
+    """28.09, прохід по ~1000 свіжих оголошень eBay."""
+
+    def test_consoles(self):
+        for t in ["Sony PlayStation®5 Digital Edition Spielekonsole Weiß",
+                  "Sony PlayStation 5 PS5 Blu-Ray 825GB PAL 4K DualSense Controller Standfuß",
+                  "Sony PlayStation 5 Digital Edition 825 GB Weiß 4K HDR DualSense Kabel",
+                  "Sony Playstation 5 Disc Edition 825GB CFI-1216A Ohne Spiel Sehr Gut",
+                  "Sony PlayStation 5 Digital with Two Controllers",
+                  "XBOX SERIES X + Elite Controller Series 2 + Forza Horizon 6", "Play Station 5 / 1 TB"]:
+            self.assertTrue(evaluate_console(t, 300).get("type"), t)
+
+    def test_not_consoles(self):
+        for t in ["Fn ACC Ps5", "PlayStation 5 Disk Laufwerk", "Sony PlayStation 5 Controller GTA VI Limited schwarz",
+                  "PS5 AimControllers Inkl. Paddles, Smart Bumpers L2R2, Grip"]:
+            self.assertEqual(evaluate_console(t, 300)["verdict"], "SKIP", t)
+
+
+class TestPass3bBundles(unittest.TestCase):
+    def test_price_aware_bundles(self):
+        for t, p in [("Nintendo Switch 2 - Top Zustand - Restgarantie - 2x Switch Pro Controller", 419),
+                     ("Nintendo Switch Paket! 4 Joycons, 2 Controller, 3 Spiele und Speicherkarte", 250),
+                     ("Nintendo Switch HAC-001 32GB ungepatched | 2 Paar Joy-Cons | 6 Spiele | OVP", 300)]:
+            self.assertTrue(evaluate_console(t, p).get("type"), t)
+        for t, p in [("Sony PlayStation 5 Controller GTA VI Limited schwarz", 279), ("Nintendo Switch Joy-Con Pair 2er-Set", 80),
+                     ("Virtual Boy für Nintendo Switch & Nintendo Switch 2 - NEU & OVP", 160)]:
+            self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", t)

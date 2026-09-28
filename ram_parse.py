@@ -18,7 +18,7 @@ SPEEDS = {
 # --- відсів шуму (не модуль пам'яті, лот-набір, дефект) ---
 # Завжди не модуль пам'яті (або пам'ять разом з дорожчою залізякою).
 JUNK = re.compile(
-    r"\b(rgb[- ]?(strip|kit|licht)|halter|blende|leer|dummy|attrappe|festplatte|ssd|hdd|nvme|mainboard|motherboard|"
+    r"\b(rgb[- ]?(strip|licht)|light\s*(?:enhancement\s*)?kit|beleuchtungs?-?kit|halter|blende|leer|dummy|attrappe|festplatte|ssd|hdd|nvme|mainboard|motherboard|"
     r"grafikkarte|gpu|rtx|gtx|radeon|smartphone|handy|komplett|barebone|gehaeuse|netzteil|tester|testkarte|"
     r"box only|sticker)\b|\bnur\s+(?:die\s+)?(?:ovp|verpackung|karton)|\bleere?\s+(?:ovp|verpackung|karton)", re.I)
 # Не модуль, лише якщо стоїть ДО першого «DDR»: «Gaming PC 7800X3D 64GB DDR5» — ПК, а «32 GB DDR4 … – Gaming PC»,
@@ -59,7 +59,7 @@ BRANDS = [
 _BRANDS = [(n, re.compile(rx, re.I)) for n, rx in BRANDS]
 CHIP_OEM = {"Samsung", "SK Hynix", "Micron", "Nanya", "Elpida", "Qimonda", "Infineon", "Dell", "HP", "Lenovo", "Apple", "Supermicro", "SMART"}
 
-_KIT1 = re.compile(r"(?<![\d.])(\d)\s*x\s*(\d{1,3})\s?-?\s?(?:gb|g\b)", re.I)     # 2x16GB, 2 x 16 GB, 3x  32GB
+_KIT1 = re.compile(r"(?<![\d.])(\d)\s*(?:x|mal)\s*(\d{1,3})\s?-?\s?(?:gb|g\b)", re.I)     # 2x16GB, 2 x 16 GB, 3x  32GB
 _KIT2 = re.compile(r"(?<![\d.])(\d{1,3})\s?-?\s?gb\s?x\s?(\d)\b", re.I)          # 16GB x2
 _KIT3 = re.compile(r"\((\d)\s?x\s?(\d{1,3})\)", re.I)                              # (2x16)
 _KIT4 = re.compile(r"(?<![\d.])([2-4])\s*x\s*(\d{1,2})(?![\d.])(?!\s*(?:mhz|mt|cl|gb))", re.I)   # «16GB 2x8 5600MHz»
@@ -124,6 +124,24 @@ def guess_gen(t: str) -> str | None:
     return None
 
 
+# Ємність і кількість планок із номера моделі (eBay 28.09: «Corsair Vengeance RGB Pro CMW32GX4M2Z3600C18» без «32GB»):
+# Corsair CM?32GX4M2 = 2 планки, разом 32; Kingston KF432C16BBK2/32; G.Skill F4-3200C16D-32G (S/D/Q = 1/2/4); Crucial CT2K16G4.
+_PN = [(re.compile(r"\bcm[a-z]{1,3}(\d{1,3})gx[345]m(\d)"), lambda m: (int(m.group(2)), int(m.group(1)))),
+       (re.compile(r"\bk[fv][a-z0-9]*?k(\d)/(\d{1,3})\b"), lambda m: (int(m.group(1)), int(m.group(2)))),
+       (re.compile(r"\bkf\d{3}[a-z0-9]*?/(\d{1,3})\b"), lambda m: (1, int(m.group(1)))),
+       (re.compile(r"\bf[345]-\d{4}c\d{2}([sdq])-(\d{1,3})g"), lambda m: ({"s": 1, "d": 2, "q": 4}[m.group(1)], int(m.group(2)))),
+       (re.compile(r"\bct(\d)k(\d{1,3})g\d"), lambda m: (int(m.group(1)), int(m.group(1)) * int(m.group(2))))]
+
+
+def part_capacity(t: str):
+    """→ (кількість планок, загальна ємність) з номера моделі або None."""
+    for rx, f in _PN:
+        m = rx.search(t)
+        if m:
+            return f(m)
+    return None
+
+
 def parse_capacity(t: str):
     """→ (total_gb, modules, None) або (None, None, причина)."""
     kits = [(int(a), int(b)) for a, b in _KIT1.findall(t)] + [(int(b), int(a)) for a, b in _KIT2.findall(t)]         + [(int(a), int(b)) for a, b in _KIT3.findall(t)]
@@ -135,6 +153,11 @@ def parse_capacity(t: str):
         k4 = {(int(a), int(b)) for a, b in _KIT4.findall(t) if int(a) * int(b) in singles}
         if len(k4) == 1:
             kit_set = k4
+    pn = part_capacity(t)
+    if not kit_set and pn and pn[0] > 1 and pn[1] % pn[0] == 0 and (not singles or singles <= {pn[1], pn[1] // pn[0]}):
+        kit_set = {(pn[0], pn[1] // pn[0])}
+    elif not kit_set and not singles and pn and pn[0] == 1:
+        singles = {pn[1]}
     explicit_one = {m for n, m in kits if n == 1}     # «(1x64GB)» — саме одна планка, не кіт
     if not kit_set and len(explicit_one) == 1 and singles <= explicit_one:
         v = next(iter(explicit_one))
@@ -177,6 +200,7 @@ def parse_title(title: str):
     t = (title or "").lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("×", "x")
     t = re.sub(r"[‐-―−]", "-", t)          # «8‑GB‑DDR4»: нерозривні/довгі дефіси → звичайні (28.09)
     t = re.sub(r"(?<=\d)\s*\*\s*(?=\d)", "x", t)           # «2*8GB» = «2x8GB»
+    t = re.sub(r"[®™©️]", "", t)
     t = _SEO_NOT.sub(" ", t)
     if DEFECT.search(t):
         return None, "дефект/запчастина"
