@@ -177,9 +177,10 @@ def part_capacity(t: str):
 
 def parse_capacity(t: str):
     """→ (total_gb, modules, None) або (None, None, причина)."""
-    if (re.search(r"einzel(?:modul|riegel)|\baus\s+(?:einem\s+)?(?:\d+\s?gb\s*)?(?:kit|set)\b", t)
-            and not re.search(r"(?:kein\w*|auch)\s+einzel|einzel\w*\s+(?:\w+\s+)?(?:auch\s+)?m(?:oe|ö)glich", t)
-            and not (_KIT1.search(t) or _KIT3.search(t))):
+    einzel = (re.search(r"einzel(?:modul|riegel)|\b1\s*x\s*\d{1,3}\s?gb\s+aus\b", t)
+              and not re.search(r"(?:kein\w*|auch)\s+einzel|einzel\w*\s+(?:\w+\s+)?(?:auch\s+)?m(?:oe|ö)glich", t))
+    aus_kit = re.search(r"\baus\s+(?:einem\s+)?(?:\d+\s?gb\s*)?(?:kit|set)\b", t) and not (_KIT1.search(t) or _KIT3.search(t))
+    if einzel or aus_kit:
         caps = [int(x) for x in _SINGLE.findall(t) if int(x) in SANE_GB]
         if caps:
             return min(caps), 1, None
@@ -247,9 +248,11 @@ def parse_capacity(t: str):
 def _not_laptop(t: str) -> bool:
     """«nicht für Laptop», «no Laptop RAM», «kein SO-DIMM», «UDIMM kein SODIMM» — настільна, якщо немає сильних
     SO-DIMM-ознак (номер моделі, Impact, 260-pin). «kein Laptop mehr» — навпаки, ноутбучна."""
-    neg_so = re.search(r"(?:nicht|kein\w*|no|not)\s+(?:ein\s+)?so-?\s?dimm", t)
-    neg_lap = re.search(r"(?:nicht|kein\w*|no|not)\s+(?:fuer\s+|for\s+)?(?:\w+\s+)?(?:laptop|notebook)\b(?!\s+mehr)", t)
+    neg_so = re.search(r"\b(?:nicht|kein\w*|no|not)\s+(?:ein\s+)?so-?\s?dimm", t)
+    neg_lap = re.search(r"\b(?:nicht|kein\w*|no|not)\s+(?:(?:fuer|for|ein|einen|den|im)\s+)?(?:laptop|notebook)\b(?!\s+mehr)", t)
     if not (neg_so or neg_lap):
+        return False
+    if not neg_so and re.search(r"so-?\s?dimm", t):   # «SO-DIMM … nicht gebrauchter Laptop» — ноутбучна
         return False
     return not _SODIMM_PARTS.search(t)
 

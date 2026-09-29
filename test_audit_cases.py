@@ -75,6 +75,38 @@ for t, f in forms.items():
 
 
 
+# ---- коло 14 (29.09) ----
+for t, p in [("Nintendo Switch OLED Reparatur", 100), ("PS5 Reparatur HDMI", 150), ("Nintendo Switch 2 Reparatur Service", 150),
+             ("PlayStation 5 Originalverpackung leer", 200), ("PS5 Slim Disc Leerkarton", 300), ("Xbox Series X Attrappe Deko", 150),
+             ("PS5 Konsole zu vermieten", 150), ("Xbox Series X lässt sich nicht einschalten", 150), ("Switch OLED Wasserschaden", 60),
+             ("Nintendo Switch OLED keine Kratzer, Display hat einen Riss", 100), ("Nintendo Switch OLED Riss nicht störend", 100),
+             ("PS5 Slim Disc Riss kein Problem", 250), ("PS5 Disc Konsolenspiele Paket 10 Stück", 150),
+             ("PS5 Slim Spiele Konvolut Konsolenspiele", 150), ("Nintendo Switch Sports + Ring Fit Adventure", 55),
+             ("CRKD Nitro Deck für Nintendo Switch OLED Konsole", 60), ("Ring Fit Adventure für Nintendo Switch Konsole", 55),
+             ("Switch OLED Display Haarriss", 100), ("PS5 Slim Display zersprungen", 250)]:
+    chk(t, p, False)
+for t, p in [("Xbox Series X 1TB + 3 Konsolenspiele", 250), ("Nintendo Switch OLED ohne Kratzer, Dellen, Brüche oder Risse", 100),
+             ("Nintendo Switch, 3 Controller, RingFit, Tasche und Dock", 70), ("Nintendo Switch OLED weiß, CRKD Nitro Deck", 100),
+             ("Nintendo Switch nur Konsole & Dock", 70), ("Nintendo Switch nur Konsole, Joy-Cons und Dock", 70),
+             ("PS5 Slim Disc 1TB, Preis pro Stück", 280), ("PS5 Konsole unbeschädigt", 280),
+             ("Xbox Series X Verkauf geht aus gesundheitlichen Gründen", 280)]:
+    chk(t, p, True)
+for t, p, d in [("Nintendo Switch mit Schutztasche", 80, "Konsole keine Kratzer und im Top-Zustand, TV- und Handheld-Modus"),
+                ("Nintendo Switch mit Schutztasche", 80, "Die Konsole ist nicht im Originalkarton, Dock und Joy-Cons dabei")]:
+    chk(t, p, True, d)
+cases14 = {"DDR5 32GB Einzelriegel (aus 2x32GB Kit) Corsair": (32, 1), "Kingston Fury DDR5 16GB Einzelmodul aus 2x16GB Kit": (16, 1),
+           "G.Skill DDR5 16GB Einzelriegel (1x16GB aus 2x16GB)": (16, 1), "G.Skill DDR4 32GB aus Set 2x16GB": (32, 2)}
+for t, exp in cases14.items():
+    r, why = parse_title(t)
+    bad += ((r["total"], r["modules"]) if r else why) != exp
+forms14 = {"Crucial 32GB DDR5 SO-DIMM 5600 nicht gebrauchter Laptop RAM": "sodimm", "DDR5 32GB SO-DIMM (2x16GB) not used Notebook": "sodimm",
+           "Tecno Laptop DDR5 16GB SODIMM": "sodimm", "Kingston Fury Beast DDR5 32GB nicht für Laptop": "udimm",
+           "DDR4 32GB Desktop – kein SO-DIMM": "udimm"}
+for t, f in forms14.items():
+    r, why = parse_title(t)
+    bad += not (r and r["form"] == f)
+
+
 class TestAuditCases(unittest.TestCase):
     def test_all_cases_pass(self):
         self.assertEqual(bad, 0)

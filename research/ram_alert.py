@@ -306,9 +306,10 @@ _D_CONSOLE_PROOF = re.compile(r"konsole\b|console|\bdock\w*|joy-?\s?cons?|handhe
 _D_GAME = re.compile(r"spielmodul|cartridge|\bmodul\b|spielkarte\w*|nur\s+(?:das\s+)?spiel\b|\bdownload-?code|\bhülle\s+und\s+spiel",
                      re.I)
 # «Konsole nicht enthalten», «nicht Teil des Angebots», «kompatibel mit … OLED», «Handheld-Modus», «an die Konsole angeschlossen»
-_D_NO_CONSOLE = re.compile(r"konsole\s+(?:ist\s+|sind\s+)?(?:nicht|kein\w*)\s+(?:\w+\s+){0,3}(?:enthalten|dabei|teil|inklusive|im)|"
-                           r"ohne\s+(?:die\s+)?konsole|nicht\s+(?:die\s+)?konsole|kompatibel\s+mit|für\s+(?:die\s+)?(?:joy|konsole)|"
-                           r"an\s+(?:die|der|ihre)\s+konsole|handheld-?modus|\bnur\s+(?:das\s+)?spiel\b", re.I)
+_D_NO_CONSOLE = re.compile(r"konsole\s+(?:ist\s+|sind\s+|wird\s+)?(?:nicht|kein\w*)\s+(?:\w+\s+){0,3}"
+                           r"(?:enthalten|dabei|teil\b|inklusive|mitverkauft|im\s+lieferumfang)|"
+                           r"ohne\s+(?:die\s+)?konsole\b|nicht\s+die\s+konsole\b(?!,?\s*sondern)|\bnur\s+(?:das\s+)?spiel\b|"
+                           r"\bnur\s+das\s+modul\b|für\s+(?:die\s+)?joy-?\s?cons?\b", re.I)
 
 
 def _console_proof_ok(d: str) -> bool:
