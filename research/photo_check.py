@@ -87,14 +87,19 @@ def ask_gemini(images: list[bytes], prompt: str, key: str | None = None) -> dict
                                   for b in images]
     body = {"contents": [{"parts": parts}],
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
-    for model in ([_working["m"]] if "m" in _working else MODELS):
+    order = ([_working["m"]] if "m" in _working else []) + [m for m in MODELS if m != _working.get("m")]
+    t_end = time.time() + 40   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
+    for model in order + order[:1]:   # 503 «high demand» (29.09) — інша модель, потім ще раз перша
+        if time.time() > t_end:
+            break
         try:
             r = requests.post(API.format(model), headers={"x-goog-api-key": key}, json=body, timeout=TIMEOUT)
         except Exception as e:
             print(f"   [фото] {model}: {e.__class__.__name__}")
             continue
-        if r.status_code in (400, 404) and "m" not in _working:   # моделі немає — наступна
+        if r.status_code in (400, 404, 500, 503):   # моделі немає / перевантажена — наступна
             print(f"   [фото] {model}: {r.status_code} {r.text[:120]}")
+            time.sleep(1)
             continue
         if r.status_code != 200:   # 429 — ліміт безкоштовного рівня; картка лишається без рядка
             print(f"   [фото] {model}: {r.status_code} {r.text[:160]}")
