@@ -286,7 +286,14 @@ class TestPass11Consoles(unittest.TestCase):
                   "Nitro Deck Retro Switch Limitierte Edition, Nintendo Switch",
                   "Konsolen Spiele Konvolut / Xbox360, Ps4 und Nintendo Switch - gebraucht"]:
             for p in (50, 80):
-                self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", (t, p))
+                # pass 12: слабкі ознаки в назві → консоль лише якщо опис підтверджує; гра з описом гри — SKIP
+                r = evaluate_console(t, p)
+                if r["verdict"] != "SKIP":
+                    self.assertTrue(r.get("needs_console_proof"), (t, p))
+                    from ram_alert import refine_by_desc
+                    ev = lambda tt, pp, vb=False: evaluate_console(tt, pp, vb=vb)
+                    for desc in ("Spiel in Originalhülle, Modul läuft einwandfrei.", "", None):
+                        self.assertEqual(refine_by_desc(r, t, p, False, desc, ev)["verdict"], "SKIP", (t, p, desc))
 
     def test_switch_tablet_only(self):
         for t in ["ORIGINAL NINTENDO SWITCH GAMEPAD Tablet HAC-001 (-01) ERSATZ KONSOLE XAJ #2",
@@ -300,6 +307,35 @@ class TestPass11Consoles(unittest.TestCase):
     def test_misc(self):
         self.assertIn("Digital", evaluate_console("Sony PS5 Slim CFI-2016 B01Y Konsole", 250)["type"])
         self.assertEqual(evaluate_console("Xbox Series X Display Riss", 250)["verdict"], "SKIP")
+
+
+
+class TestPass12Regressions(unittest.TestCase):
+    def _ev(self, t, p, d=None):
+        from ram_alert import refine_by_desc
+        r = evaluate_console(t, p)
+        if d is not None:
+            r = refine_by_desc(r, t, p, False, d, lambda tt, pp, vb=False: evaluate_console(tt, pp, vb=vb))
+        return r["verdict"]
+
+    def test_weak_switch_confirmed_by_description(self):
+        self.assertNotEqual(self._ev("Nintendo Switch mit Schutztasche", 80, "Die Konsole funktioniert, mit Dock und Joy-Cons"), "SKIP")
+        self.assertNotEqual(self._ev("Nintendo Switch Grau sehr guter Zustand", 60, "Nintendo Switch Konsole mit Ladekabel"), "SKIP")
+
+    def test_not_rejected(self):
+        for t, p in [("Microsoft Xbox Series X 1TB Videospielkonsole - Schwarz", 250), ("PS5 Slim Disc + 2 Controller + 3 Videospiele", 250),
+                     ("Nintendo Switch OLED Konvolut mit 5 Spielen", 100), ("Xbox Series X 1TB – kein Riss, keine Kratzer", 250),
+                     ("Nintendo Switch 2 NEU OVP Siegel nicht gebrochen", 250), ("PS5 Disc Edition Siegel ungebrochen NEU OVP", 250),
+                     ("Nintendo Switch OLED + Ring Fit Adventure + 2 Spiele", 100), ("Xbox Series X Konvolut mit 2 Controllern", 250),
+                     ("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 90), ("Nintendo Switch V2 nur Konsole, keine Spiele", 70),
+                     ("Nintendo Switch Lite nur Konsole", 40), ("Nintendo Switch Lite grau ohne Zubehör", 40)]:
+            self.assertNotEqual(self._ev(t, p), "SKIP", t)
+
+    def test_description_not_incomplete(self):
+        for d in ["Funktioniert einwandfrei ohne Probleme im Dock", "laufen ohne Joy-Con Drift", "Switch wie neu, ohne Kratzer am Dock",
+                  "Versand ohne Dock möglich", "Verkauft wird nur die Konsole, Dock, Joy-Cons und Netzteil"]:
+            self.assertNotEqual(self._ev("Nintendo Switch Konsole V2 32GB", 70, d), "SKIP", d)
+        self.assertEqual(self._ev("Nintendo Switch Konsole V2 32GB", 70, "Lieferung ohne Joycons, Dock und Ladekabel"), "SKIP")
 
 
 if __name__ == "__main__":

@@ -29,12 +29,8 @@ _X_AND_S = re.compile(r"serie[sn]?\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|\bserie[sn]
 _OTHER_CONSOLE = re.compile(r"\bserie[sn]?\s+s\b|\bseries-s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
 # «Fn ACC Ps5» за €150 (eBay 28.09) — продаж ігрового акаунта, не консолі
 _REJECT_BASE = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|\bacc\b|\baccount|"
-                     r"\bkonto\b|"
+                     r"\bkonto\b|konsolen-?\s?spiele?\b|"   # «Konsolen Spiele Konvolut» — ігри для консолей (pass 12)
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
-                     # «Xbox Series X Display Riss» (eBay 29.09) — тріщина
-                     r"\briss\b|gerissen|gebrochen|\bsprung\b|"
-                     # ігри/аксесуари в категорії консолей: «Ring Fit Adventure», «Nitro Deck», «Spiele Konvolut», «Videospiel»
-                     r"videospiel|ring\s?-?fit|nitro\s?deck|konvolut|"
                      # «Switch … HAC-001 nur Tablett» (eBay 29.09) — без дока/зарядки, не повна консоль
                      r"\bnur\s+(?:das\s+)?tabl?ett?\b|ohne\s+(?:dock|joy-?\s?cons?|ladeger|ladekabel)|"
                      # eBay (27.09): ігри-колекційки та послуги в категорії Konsolen; японська Switch 2 — лише японська мова
@@ -46,15 +42,27 @@ _REJECT_BASE = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|
                      r"liest\s+keine|\bstreikt|laufwerk\s+(?:\w+\s+){0,2}(?:defekt|kaputt|geht\s+nicht)", re.I)
 # гра / бонус до передзамовлення, а не консоль: «Switch 2 Pokemon Legenden Z-A + Vorbesteller Boni»,
 # «Metroid Prime 4 – Power-Set + Schlüsselanhänger», «Mario Tennis Fever + Tennisball» (eBay 29.09) — якщо немає доказу консолі
-_GAME_ONLY = re.compile(r"vorbestell|pre-?order|\bboni\b|steelbook|dual\s?pack|power-?set|schlüsselanhänger|tennisball", re.I)
+_GAME_ONLY = re.compile(r"vorbestell|pre-?order|\bboni\b|steelbook|dual\s?pack|power-?set|schlüsselanhänger|tennisball|"
+                        # «Ring Fit Adventure», «Nitro Deck», «Spiele Konvolut», «Beast Quest … Videospiel» — але
+                        # «Videospielkonsole», «Konsole + Ring Fit», «OLED Konvolut» — консоль (pass 12)
+                        r"\bvideospiel\b|ring\s?-?fit|nitro\s?deck|konvolut", re.I)
+# «Xbox Series X Display Riss» (eBay 29.09) — тріщина; але «kein Riss», «ohne Riss», «Siegel nicht gebrochen», «ungebrochen»
+_CRACK = re.compile(r"\briss(?:e|en)?\b|gerissen|gebrochen|\bsprung\b", re.I)
+_CRACK_OK = re.compile(r"(?:kein\w*|ohne|nicht|siegel\w*)\W+(?:\w+\W+){0,2}$|un$", re.I)
 _CONSOLE_PROOF = re.compile(r"konsole|console|handheld|\d\s?tb\b|\b\d{3}\s?gb\b|\bslim\b|\bdis[ck]\b|digital\s+edition|"
-                            r"cfi-?\d|hac-?\d|\boled\b", re.I)
+                            r"cfi-?\d|hac-?\d|\boled\b|\d\s*controller", re.I)
 
 
 class _Reject:
     """_REJECT_BASE + ігрові слова без доказу консолі; інтерфейс як у re.Pattern (.search)."""
     def search(self, title: str):
-        return _REJECT_BASE.search(title) or (None if _CONSOLE_PROOF.search(title) else _GAME_ONLY.search(title))
+        m = _REJECT_BASE.search(title) or (None if _CONSOLE_PROOF.search(title) else _GAME_ONLY.search(title))
+        if m:
+            return m
+        for c in _CRACK.finditer(title):
+            if not _CRACK_OK.search(title[max(0, c.start() - 30):c.start()]):
+                return c
+        return None
 
 
 _REJECT = _Reject()
@@ -244,7 +252,8 @@ _SWITCH1 = re.compile(r"\bni\w{3,6}do\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|
 _SWITCH1_STRONG = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
                              r"\bdock|neon|handheld", re.I)
 # «nur Konsole», «Ersatzkonsole», «ohne Zubehör», «Tablet … Ersatz» (eBay 29.09: три такі «вигідні» Switch — лише планшет)
-_SWITCH1_INCOMPLETE = re.compile(r"\bnur\s+(?:die\s+)?konsole\b|ersatz-?\s?konsole|ohne\s+zubeh[öo]r|tabl?ett?\b.{0,30}ersatz", re.I)
+_SWITCH1_INCOMPLETE = re.compile(r"\bnur\s+(?:die\s+)?konsole\b(?!\W*(?:und|mit|\+|inkl|keine|ohne\s+spiel|dock|joy))|"
+                                 r"ersatz-?\s?konsole|ohne\s+zubeh[öo]r", re.I)
 _SWITCH1_EVIDENCE = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
                                r"\bdock|neon|grau|\bmit\b|\bin[ck]l|bundle|set\b|paket|komplett|handheld|"
                                # 29.09 (eBay, 10 з 14 «без доказу» були консолями): «Animal Crossing Edition», «Switch 2017»,
@@ -266,15 +275,15 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
     # «HDMI-Switch 2x1», «TP-Link Switch 8 Port» — не консоль; але «Nintendo Switch … mit HDMI-Kabel» — консоль
     if _NOT_SWITCH.search(title) and not re.search(r"nintendo", title, re.I):
         return None
+    weak = False
     if _SWITCH2.search(title):
         real = SWITCH2
     elif _SWITCH1.search(title):
         # «Nintendo Switch Mario Kart 8 Deluxe» — гра з назвою платформи; консоль видно лише з моделі чи комплекту
         if not _SWITCH1_EVIDENCE.search(title):
             return _skip(title, price, "з назви не видно, що це консоль (схоже на гру для Switch)")
-        if not _SWITCH1_STRONG.search(title) and price < 0.75 * SWITCH_V2["p25"]:
-            return _skip(title, price, "з назви не видно, що це консоль, а для консолі ціна замала (схоже на гру)")
-        if _SWITCH1_INCOMPLETE.search(title):
+        weak = not _SWITCH1_STRONG.search(title)
+        if _SWITCH1_INCOMPLETE.search(title) and not re.search(r"\blite\b", title, re.I):
             return _skip(title, price, "лише планшет — без дока, Joy-Con чи зарядки")
         if re.search(r"\boled\b", title, re.I) and re.search(r"\bv\s?[12]\b|\blite\b", title, re.I):
             return _skip(title, price, "кілька моделей в одному оголошенні — ціна найдешевшої")
@@ -302,7 +311,7 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
         notes.insert(0, "«Нова / в плівці» за таку ціну — майже напевно шахрай (нова коштує ~€500). Лише Sicher bezahlen!")
     return dict(verdict=verdict, type=real["name"], price=price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
-                brand="Nintendo", title=title, notes=notes, net_q=net_q, item_acc="die Switch 2" if two else "die Switch",
+                needs_console_proof=(real is not SWITCH2 and weak), brand="Nintendo", title=title, notes=notes, net_q=net_q, item_acc="die Switch 2" if two else "die Switch",
                 check_q="Funktionieren Konsole und Joy-Con einwandfrei (kein Drift), keine Kontosperre?",
                 buy_cost=cost, ship_in=ship_in, vb=vb)
 

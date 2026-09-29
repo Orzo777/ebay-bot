@@ -298,19 +298,30 @@ def model_from_desc(title: str, desc: str | None) -> str | None:
     return next(iter(found)) if len(found) == 1 and "" not in found else None
 
 
-_D_SWITCH_INCOMPLETE = re.compile(r"ohne\s+(?:\w+\s+){0,2}(?:joy-?\s?cons?|dock|ladekabel|netzteil|zubeh[öo]r)|"
-                                  r"\bnur\s+(?:die\s+|das\s+)?(?:konsole|tabl?ett?)\b(?!\s+(?:und|mit|\+))", re.I)
+_D_SWITCH_INCOMPLETE = re.compile(r"\bohne\s+(?:(?:das|den|die|jegliche[sn]?)\s+)?(?:zubeh[öo]r\b(?!\s+ist)|dock\b(?!\s+möglich)|"
+                                  r"joy-?\s?cons?\b(?!\W*drift)|ladekabel\b|netzteil\b)|\bnur\s+(?:das\s+)?tabl?ett?\b", re.I)
+# Слабкі ознаки в назві («Nintendo Switch gebraucht», «… Edition») — консоль лише якщо опис це підтверджує (pass 12)
+_D_CONSOLE_PROOF = re.compile(r"konsole|console|\bdock|joy-?\s?cons?|handheld|hac-?\d|\bv[12]\b|oled|tablet|"
+                              r"netzteil|ladekabel|ladegerät", re.I)
+_D_GAME = re.compile(r"spielmodul|cartridge|\bmodul\b|spielkarte|nur\s+(?:das\s+)?spiel|\bdownload-?code|\bhülle\s+und\s+spiel", re.I)
 
 
 def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | None, evaluate_fn) -> dict:
     """Перерахунок з урахуванням опису. Повертає новий результат (або той самий, якщо опис нічого не змінює)."""
     d = desc or ""
-    if not d or res.get("verdict") not in SEND_VERDICTS:
+    if res.get("verdict") not in SEND_VERDICTS:
+        return res
+    # слабкі ознаки консолі в назві — без підтвердження в описі (або без опису взагалі) не шлемо
+    if res.get("needs_console_proof") and (not _D_CONSOLE_PROOF.search(d) or _D_GAME.search(d)):
+        return dict(verdict="SKIP", reason="з назви й опису не видно, що це консоль (схоже на гру / аксесуар)", title=title,
+                    price=price)
+    if not d:
         return res
     if _D_WANTED.search(d[:120]):
         return dict(verdict="SKIP", reason="це оголошення «шукаю», а не продаж", title=title, price=price)
-    # Switch лише планшетом: «Lieferung ohne Joycons, Dock und Ladekabel», «kommt ohne Zubehör» (eBay 29.09)
-    if "Switch" in res.get("type", "") and _D_SWITCH_INCOMPLETE.search(d):
+    # Switch лише планшетом: «Lieferung ohne Joycons, Dock und Ladekabel», «kommt ohne Zubehör» (eBay 29.09); Lite — завжди без дока
+    if ("Switch" in res.get("type", "") and "Lite" not in res.get("type", "") and "Switch 2" not in res.get("type", "")
+            and _D_SWITCH_INCOMPLETE.search(d)):
         return dict(verdict="SKIP", reason="за описом — лише планшет, без дока / Joy-Con / зарядки", title=title, price=price)
     extra = []
     is_ram = "total" in res

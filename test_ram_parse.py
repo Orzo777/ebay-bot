@@ -165,5 +165,20 @@ class TestPass11Ram(unittest.TestCase):
         self.assertEqual(P("Kingston FURY Beast DDR5 4800MHz 16GB DIMM KF548C38BBK2-32")["total"], 16)
 
 
+
+class TestPass12Ram(unittest.TestCase):
+    def test_cases(self):
+        cases = {"Crucial Pro DDR5 K2 32GB 5600 Desktop RAM": ("udimm", 32, 2),
+                 "Kingston Fury Beast DDR5 Kit of 2 x 16GB": ("udimm", 32, 2),
+                 "Gigabyte AORUS 16 GB DDR4 RGB Memory": ("udimm", 16, 1),
+                 "Samsung M425R2GA3BB0 16GB DDR5 nicht mehr benötigt Laptop Upgrade": ("sodimm", 16, 1),
+                 "Kingston Fury Impact DDR5 32GB kein Notebook mehr": ("sodimm", 32, 1),
+                 "Corsair DDR5 16GB Einzelmodul aus 32GB Kit CMK32GX5M2B5600C36": ("udimm", 16, 1)}
+        for t, exp in cases.items():
+            r = P(t)
+            self.assertEqual((r["form"], r["total"], r["modules"]), exp, t)
+        self.assertIsInstance(P("Hyperx Fury DDR4 32GB Set HX426C16FB3K2/16"), str)   # номер суперечить назві
+
+
 if __name__ == "__main__":
     unittest.main()
