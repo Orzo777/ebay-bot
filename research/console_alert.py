@@ -33,7 +33,9 @@ _REJECT = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausc
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
                      # eBay (27.09): ігри-колекційки та послуги в категорії Konsolen; японська Switch 2 — лише японська мова
                      r"collector|legacy\s+edition|\bwata\b|\bvga\b|graded|samm?lung|samlung|\blegit\b|"
-                     r"timestamp|troph|\bjapan", re.I)
+                     r"timestamp|troph|\bjapan|"
+                     # «⚠️ ACHTUNG Betrüger» (KA 28.09) — попередження, не продаж
+                     r"\bachtung\b|\bwarnung\b|\bvorsicht\b|betr[uü]e?g|\bscam", re.I)
 _DIGITAL = re.compile(r"digital", re.I)
 _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|festplatte|\bssd\b|lenkrad|wheel|ständer|"
                         r"halterung|kühler|lüfter|skin|folie|hülle|tasche|\bcase\b|netzteil|kabel|\bspiele?\b|\bgame\b|"
@@ -98,7 +100,7 @@ def _is_accessory(title: str, acc_re: re.Pattern, name_re: re.Pattern, price: fl
     # Лише коли аксесуар НЕ стоїть одразу після назви: «PlayStation 5 Controller GTA VI Limited» за €279 — контролер.
     gap = title[name.end():acc.start()]
     if (p25 and price >= max(0.6 * p25, 150) and _BUNDLABLE.match(acc.group(0))
-            and (len(gap.split()) >= 2 or re.search(r"\s[-–|/]\s|[|!]", gap))):   # «Mini-Dockingstation» — не перелік
+            and (re.search(r"\s[-–|/]\s|[|!,]", gap) or _COUNT_BEFORE.search(gap))):   # «Mini-Dockingstation», «God of War Controller's» — не перелік
         return False
     return not _BUNDLE_LINK.search(title[name.end():acc.start()])
 
@@ -159,7 +161,7 @@ PS5_SUSPICIOUS_BELOW = 280
 
 _PS5 = re.compile(r"\bps\s?-?5\b|play\s?-?station\s*-?5|playst\w*ion\s*5", re.I)   # «Play Station 5», «Playsttstion 5»
 _PS5_PRO = re.compile(r"\bpro\b", re.I)
-_PS5_OTHER = re.compile(r"portal|porta\s+remote|remote[\s-]?play|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
+_PS5_OTHER = re.compile(r"portal|\bportable\b|porta\s+remote|remote[\s-]?play|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
 _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive|\bssd\b|festplatte|ständer|halterung|"
                             r"lüfter|kühler|skin|folie|hülle|tasche|\bcase\b|cover|faceplate|netzteil|kabel|\bspiele?\b|"
                             r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad|wheel|pedal|erweiterung|expansion", re.I)

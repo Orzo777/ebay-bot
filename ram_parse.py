@@ -34,7 +34,9 @@ LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|
 SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b", re.I)
 SODIMM = re.compile(r"so-?\s?dimm|\b(laptop|notebook|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
                     # номери ноутбучних модулів: Samsung M425R/M471A/M474A, Crucial …S5/…SFRA, Kingston KF…S…/KVR…S…
-                    r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}", re.I)
+                    r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}|"
+                    # Kingston Fury Impact / HyperX Impact — тільки ноутбучні (29.09: «Kingston Fury Impact» вважався настільною)
+                    r"\bimpact\b|\bcms[xo]\d", re.I)
 
 # (канонічна назва, regex) — порядок = пріоритет; бренди модулів раніше за виробників чипів
 BRANDS = [
@@ -70,6 +72,19 @@ _CAP_COUNT = re.compile(r"(\d{1,3})\s?gb\s*\(?\s*([2-4])\s?(?:stk\.?|stueck|st[u
 # «nicht 32GB 64GB» — SEO-хвіст у назві (28.09: «48GB DDR5 … nicht 32GB 64GB» не розпізнавався)
 _SEO_NOT = re.compile(r"\bnicht\s+(?:\d{1,3}\s?gb[\s,/+&]*(?:und|oder)?\s*)+", re.I)
 _DDR = re.compile(r"ddr\s?-?\s?([2345])l?\b|\bpc([2345])l?\s?-", re.I)
+# «DDR4 4 8 16 32 gb», «8/16/32GB» — варіації (продавець виставив кілька ємностей в одному оголошенні); 29.09
+_VARIANTS = re.compile(r"(?<![\d.x])(\d{1,3})(?!\d)\s*[,/|;]?\s*(?:(\d{1,3})(?!\d)\s*[,/|;]?\s*)+(?:gb|g\b)", re.I)
+# «⚠️ ACHTUNG Betrüger» — попередження, а не продаж
+WARNING = re.compile(r"\b(?:achtung|warnung|vorsicht|betrueger|betrug|scammer|scam)\b", re.I)
+
+
+def is_variants(t: str) -> bool:
+    t = re.sub(r"ddr\s?-?\s?[2345]l?\b|\bpc[2345]l?\b", " ", t)
+    for m in _VARIANTS.finditer(t):
+        nums = [int(x) for x in re.findall(r"\d{1,3}", m.group(0))]
+        if len(nums) >= 2 and all(n in SANE_GB and n >= 4 for n in nums) and nums == sorted(set(nums)):
+            return True
+    return False
 
 
 def snap(gen: str, v: float):
@@ -204,6 +219,10 @@ def parse_title(title: str):
     t = _SEO_NOT.sub(" ", t)
     if DEFECT.search(t):
         return None, "дефект/запчастина"
+    if WARNING.search(t):
+        return None, "попередження, а не продаж"
+    if is_variants(t):
+        return None, "кілька ємностей у назві (варіації)"
     first_ddr = _DDR.search(t)
     if JUNK.search(t) or JUNK_BEFORE_DDR.search(t[:first_ddr.start()] if first_ddr else t):
         return None, "не модуль (аксесуар/комплект/ПК)"

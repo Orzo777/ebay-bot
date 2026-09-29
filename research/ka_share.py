@@ -17,7 +17,8 @@ from console_alert import SHIP_IN as SHIP_IN_CONSOLE
 from console_alert import evaluate_console
 from ka_listing_check import UA, parse_listing, risk_lines
 from ram_mail_check import _NO_PICKUP
-from ram_alert import SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, evaluate, format_html, item_for_cost, offer_template, seller_template
+from ram_alert import (SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, evaluate, format_html, item_for_cost, offer_template,
+                       refine_by_desc, seller_template)
 
 _ID_RE = re.compile(r"kleinanzeigen\.de/s-anzeige/(?:[^/\s]+/)?(\d{8,})")
 _TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)
@@ -97,6 +98,17 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
         if broken:   # несправне не купуємо (27.09)
             return (f"⛔ <b>Не бери — в описі дефект</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €\n"
                     f"   • «{escape(broken)}»"), res
+        # опис уточнює назву: «Laptop RAM», «4x 8GB», «Preis pro Riegel», «ich suche» (28.09)
+        new = refine_by_desc(res, info["title"], info["price"], info["vb"], risk.get("desc"),
+                             lambda t, p, vb=False: (evaluate_console(t, p, shipping=ship, vb=vb)
+                                                     or evaluate(t, p, shipping=ship, vb=vb)))
+        if new is not res:
+            if info.get("hamburg"):
+                apply_pickup(new)
+            res = new
+            if res["verdict"] not in SEND_VERDICTS:
+                return (f"⏭ <b>Не бери</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €\n"
+                        f"За описом: {escape(res.get('refined', ''))} — {escape(res.get('reason') or 'не вигідно')}"), res
         if info.get("hamburg") and _NO_PICKUP.search(risk.get("desc") or ""):
             notes.append("Продавець пише «nur Versand» — самовивозу не буде, рахуй із пересилкою.")
         res["risk_lines"] = risk_lines(risk)

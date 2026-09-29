@@ -269,7 +269,7 @@ _D_PER_UNIT = re.compile(r"preis\s+(?:ist\s+)?(?:pro|je|für\s+(?:einen|ein|eine
 _D_LAPTOP = re.compile(r"so-?\s?dimm|(?:für|aus|im|in)\s+(?:\w+\s+){0,2}(?:laptop|notebook)|laptop-?(?:ram|speicher)|"
                        r"notebook-?(?:ram|speicher)", re.I)
 _D_NOT_LAPTOP = re.compile(r"(?:nicht|kein\w*)\s+(?:\w+\s+){0,2}(?:für\s+)?(?:laptop|notebook)|desktop|\budimm", re.I)
-_D_SINGLE = re.compile(r"\b1\s*x\s*(\d{1,3})\s?gb|\bein(?:en|zelne[nr]?|zeln)?\s+(?:\w+\s+){0,2}(?:riegel|modul|stick)\b|"
+_D_SINGLE = re.compile(r"\b1\s*x\s*(\d{1,3})\s?gb|\bein(?:en|zelne[nr]?|zeln)?\s+(?:[\w-]+\s+){0,2}[\w-]*(?:riegel|modul|stick)\b|"
                        r"einzelner|einzelnes", re.I)
 _D_KIT = re.compile(r"(?<![\d.])([2-8])\s*(?:x|mal|\*)\s*(\d{1,3})\s?gb", re.I)
 

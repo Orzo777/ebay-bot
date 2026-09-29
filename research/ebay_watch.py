@@ -29,7 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
-from ram_alert import PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts, evaluate, tier
+from ram_alert import (PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
+                       evaluate, refine_by_desc, tier)
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 # (запит, категорія, мін. ціна, макс. ціна). Верх — трохи вище найбільшої стелі «торгуйся» серед типів групи.
@@ -99,6 +100,15 @@ def evaluate_ebay(lst: dict) -> dict:
     r["notes"] = [_SB_NOTE.sub("", n).strip() for n in r.get("notes", [])]
     r["notes"] = [n for n in r["notes"] if n]
     return r
+
+
+def refine_ebay(r: dict, lst: dict, desc: str | None) -> dict:
+    """Уточнення за описом (ноутбучна пам'ять, «4x 8GB», ціна за планку, «ich suche») з eBay-вартістю купівлі."""
+    new = refine_by_desc(r, lst["title"], lst["price"], lst["offer"], desc,
+                         lambda t, p, vb=False: evaluate_ebay(dict(lst, title=t, price=p)))
+    if new is not r:
+        new["desc"] = desc
+    return new
 
 
 def offer_ebay(r: dict) -> int | None:
@@ -347,6 +357,11 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
     r["desc"] = desc
     broken = broken_reason(desc)
     risk = risk_of(lst, desc, r.get("quick_sale", 0))
+    new = refine_ebay(r, lst, desc)
+    if new is not r and new["verdict"] not in SEND_VERDICTS:
+        return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price'] or 0:.0f} €\n"
+                f"За описом: {esc(new.get('refined', ''))} — {esc(new.get('reason') or 'не вигідно')}"), new, lst
+    r = new
     if broken:
         return f"⛔ <b>Не бери — в описі дефект</b> · <i>{esc(lst['title'][:90])}</i>\n   • «{esc(broken)}»", r, lst
     if risk["hard"]:
@@ -434,6 +449,10 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             continue
         desc = fetch_desc(client, lst["id"])
         r["desc"] = desc
+        r = refine_ebay(r, lst, desc)
+        if r["verdict"] not in SEND_VERDICTS:
+            print(f"   за описом: {r['verdict']} ({r.get('refined', '')}; {r.get('reason') or ''})")
+            continue
         broken = broken_reason(desc)
         if broken:   # несправне не купуємо (27.09)
             print(f"   ДЕФЕКТ в описі — картку не надсилаю: «{broken}»")
@@ -461,6 +480,11 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 lst, r = cand
                 desc = fetch_desc(client, lst["id"])
                 r["desc"] = desc
+                r2 = refine_ebay(r, lst, desc)
+                if r2 is not r and r2["verdict"] not in SEND_VERDICTS:
+                    print(f" - [аукціон] {lst['title'][:70]} — за описом не те: {r2.get('refined', '')}")
+                    continue
+                r = r2
                 risk = risk_of(lst, desc, r.get("quick_sale", 0))
                 print(f" - [аукціон] {lst['title'][:70]} | ставка {lst['price']:.0f}€ -> макс. {r['cap'] - r['ship_in']:.0f}€")
                 if broken_reason(desc) or risk["hard"]:
