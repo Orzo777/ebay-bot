@@ -32,6 +32,7 @@ sys.path.insert(0, "research")
 import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
+from photo_check import add_to_card
 from pc_alert import evaluate_pc, pc_card_lines
 from ram_alert import (CONSOLE_NO_MODEL, SEND_VERDICTS, apply_pickup, broken_reason, evaluate, format_html, model_from_desc,
                        offer_template, refine_by_desc, seller_template)
@@ -152,6 +153,7 @@ def send_telegram_card(html_text: str, link: str | None, seller_text: str, searc
         payload["reply_markup"] = json.dumps(kb, ensure_ascii=False)
         r = requests.post(url, data=payload, timeout=15)
     r.raise_for_status()
+    return (r.json().get("result") or {}).get("message_id"), payload["reply_markup"]   # для дописування «📷 …»
 
 
 def load_state(path):
@@ -535,8 +537,9 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if dry_run:
             print("   [DRY RUN] надіслав би картку")
         else:
-            send_telegram_card(format_html(res), lst["link"], seller_template(res), slink, False,
-                               offer_template(res))
+            card = format_html(res)
+            mid, kb = send_telegram_card(card, lst["link"], seller_template(res), slink, False, offer_template(res)) or (None, None)
+            add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [])   # фото → рядок «📷 …» (29.09)
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
     # кандидат ймовірно схований у тій самій пачці. Правильний товар, просто дорожчий, — не привід.

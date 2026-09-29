@@ -1,0 +1,39 @@
+name: photo-check
+
+# Ручна перевірка фото оголошення через Gemini (research/photo_check.py): що модель бачить і що бот дописав би в картку.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Посилання на оголошення (Kleinanzeigen або eBay)"
+        required: true
+      title:
+        description: "Назва (як її оцінює бот)"
+        required: true
+      price:
+        description: "Ціна, €"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Photo check
+        run: python research/photo_check.py "$URL" "$TITLE" "$PRICE"
+        env:
+          URL: ${{ inputs.url }}
+          TITLE: ${{ inputs.title }}
+          PRICE: ${{ inputs.price }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+          EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}

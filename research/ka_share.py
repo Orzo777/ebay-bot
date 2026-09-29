@@ -147,6 +147,7 @@ def _send(html_text: str, kb: dict):
         data["reply_markup"] = json.dumps({"inline_keyboard": kb["inline_keyboard"][:1]}, ensure_ascii=False)
         r = requests.post(api, data=data, timeout=15)
     r.raise_for_status()
+    return (r.json().get("result") or {}).get("message_id"), data["reply_markup"]
 
 
 def main(text: str):
@@ -155,11 +156,15 @@ def main(text: str):
     from ram_mail_check import send_telegram_card, send_telegram_text
 
     from ebay_watch import ebay_item_id, keyboard, share_ebay
+    from photo_check import add_to_card, ka_images
     eid = ebay_item_id(text)
     if eid:   # посилання eBay (28.09): та сама оцінка, що й у сканері eBay; аукціон — з максимальною ставкою
         msg, res, lst = share_ebay(eid)
         if res and res.get("verdict") in SEND_VERDICTS and lst:
-            _send(msg, keyboard(lst["url"], res))
+            auction = res.get("verdict") == "AUCTION"
+            kb = {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": lst["url"]}]]} if auction else keyboard(lst["url"], res)
+            mid, kb_json = _send(msg, kb) or (None, None)
+            add_to_card(mid, msg, kb_json, res, lst["title"], lst.get("images") or [])
         else:
             send_telegram_text(msg, (lst or {}).get("url"))
         print(msg)
@@ -175,7 +180,8 @@ def main(text: str):
         return
     msg, res = evaluate_listing(r.text, url)
     if res and res.get("verdict") in SEND_VERDICTS:
-        send_telegram_card(msg, url, seller_template(res), None, False, offer_template(res))
+        mid, kb = send_telegram_card(msg, url, seller_template(res), None, False, offer_template(res)) or (None, None)
+        add_to_card(mid, msg, kb, res, res.get("title") or "", ka_images(r.text))
     else:
         send_telegram_text(msg, url)
     print(msg)

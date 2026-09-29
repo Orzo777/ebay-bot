@@ -149,8 +149,9 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
     if level == "high" and not hard:
         hard.append("забагато ознак шахрайства разом")
     # block: у підписках картки не буде зовсім; лишаються 🟢 і 🟡 лише з «м'яких» ознак (молодий акаунт, короткий опис)
+    from photo_check import ka_images
     return dict(level=level, score=score, reasons=reasons, seller=seller, block=bool(hard), hard=hard, desc=desc,
-                buy_now=bool(_BUY_NOW_RE.search(page)))
+                buy_now=bool(_BUY_NOW_RE.search(page)), images=ka_images(page))
 
 
 def check_listing(link: str | None, price: float, quick_sale: float) -> dict | None:

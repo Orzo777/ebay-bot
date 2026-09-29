@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
+from photo_check import add_to_card, ebay_images
 from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
                        evaluate, refine_by_desc, tier)
 
@@ -80,6 +81,7 @@ def listing_of(it: dict) -> dict:
                 # «pickupOptions» є й в оголошеннях з Райне чи Мюнхена (29.09: 31 з 901, жодне не з Гамбурга) — самовивіз
                 # лише з гамбурзьким індексом; запит самовивозу (радіус 30 км) ставить прапорець сам у poll_once
                 pickup_ok=bool(it.get("pickupOptions")) and bool(HAMBURG_ZIP.match(str(loc.get("postalCode") or ""))),
+                images=ebay_images(it),
                 # оголошення з варіантами (колір/модель/ємність): ціна — найдешевшого варіанта, не того, що в назві
                 group=bool(it.get("itemGroupHref") or it.get("itemGroupType") or it.get("itemGroupId")),
                 dist=_num((it.get("distanceFromPickupLocation") or {}).get("value")))
@@ -300,9 +302,10 @@ def keyboard(url: str, r: dict) -> dict:
     return {"inline_keyboard": rows}
 
 
-def send_card(text: str, url: str, r: dict):
+def send_card(text: str, url: str, r: dict, auction: bool = False):
+    """→ (message_id, reply_markup) — щоб потім дописати рядок «📷 …». Аукціон — лише кнопка «відкрити» (ставку робиш сам)."""
     import requests
-    kb = keyboard(url, r)
+    kb = {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": url}]]} if auction else keyboard(url, r)
     data = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": "true",
             "reply_markup": json.dumps(kb, ensure_ascii=False)}
     api = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -311,6 +314,7 @@ def send_card(text: str, url: str, r: dict):
         data["reply_markup"] = json.dumps({"inline_keyboard": kb["inline_keyboard"][:1]}, ensure_ascii=False)
         resp = requests.post(api, data=data, timeout=15)
     resp.raise_for_status()
+    return (resp.json().get("result") or {}).get("message_id"), data["reply_markup"]
 
 
 # ----------------------------------------------------------------------------- «поділитися → бот» для eBay (28.09)
@@ -507,7 +511,9 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         if dry_run:
             print("   [DRY RUN] надіслав би картку")
         else:
-            send_card(format_card(r, lst, risk, why, now), lst["url"], r)
+            card = format_card(r, lst, risk, why, now)
+            mid, kb = send_card(card, lst["url"], r) or (None, None)
+            add_to_card(mid, card, kb, r, lst["title"], lst.get("images") or [])
         sent += 1
     if state["round"] % 2 == 0:   # аукціони — через коло (~6 хв; квота API): у вікно 20 хв потрапляємо щонайменше двічі
         for q, cat, lo, hi in AUCTION_QUERIES:
@@ -541,7 +547,8 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 if dry_run:
                     print("   [DRY RUN] надіслав би картку аукціону")
                 else:
-                    send_card(text, lst["url"], dict(r, verdict="BUY"))
+                    mid, kb = send_card(text, lst["url"], dict(r, verdict="BUY"), auction=True) or (None, None)
+                    add_to_card(mid, text, kb, r, lst["title"], lst.get("images") or [])
                 sent += 1
         cut = (now - timedelta(days=2)).isoformat()
         state["auctions"] = {k: v for k, v in state.get("auctions", {}).items() if v >= cut}

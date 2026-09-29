@@ -46,6 +46,7 @@ jobs:
           EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SHARE_TEXT: ${{ inputs.text }}
           SHARE_CHAT: ${{ inputs.chat_id }}
           PYTHONIOENCODING: utf-8
