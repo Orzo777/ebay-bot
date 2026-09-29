@@ -230,6 +230,31 @@ class TestEbayTitles27(unittest.TestCase):
             self.assertTrue(evaluate_console(t, 250).get("type"), t)
 
 
+
+class TestPass6to8Consoles(unittest.TestCase):
+    def test_not_consoles(self):
+        for t, p in [("PS5 God of wae Controller's", 300), ("PS5 Portable", 200), ("ACHTUNG PS5 Slim Betrug", 300),
+                     ("PlayStation 5 Controller GTA VI Limited", 279),
+                     ("Sony PS5 Blu-Ray Edition Spielekonsole - Weiß (Laufwerk liest keine Disks mehr)", 251),
+                     ("Playstation PS5 Pulse Explore Wireless Earbuds NEU + OVP", 200),
+                     ("PS5 eXcluziv3 Gaming PS-One Retro Edition! ähnl. wie Scuf, AIM, Kings", 180),
+                     ("Nintendo Switch OLED | V1/V2 | verschiedene Farben | Auswahl", 115),
+                     ("Nintendo Switch 2 Pokemon Legenden Z - A + Vorbesteller Boni - NEU & OVP", 160),
+                     ("Nintendo Switch 2 Metroid Prime 4: Beyond – Power-Set + Schlüsselanhänger NEU", 160),
+                     ("MARIO TENNIS FEVER + Tennisball Vorbesteller Bonus Nintendo Switch 2", 160),
+                     ("Pokémon Scarlet & Violet Dual Pack SteelBook Edition Nintendo Switch", 60),
+                     ("Nintendo Switch Mario Kart 8 Deluxe", 55)]:
+            self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", t)
+            self.assertFalse(evaluate_console(t, p).get("type"), t)
+
+    def test_still_consoles(self):
+        for t, p in [("Nintendo Switch Konsole V2 grau", 100), ("Nintendo Switch mit 3 Spielen", 100),
+                     ("Nintendo Switch Komplettset - 7 Spiele", 100), ("Nintendo Switch Lite türkis", 50),
+                     ("Nintendo Switch OLED weiß", 110), ("Nintendo Switch 2 + Mario Kart World Bundle", 380),
+                     ("Switch 2 – Top Zustand – 2x Pro Controller", 419), ("PS5 Disk Edition mit Controller und 3 Spielen", 300)]:
+            self.assertTrue(evaluate_console(t, p).get("type"), t)
+
+
 if __name__ == "__main__":
     unittest.main()
 

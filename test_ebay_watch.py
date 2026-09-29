@@ -99,6 +99,37 @@ class TestRisk(unittest.TestCase):
         self.assertNotIn("Sicher bezahlen", txt)
 
 
+
+class TestPass7(unittest.TestCase):
+    def _raw(self, zip_, pickup=True, group=False):
+        it = dict(itemId="v1|9|0", title="Sony PlayStation 5 825 GB Digital Edition", price={"value": "300"},
+                  itemLocation={"postalCode": zip_, "country": "DE"}, buyingOptions=["FIXED_PRICE"],
+                  shippingOptions=[{"shippingCost": {"value": "10.49"}}], seller={"feedbackScore": 50})
+        if pickup:
+            it["pickupOptions"] = [{"pickupLocationType": "STORE"}]
+        if group:
+            it["itemGroupHref"] = "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=1"
+        return it
+
+    def test_pickup_only_in_hamburg(self):
+        self.assertFalse(listing_of(self._raw("88***"))["pickup_ok"])
+        self.assertFalse(evaluate_ebay(listing_of(self._raw("88***"))).get("pickup"))
+        self.assertTrue(listing_of(self._raw("22***"))["pickup_ok"])
+
+    def test_variation_group_skipped(self):
+        self.assertEqual(evaluate_ebay(listing_of(self._raw("10***", pickup=False, group=True)))["verdict"], "SKIP")
+
+    def test_defect_in_title(self):
+        self.assertEqual(evaluate_ebay(item("Sony PS5 Konsole weiß, Laufwerk streikt", 250))["verdict"], "SKIP")
+
+    def test_css_stripped_from_description(self):
+        from unittest import mock
+        import ebay_watch
+        d = {"description": "<style>.a{color:red}" + "x{}" * 5000 + "</style><p>Ich suche eine PS5</p>"}
+        with mock.patch("main._request_with_backoff", return_value=d):
+            self.assertEqual(ebay_watch.fetch_desc(mock.Mock(), "1"), "Ich suche eine PS5")
+
+
 if __name__ == "__main__":
     unittest.main()
 

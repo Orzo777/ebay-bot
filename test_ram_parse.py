@@ -97,5 +97,34 @@ class ParseTitleTests(unittest.TestCase):
         self.assertEqual(parse_capacity("7gb")[0], None)
 
 
+
+class TestPass6to8(unittest.TestCase):
+    """Проходи 6–8 (29.09, живі KA + eBay)."""
+    def test_rejected(self):
+        for t in ["DDR 4 4 8 16 32 gb Arbeitsspeicher", "8/16/32GB DDR4 RAM", "ACHTUNG DDR5 32GB Betrüger"]:
+            self.assertIsInstance(P(t), str, t)
+
+    def test_forms_and_counts(self):
+        cases = {"Kingston Fury Impact DDR5 32GB 5600": ("sodimm", 32, 1),
+                 "Kingston 32GB DDR4 DIMM KCP426SD8/32": ("udimm", 32, 1),
+                 "Crucial Pro DDR5 32GB RAM CP32G56C46U5.C8B": ("udimm", 32, 1),
+                 "Crucial 32GB CT16G4DFRA32A DDR4": ("udimm", 32, 2),
+                 "Samsung 1*32 GB sodimm ddr 4m, 2666er": ("sodimm", 32, 1),
+                 "Patriot Viper 4 | 32GB (2x16GB) | 3200 MHz | PV432G320C6K | DDR4 RAM": ("udimm", 32, 2),
+                 "SK Hynix 32GB HMAA4GS6AJR8N-XN DDR4 260-pin": ("sodimm", 32, 1),
+                 "16GB DDR4 Ram SK Hynix HMA82GS6JJR8N": ("sodimm", 16, 1),
+                 "SO DDR5 16GB CORSAIR VENGEANCE": ("sodimm", 16, 1), "Samsung DDR5 S0Dimm 32GB": ("sodimm", 32, 1)}
+        for t, exp in cases.items():
+            r = P(t)
+            self.assertEqual((r["form"], r["total"], r["modules"]), exp, t)
+        self.assertTrue(P("Kingston 32GB DDR4 DIMM KCP426SD8/32")["explicit_single"])
+        self.assertTrue(P("1 x Dell / Kingston DDR5 RAM 32gb - 5600 MHz - Dual Rank")["explicit_single"])
+
+    def test_non_ecc(self):
+        for t in ["Crucial 32GB (2x16GB) DDR4-3200 UDIMM Non-ECC", "16 GB DDR5 RAM KINGSTON UDIMM 4800 MHZ NON ECC", "DDR4 32GB nonecc"]:
+            self.assertFalse(P(t)["ecc"], t)
+        self.assertTrue(P("DDR4 32GB ECC UDIMM")["ecc"])
+
+
 if __name__ == "__main__":
     unittest.main()

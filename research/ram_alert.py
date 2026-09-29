@@ -232,8 +232,13 @@ _DESC_BROKEN = re.compile(r"funktioniert nicht|nicht funktionsfähig|\bdefekt|ka
                           r"geht\s+(?:\w+\s+){0,3}(?:von\s+)?(?:alleine|allein|selbst|einfach)\s+(?:\w+\s+)?aus|"
                           r"schaltet\s+sich\s+(?:\w+\s+){0,4}(?:ab|aus)\b|(?:für|an|als)\s+bastler|bastlerware|"
                           r"überhitz|blue\s?light|blaue[sn]?\s+licht|stürzt\s+(?:\w+\s+){0,2}ab|hängt\s+sich\s+(?:\w+\s+)?auf|"
-                          r"liest\s+keine|zieht\s+(?:die\s+)?dis[ck]s?\s+nicht|kein\s+(?:ton|signal)", re.I)
-_DESC_UNTESTED = re.compile(r"ungetestet|nicht getestet|ungeprüft|nicht geprüft|(?:kann|konnte)\s+(?:\w+\s+)?nicht\s+test", re.I)
+                          r"liest\s+keine|zieht\s+(?:die\s+)?dis[ck]s?\s+nicht|kein\s+(?:ton|signal)|"
+                          # «lediglich das Laufwerk streikt» (eBay 29.09)
+                          r"\bstreikt|laufwerk\s+(?:\w+\s+){0,2}(?:geht\s+nicht|spinnt)", re.I)
+_DESC_UNTESTED = re.compile(r"ungetestet|nicht getestet|ungeprüft|nicht geprüft|(?:kann|konnte)\s+(?:\w+\s+)?nicht\s+test|"
+                            # «Absolut keine Ahnung ob der Riegel funktioniert … kein System zum testen» (eBay 29.09)
+                            r"keine\s+ahnung,?\s+ob|kein\w*\s+(?:\w+\s+)?(?:system|pc|rechner|mainboard)\s+(?:\w+\s+)?zum\s+test|"
+                            r"nicht\s+(?:mehr\s+)?ausprobiert|ohne\s+gew[äa]hr,?\s+ob", re.I)
 _DESC_WORKS = re.compile(r"getestet|funktioniert|funktionsfähig|einwandfrei|fehlerfrei|problemlos|memtest|"
                          r"läuft\s+(?:stabil|super|perfekt|top|ohne)|keine\s+(?:probleme|fehler|mängel)", re.I)
 _DESC_NO_RECEIPT = re.compile(r"\b(?:keine?n?|ohne)\s+(?:\w+\s+)?(?:rechnung|kaufbeleg|quittung|kassenbon)|"
@@ -269,9 +274,26 @@ _D_PER_UNIT = re.compile(r"preis\s+(?:ist\s+)?(?:pro|je|für\s+(?:einen|ein|eine
 _D_LAPTOP = re.compile(r"so-?\s?dimm|(?:für|aus|im|in)\s+(?:\w+\s+){0,2}(?:laptop|notebook)|laptop-?(?:ram|speicher)|"
                        r"notebook-?(?:ram|speicher)", re.I)
 _D_NOT_LAPTOP = re.compile(r"(?:nicht|kein\w*)\s+(?:\w+\s+){0,2}(?:für\s+)?(?:laptop|notebook)|desktop|\budimm", re.I)
-_D_SINGLE = re.compile(r"\b1\s*x\s*(\d{1,3})\s?gb|\bein(?:en|zelne[nr]?|zeln)?\s+(?:[\w-]+\s+){0,2}[\w-]*(?:riegel|modul|stick)\b|"
+_D_SINGLE = re.compile(r"\b1\s*x\s*(\d{1,3})\s?gb|\bein(?:en|zelne[nr]?|zeln)?,?\s+(?:[\w-]+,?\s+){0,2}[\w-]*(?:riegel|modul|stick)\b|"
                        r"einzelner|einzelnes", re.I)
 _D_KIT = re.compile(r"(?<![\d.])([2-8])\s*(?:x|mal|\*)\s*(\d{1,3})\s?gb", re.I)
+
+
+# Консоль без моделі в назві (29.09, KA: «Xbox zu verkaufen» €250, «Switch Nintendo» €250, «Nintendo Spielkonsole» €190) —
+# модель часто лише в описі. Беремо її, тільки якщо в описі згадана рівно ОДНА модель і жодної іншої.
+CONSOLE_NO_MODEL = re.compile(r"\bx-?box\b|\bswitch\b|nintendo|playstation|\bps\b|spielkonsole|\bkonsole\b", re.I)
+_DESC_MODELS = [("Xbox Series X", r"serie[sn]?\s*x\b"), ("", r"serie[sn]?\s+s\b|series-s|xbox\s*one|\bone\s*[xs]\b|xbox\s*360"),
+                ("PS5", r"\bps\s?-?5\b|playstation\s*-?5"), ("", r"\bps\s?-?[34]\b|playstation\s*-?[34]|portal|\bpro\b|\bvr\s?2?\b"),
+                ("Nintendo Switch 2", r"switch\s?2\b"),
+                ("", r"switch\s*(?:oled|lite|v\s?[12]\b|1\b)|\boled\b|\blite\b|wii|3ds")]
+
+
+def model_from_desc(title: str, desc: str | None) -> str | None:
+    """Назва без моделі консолі + опис → назва моделі для повторної оцінки, або None (не видно / кілька моделей)."""
+    if not desc or not CONSOLE_NO_MODEL.search(title or ""):
+        return None
+    found = {name for name, rx in _DESC_MODELS if re.search(rx, desc, re.I)}
+    return next(iter(found)) if len(found) == 1 and "" not in found else None
 
 
 def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | None, evaluate_fn) -> dict:

@@ -128,6 +128,16 @@ class TestDedup(unittest.TestCase):
         self.assertNotEqual(_ad_key(a), _ad_key(b))
 
 
+class TestModelFromDesc(unittest.TestCase):
+    def test_model_only_when_unambiguous(self):
+        from ram_alert import model_from_desc
+        self.assertEqual(model_from_desc("Xbox zu verkaufen", "Meine Xbox Series X 1TB mit Controller"), "Xbox Series X")
+        self.assertEqual(model_from_desc("Switch Nintendo", "Nintendo Switch 2 kaum benutzt"), "Nintendo Switch 2")
+        self.assertIsNone(model_from_desc("Xbox zu verkaufen", "Xbox One S mit 2 Controllern"))
+        self.assertIsNone(model_from_desc("Nintendo Spielkonsole", "Switch 2 oder Switch Lite"))
+        self.assertIsNone(model_from_desc("DDR5 32GB", "Series X"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

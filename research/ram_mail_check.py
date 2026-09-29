@@ -33,7 +33,8 @@ import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
 from pc_alert import evaluate_pc, pc_card_lines
-from ram_alert import SEND_VERDICTS, apply_pickup, broken_reason, evaluate, refine_by_desc, format_html, offer_template, seller_template
+from ram_alert import (CONSOLE_NO_MODEL, SEND_VERDICTS, apply_pickup, broken_reason, evaluate, format_html, model_from_desc,
+                       offer_template, refine_by_desc, seller_template)
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
 
@@ -488,6 +489,14 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             apply_pickup(res)
         reason = f" ({res['reason']})" if res.get("reason") else ""
         print(f" - [{age or 0:.1f} год] {lst['title'][:70]} | {lst['price']:.0f}€ -> {res['verdict']}{reason}")
+        if res["verdict"] == "UNKNOWN" and not stale and CONSOLE_NO_MODEL.search(lst["title"]):
+            # «Xbox zu verkaufen» — модель лише в описі (29.09)
+            model = model_from_desc(lst["title"], ((check_listing(lst["link"], lst["price"], 0) or {}).get("desc")))
+            if model:
+                res = evaluate_console(f"{lst['title']} {model}", lst["price"], vb=vb)
+                if pickup:
+                    apply_pickup(res)
+                print(f"   модель з опису: {model} -> {res['verdict']}")
         shown, shown_verdict = lst, res["verdict"]
         wrong_type = wrong_type or res["verdict"] == "UNKNOWN" or bool(res.get("wrong_type"))
         if res["verdict"] not in SEND_VERDICTS:

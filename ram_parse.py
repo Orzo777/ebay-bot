@@ -36,7 +36,9 @@ SODIMM = re.compile(r"so-?\s?dimm|\b(laptop|notebook|imac|macbook|mac ?mini|thin
                     # номери ноутбучних модулів: Samsung M425R/M471A/M474A, Crucial …S5/…SFRA, Kingston KF…S…/KVR…S…
                     r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}|"
                     # Kingston Fury Impact / HyperX Impact — тільки ноутбучні (29.09: «Kingston Fury Impact» вважався настільною)
-                    r"\bimpact\b|\bcms[xo]\d", re.I)
+                    r"\bimpact\b|\bcms[xo]\d|"
+                    # 29.09 (eBay): «260-pin», «HMAA4GS6AJR8N», «HMA82GS6», «HMCG78AGBSA», «SO DDR5», «S0Dimm»
+                    r"\b26[02]\s?-?\s?pin|\bhmaa?\d{1,3}gs6|\bhmcg\d{2}[a-z]{3}s|\bso\s+ddr|\bs0-?\s?dimm", re.I)
 
 # (канонічна назва, regex) — порядок = пріоритет; бренди модулів раніше за виробників чипів
 BRANDS = [
@@ -71,7 +73,7 @@ _COUNT = re.compile(r"(?:^|[\s(])([2-4])\s?(?:x|stk\.?|stueck|st[uü]ck|er[- ]?(
 _CAP_COUNT = re.compile(r"(\d{1,3})\s?gb\s*\(?\s*([2-4])\s?(?:stk\.?|stueck|st[uü]ck)(?=[\s).,]|$)", re.I)
 # «nicht 32GB 64GB» — SEO-хвіст у назві (28.09: «48GB DDR5 … nicht 32GB 64GB» не розпізнавався)
 _SEO_NOT = re.compile(r"\bnicht\s+(?:\d{1,3}\s?gb[\s,/+&]*(?:und|oder)?\s*)+", re.I)
-_DDR = re.compile(r"ddr\s?-?\s?([2345])l?\b|\bpc([2345])l?\s?-", re.I)
+_DDR = re.compile(r"ddr\s?-?\s?([2345])l?(?:\b|(?=m\b))|\bpc([2345])l?\s?-", re.I)
 # «DDR4 4 8 16 32 gb», «8/16/32GB» — варіації (продавець виставив кілька ємностей в одному оголошенні); 29.09
 _VARIANTS = re.compile(r"(?<![\d.x])(\d{1,3})(?!\d)\s*[,/|;]?\s*(?:(\d{1,3})(?!\d)\s*[,/|;]?\s*)+(?:gb|g\b)", re.I)
 # «⚠️ ACHTUNG Betrüger» — попередження, а не продаж
@@ -79,6 +81,8 @@ WARNING = re.compile(r"\b(?:achtung|warnung|vorsicht|betrueger|betrug|scammer|sc
 
 
 def is_variants(t: str) -> bool:
+    if _KIT1.search(t) or _KIT3.search(t):
+        return False
     t = re.sub(r"ddr\s?-?\s?[2345]l?\b|\bpc[2345]l?\b", " ", t)
     for m in _VARIANTS.finditer(t):
         nums = [int(x) for x in re.findall(r"\d{1,3}", m.group(0))]
@@ -143,7 +147,8 @@ def guess_gen(t: str) -> str | None:
 # Corsair CM?32GX4M2 = 2 планки, разом 32; Kingston KF432C16BBK2/32; G.Skill F4-3200C16D-32G (S/D/Q = 1/2/4); Crucial CT2K16G4.
 _PN = [(re.compile(r"\bcm[a-z]{1,3}(\d{1,3})gx[345]m(\d)"), lambda m: (int(m.group(2)), int(m.group(1)))),
        (re.compile(r"\bk[fv][a-z0-9]*?k(\d)/(\d{1,3})\b"), lambda m: (int(m.group(1)), int(m.group(2)))),
-       (re.compile(r"\bkf\d{3}[a-z0-9]*?/(\d{1,3})\b"), lambda m: (1, int(m.group(1)))),
+       (re.compile(r"\bk(?:f|cp|vr|sm|th|cs)\d{2,3}[a-z0-9]*?/(\d{1,3})\b"), lambda m: (1, int(m.group(1)))),
+       (re.compile(r"\bc[tp](\d{1,3})g\d{1,2}[a-z]"), lambda m: (1, int(m.group(1)))),
        (re.compile(r"\bf[345]-\d{4}c\d{2}([sdq])-(\d{1,3})g"), lambda m: ({"s": 1, "d": 2, "q": 4}[m.group(1)], int(m.group(2)))),
        (re.compile(r"\bct(\d)k(\d{1,3})g\d"), lambda m: (int(m.group(1)), int(m.group(1)) * int(m.group(2))))]
 
@@ -173,6 +178,10 @@ def parse_capacity(t: str):
         kit_set = {(pn[0], pn[1] // pn[0])}
     elif not kit_set and not singles and pn and pn[0] == 1:
         singles = {pn[1]}
+    elif not kit_set and pn and pn[0] == 1 and len(singles) == 1 and next(iter(singles)) > pn[1]:
+        v = next(iter(singles))          # «Crucial 32GB CT16G4DFRA32A» — номер однієї планки 16 ГБ, разом 32 → 2×16
+        if v % pn[1] == 0 and 2 <= v // pn[1] <= 4:
+            kit_set = {(v // pn[1], pn[1])}
     explicit_one = {m for n, m in kits if n == 1}     # «(1x64GB)» — саме одна планка, не кіт
     if not kit_set and len(explicit_one) == 1 and singles <= explicit_one:
         v = next(iter(explicit_one))
@@ -237,7 +246,7 @@ def parse_title(title: str):
     total, mods, why = parse_capacity(t)
     if total is None:
         return None, why
-    ecc = bool(re.search(r"\becc\b", t))
+    ecc = bool(re.search(r"(?<!non[- ])(?<!non)\becc\b", t))
     if SERVER.search(t):
         form = "server"
     elif SODIMM.search(t):
@@ -257,6 +266,8 @@ def parse_title(title: str):
         mixed = len(found) >= 2
     # «32GB Kit» без «2x16»: кількість планок невідома, але їх більше однієї
     kit_word = mods == 1 and bool(re.search(r"\bkit\b|\bset\b|dual[- ]?(?:kit|channel)", t))
-    explicit_single = mods == 1 and bool(re.search(r"(?<![\d.])1\s*x\s*\d{1,3}\s?gb|\bein(?:e|en|zelne[rn]?)?\s+(?:riegel|modul)", t))
+    explicit_single = mods == 1 and bool(re.search(r"(?<![\d.])1\s*x\s*\d{1,3}\s?gb|\bein(?:e|en|zelne[rn]?)?\s+(?:riegel|modul)|"
+                                                   r"^\W*1\s*x\s+(?!\d)|\b1\s?(?:stk|stueck|st[uü]ck)\b", t)
+                                         or part_capacity(t) == (1, total))
     return dict(gen=gen, form=form, ecc=ecc, total=total, modules=mods, kit=mods > 1, speed=parse_speed(t, gen),
                 brand=brand, oem=brand in CHIP_OEM, mixed=mixed, kit_word=kit_word, explicit_single=explicit_single), None

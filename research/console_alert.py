@@ -35,7 +35,13 @@ _REJECT = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausc
                      r"collector|legacy\s+edition|\bwata\b|\bvga\b|graded|samm?lung|samlung|\blegit\b|"
                      r"timestamp|troph|\bjapan|"
                      # «⚠️ ACHTUNG Betrüger» (KA 28.09) — попередження, не продаж
-                     r"\bachtung\b|\bwarnung\b|\bvorsicht\b|betr[uü]e?g|\bscam", re.I)
+                     r"\bachtung\b|\bwarnung\b|\bvorsicht\b|betr[uü]e?g|\bscam|"
+                     # дефект у назві: «(Laufwerk liest keine Disks mehr)» (eBay 29.09)
+                     r"liest\s+keine|\bstreikt|laufwerk\s+(?:\w+\s+){0,2}(?:defekt|kaputt|geht\s+nicht)|"
+                     # гра / бонус до передзамовлення, а не консоль: «Switch 2 Pokemon Legenden Z-A + Vorbesteller Boni»,
+                     # «Metroid Prime 4 – Power-Set + Schlüsselanhänger», «Mario Tennis Fever + Tennisball» (eBay 29.09)
+                     r"vorbestell|pre-?order|\bboni\b|steelbook|dual\s?pack|power-?set|schlüsselanhänger|"
+                     r"tennisball", re.I)
 _DIGITAL = re.compile(r"digital", re.I)
 _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|festplatte|\bssd\b|lenkrad|wheel|ständer|"
                         r"halterung|kühler|lüfter|skin|folie|hülle|tasche|\bcase\b|netzteil|kabel|\bspiele?\b|\bgame\b|"
@@ -164,7 +170,9 @@ _PS5_PRO = re.compile(r"\bpro\b", re.I)
 _PS5_OTHER = re.compile(r"portal|\bportable\b|porta\s+remote|remote[\s-]?play|\bvr\s?2?\b|psvr|xbox|switch|\bps4\b|playstation\s*4", re.I)
 _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive|\bssd\b|festplatte|ständer|halterung|"
                             r"lüfter|kühler|skin|folie|hülle|tasche|\bcase\b|cover|faceplate|netzteil|kabel|\bspiele?\b|"
-                            r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad|wheel|pedal|erweiterung|expansion", re.I)
+                            r"\bgame\b|fernbedienung|ladestation|dock|kamera|lenkrad|wheel|pedal|erweiterung|expansion|"
+                            # «PS5 Pulse Explore Wireless Earbuds», «PS5 … ähnl. wie Scuf, AIM» — навушники, кастомні контролери
+                            r"earbuds|kopfh[öo]rer|\bpulse\b|scuf|\baim\b|paddles?", re.I)
 # «Edition» НЕ ознака консолі: «DualSense LeBron James Limited Edition» — контролер (27.09)
 _PS5_CONSOLE = re.compile(r"konsole|console|\d\s?tb\b|825\s?gb|\bmit\b|\binkl|\+|\bbundle\b|\bslim\b", re.I)
 
@@ -216,6 +224,8 @@ SHIP_SWITCH, SHIP_IN_SWITCH = SWITCH2["ship"], SWITCH2["ship_in"]
 _SWITCH2 = re.compile(r"switch\s?2\b", re.I)
 # «Nitendo Switch», «Nintedo Switch», «Switch 1» (eBay 28.09)
 _SWITCH1 = re.compile(r"\bni\w{3,6}do\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|[1]\b|konsole|console)", re.I)
+_SWITCH1_EVIDENCE = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
+                               r"\bdock|neon|grau|\bmit\b|\binkl|bundle|set\b|paket|komplett|handheld", re.I)
 _NOT_SWITCH = re.compile(r"hdmi|kvm|netzwerk|\blan\b|\bports?\b|usb|splitter|umschalt|\d\s?x\s?\d|schalter|gigabit|\bpoe\b|"
                          r"tp-?link|netgear|cisco|ubiquiti|mikrotik|zyxel|d-?link", re.I)
 _SWITCH_ACCESSORY = re.compile(r"controller|joy[\s-]?cons?\b|\bspiele?\b|\bgame\b|dock|tasche|hülle|"
@@ -234,6 +244,11 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
     if _SWITCH2.search(title):
         real = SWITCH2
     elif _SWITCH1.search(title):
+        # «Nintendo Switch Mario Kart 8 Deluxe» — гра з назвою платформи; консоль видно лише з моделі чи комплекту
+        if not _SWITCH1_EVIDENCE.search(title):
+            return _skip(title, price, "з назви не видно, що це консоль (схоже на гру для Switch)")
+        if re.search(r"\boled\b", title, re.I) and re.search(r"\bv\s?[12]\b|\blite\b", title, re.I):
+            return _skip(title, price, "кілька моделей в одному оголошенні — ціна найдешевшої")
         oled = re.search(r"\boled\b", title, re.I) and not re.search(r"(?:nicht|kein)\s+oled", title, re.I)
         real = SWITCH_OLED if oled else SWITCH_LITE if re.search(r"\blite\b", title, re.I) \
             else SWITCH_V2

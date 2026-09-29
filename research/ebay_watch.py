@@ -76,7 +76,12 @@ def listing_of(it: dict) -> dict:
                 offer=("BEST_OFFER" in (it.get("buyingOptions") or [])), cond=str(it.get("conditionId") or ""),
                 seller=sl.get("username") or "", fb=int(sl.get("feedbackScore") or 0),
                 pct=_num(sl.get("feedbackPercentage")), zip=str(loc.get("postalCode") or ""),
-                country=loc.get("country"), pickup_ok=bool(it.get("pickupOptions")),
+                country=loc.get("country"),
+                # «pickupOptions» є й в оголошеннях з Райне чи Мюнхена (29.09: 31 з 901, жодне не з Гамбурга) — самовивіз
+                # лише з гамбурзьким індексом; запит самовивозу (радіус 30 км) ставить прапорець сам у poll_once
+                pickup_ok=bool(it.get("pickupOptions")) and bool(HAMBURG_ZIP.match(str(loc.get("postalCode") or ""))),
+                # оголошення з варіантами (колір/модель/ємність): ціна — найдешевшого варіанта, не того, що в назві
+                group=bool(it.get("itemGroupHref") or it.get("itemGroupType") or it.get("itemGroupId")),
                 dist=_num((it.get("distanceFromPickupLocation") or {}).get("value")))
 
 
@@ -90,6 +95,12 @@ def evaluate_ebay(lst: dict) -> dict:
         ship, pickup = PICKUP_COST, True
     if lst["cond"] in BAD_CONDITIONS:
         return dict(verdict="SKIP", reason="стан «на запчастини / дефект»", title=lst["title"], price=lst["price"])
+    if lst.get("group"):
+        return dict(verdict="SKIP", reason="оголошення з варіантами — ціна найдешевшого варіанта, не того, що в назві",
+                    title=lst["title"], price=lst["price"])
+    broken = broken_reason(lst["title"])   # «PS5 … (Laufwerk liest keine Disks mehr)» — дефект у самій назві
+    if broken:
+        return dict(verdict="SKIP", reason=f"дефект у назві: «{broken}»", title=lst["title"], price=lst["price"])
     vb = lst["offer"]
     r = evaluate_console(lst["title"], lst["price"], ship, vb) or evaluate(lst["title"], lst["price"], ship, vb)
     if "net_q" not in r:   # SKIP / UNKNOWN
@@ -266,7 +277,9 @@ def fetch_desc(client, item_id: str) -> str | None:
         d = _request_with_backoff("GET", ITEM_URL + item_id, headers=client._headers(), params={})
     except Exception:
         return None
-    text = html.unescape(re.sub(r"<[^>]+>", " ", d.get("description") or d.get("shortDescription") or ""))
+    raw = d.get("description") or d.get("shortDescription") or ""
+    raw = re.sub(r"(?is)<(style|script)\b.*?</\1\s*>", " ", raw)   # шаблони продавців: десятки КБ CSS перед текстом
+    text = html.unescape(re.sub(r"<[^>]+>", " ", raw))
     return re.sub(r"\s+", " ", text).strip()
 
 

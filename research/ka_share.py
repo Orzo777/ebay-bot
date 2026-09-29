@@ -18,7 +18,7 @@ from console_alert import evaluate_console
 from ka_listing_check import UA, parse_listing, risk_lines
 from ram_mail_check import _NO_PICKUP
 from ram_alert import (SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, evaluate, format_html, item_for_cost, offer_template,
-                       refine_by_desc, seller_template)
+                       model_from_desc, refine_by_desc, seller_template)
 
 _ID_RE = re.compile(r"kleinanzeigen\.de/s-anzeige/(?:[^/\s]+/)?(\d{8,})")
 _TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)
@@ -80,6 +80,11 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
     ship = 0.0 if info["pickup_only"] else max(default_ship, info["ship_from"] or 0.0)
     res = (evaluate_console(info["title"], info["price"], shipping=ship, vb=info["vb"])
            or evaluate(info["title"], info["price"], shipping=ship, vb=info["vb"]))
+    if res["verdict"] == "UNKNOWN":   # «Xbox zu verkaufen» — модель лише в описі (29.09)
+        model = model_from_desc(info["title"], parse_listing(page, info["price"], 0).get("desc"))
+        if model:
+            info["title"] = f"{info['title']} {model}"
+            res = evaluate_console(info["title"], info["price"], shipping=ship, vb=info["vb"])
     notes = []
     if info.get("hamburg"):   # поруч — забираємо самі, готівкою після огляду
         apply_pickup(res)
