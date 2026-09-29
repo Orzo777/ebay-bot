@@ -78,6 +78,31 @@ def _download(url: str) -> bytes | None:
         return None
 
 
+def discover_models(key: str) -> list[str]:
+    """Доступні цьому ключу Flash-моделі з підтримкою зображень (29.09: 2.5/2.0 уже «no longer available to new users»).
+    Найновіші — першими; без TTS/image-generation/live/embedding."""
+    if "list" in _working:
+        return _working["list"]
+    import requests
+    names = []
+    try:
+        r = requests.get("https://generativelanguage.googleapis.com/v1beta/models", headers={"x-goog-api-key": key},
+                         params={"pageSize": 200}, timeout=10)
+        for m in r.json().get("models", []):
+            n = m.get("name", "").split("/")[-1]
+            if ("flash" in n and "generateContent" in (m.get("supportedGenerationMethods") or [])
+                    and not re.search(r"tts|image|live|embed|audio|thinking-exp|native", n)):
+                names.append(n)
+    except Exception as e:
+        print(f"   [фото] список моделей: {e.__class__.__name__}")
+
+    def ver(n):
+        v = re.search(r"(\d+(?:\.\d+)?)", n)
+        return (float(v.group(1)) if v else 0, "lite" not in n, "preview" not in n and "exp" not in n)
+    _working["list"] = sorted(names, key=ver, reverse=True)
+    return _working["list"]
+
+
 def ask_gemini(images: list[bytes], prompt: str, key: str | None = None) -> dict | None:
     import requests
     key = key or os.getenv("GEMINI_API_KEY")
@@ -87,7 +112,9 @@ def ask_gemini(images: list[bytes], prompt: str, key: str | None = None) -> dict
                                   for b in images]
     body = {"contents": [{"parts": parts}],
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
-    order = ([_working["m"]] if "m" in _working else []) + [m for m in MODELS if m != _working.get("m")]
+    order = ([_working["m"]] if "m" in _working else []) + [m for m in MODELS + discover_models(key)
+                                                            if m != _working.get("m")]
+    order = list(dict.fromkeys(order))[:5]
     t_end = time.time() + 40   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
     for model in order + order[:1]:   # 503 «high demand» (29.09) — інша модель, потім ще раз перша
         if time.time() > t_end:
