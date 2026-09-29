@@ -28,17 +28,18 @@ JUNK_BEFORE_DDR = re.compile(
     r"windows|win ?1[01]|display|bildschirm|tablet|gaming[- ]?pc|pc[- ]?bundle|aufr[uü]e?st)\b", re.I)
 DEFECT = re.compile(r"\b(defekt|bastler|ersatzteil|kaputt|nicht funktionsf|for parts|not working|funktioniert nicht|teildefekt)\b", re.I)
 # «2 Stk», «2 Stück» — це кіт, а не лот (28.09); лот — від 5 штук або слова «Konvolut», «Posten»…
-LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|diverse|paket|bundle)\b|\b\d{2,3}\s?x\b|"
+LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|diverse|paket|bundle)\b|(?<![a-z] )(?<![a-z])\b\d{2,3}\s?x\b|"
                   r"\b(?:[5-9]|\d{2,})\s?(?:stk|stueck|st[uü]ck)\b", re.I)
 
-SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b", re.I)
-SODIMM = re.compile(r"so-?\s?dimm|\b(laptop|notebook|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
+SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b|"
+                    r"\bm39[13][ab]|\b\d\s?rx4\b|-rb\d\b|\bhmaa?\w{2,4}r7|\bksm\d{2,3}r|\bm32[13]r\w*r", re.I)
+SODIMM = re.compile(r"so-?\s?dimm|\bs[o0][\s-]*ram\b|\bkcp\d{3}s[sd]\d|\b(laptop\w*|notebook\w*|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
                     # номери ноутбучних модулів: Samsung M425R/M471A/M474A, Crucial …S5/…SFRA, Kingston KF…S…/KVR…S…
                     r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}|"
                     # Kingston Fury Impact / HyperX Impact — тільки ноутбучні (29.09: «Kingston Fury Impact» вважався настільною)
-                    r"\bimpact\b|\bcms[xo]\d|"
+                    r"\bimpact\b|\bcms[xo]\d|\bowc\b|"   # OWC — пам'ять для Mac (iMac — SO-DIMM)
                     # 29.09 (eBay): «260-pin», «HMAA4GS6AJR8N», «HMA82GS6», «HMCG78AGBSA», «SO DDR5», «S0Dimm»
-                    r"\b26[02]\s?-?\s?pin|\bhmaa?\d{1,3}gs6|\bhmcg\d{2}[a-z]{3}s|\bso\s+ddr|\bs0-?\s?dimm", re.I)
+                    r"\b26[02]\s?-?\s?pin|\bhmaa?\d{1,3}gs6|\bhmcg\d{2}[a-z]{3}s|\bso[\s-]*ddr|\bs0-?\s?dimm", re.I)
 
 # (канонічна назва, regex) — порядок = пріоритет; бренди модулів раніше за виробників чипів
 BRANDS = [
@@ -49,7 +50,7 @@ BRANDS = [
     ("Transcend", r"transcend"), ("Apacer", r"apacer"), ("Mushkin", r"mushkin"), ("Netac", r"netac"),
     ("Fanxiang", r"fanxiang"), ("Silicon Power", r"silicon[- ]?power"), ("Goodram", r"goodram|wilk"),
     ("Kingmax", r"kingmax"), ("Gigabyte/Aorus", r"gigabyte|aorus"), ("MSI", r"\bmsi\b"), ("Zadak", r"zadak"),
-    ("Klevv", r"klevv"), ("OLOy", r"oloy"), ("V-Color", r"v-?color"), ("Biwin", r"biwin"), ("Acer/Predator", r"predator|\bacer\b"),
+    ("Klevv", r"klevv"), ("OLOy", r"oloy"), ("V-Color", r"v-?color"), ("Biwin", r"biwin"), ("Acer/Predator", r"(?<!hyperx )predator|\bacer\b"),
     ("Asgard", r"asgard"), ("Colorful", r"colorful"), ("Galax/KFA2", r"galax|kfa2"), ("Thermaltake", r"thermaltake|toughram"),
     ("Hikvision", r"hikvision|hiksemi"), ("Gloway", r"gloway"), ("Ramaxel", r"ramaxel"), ("Longsys/Lexar", r"longsys"),
     ("Geil", r"\bgeil\b"), ("OCZ", r"\bocz\b"), ("Verbatim", r"verbatim"), ("Intenso", r"intenso"), ("Timetec", r"timetec"),
@@ -75,7 +76,7 @@ _CAP_COUNT = re.compile(r"(\d{1,3})\s?gb\s*\(?\s*([2-4])\s?(?:stk\.?|stueck|st[u
 _SEO_NOT = re.compile(r"\bnicht\s+(?:\d{1,3}\s?gb[\s,/+&]*(?:und|oder)?\s*)+", re.I)
 _DDR = re.compile(r"ddr\s?-?\s?([2345])l?(?:\b|(?=m\b))|\bpc([2345])l?\s?-", re.I)
 # «DDR4 4 8 16 32 gb», «8/16/32GB» — варіації (продавець виставив кілька ємностей в одному оголошенні); 29.09
-_VARIANTS = re.compile(r"(?<![\d.x])(\d{1,3})(?!\d)\s*[,/|;]?\s*(?:(\d{1,3})(?!\d)\s*[,/|;]?\s*)+(?:gb|g\b)", re.I)
+_VARIANTS = re.compile(r"(?<![\w.])(\d{1,3})(?!\d)\s*[,/|;]?\s*(?:(\d{1,3})(?!\d)\s*[,/|;]?\s*)+(?:gb|g\b)", re.I)
 # «⚠️ ACHTUNG Betrüger» — попередження, а не продаж
 WARNING = re.compile(r"\b(?:achtung|warnung|vorsicht|betrueger|betrug|scammer|scam)\b", re.I)
 
@@ -150,7 +151,12 @@ _PN = [(re.compile(r"\bcm[a-z]{1,3}(\d{1,3})gx[345]m(\d)"), lambda m: (int(m.gro
        (re.compile(r"\bk(?:f|cp|vr|sm|th|cs)\d{2,3}[a-z0-9]*?/(\d{1,3})\b"), lambda m: (1, int(m.group(1)))),
        (re.compile(r"\bc[tp](\d{1,3})g\d{1,2}[a-z]"), lambda m: (1, int(m.group(1)))),
        (re.compile(r"\bf[345]-\d{4}c\d{2}([sdq])-(\d{1,3})g"), lambda m: ({"s": 1, "d": 2, "q": 4}[m.group(1)], int(m.group(2)))),
-       (re.compile(r"\bct(\d)k(\d{1,3})g\d"), lambda m: (int(m.group(1)), int(m.group(1)) * int(m.group(2))))]
+       (re.compile(r"\bct(\d)k(\d{1,3})g\d"), lambda m: (int(m.group(1)), int(m.group(1)) * int(m.group(2)))),
+       (re.compile(r"\bhma(851|81g|82g|84g)u6|\bhmaa(4g|8g)u6"),
+        lambda m: (1, {"851": 4, "81g": 8, "82g": 16, "84g": 32, "4g": 32, "8g": 64}[m.group(1) or m.group(2)])),
+       (re.compile(r"\bm378a(5244|1k43|2k43|2g43|4g43)"), lambda m: (1, {"5244": 4, "1k43": 8, "2k43": 16, "2g43": 16, "4g43": 32}[m.group(1)])),
+       (re.compile(r"\bm323r(1gb4|2ga3|4ga3)"), lambda m: (1, {"1gb4": 8, "2ga3": 16, "4ga3": 32}[m.group(1)])),
+       (re.compile(r"\bhmcg(78|88)"), lambda m: (1, {"78": 16, "88": 32}[m.group(1)]))]
 
 
 def part_capacity(t: str):
@@ -225,6 +231,7 @@ def parse_title(title: str):
     t = re.sub(r"[‐-―−]", "-", t)          # «8‑GB‑DDR4»: нерозривні/довгі дефіси → звичайні (28.09)
     t = re.sub(r"(?<=\d)\s*\*\s*(?=\d)", "x", t)           # «2*8GB» = «2x8GB»
     t = re.sub(r"[®™©️]", "", t)
+    t = re.sub(r"(?<=\d)\s?gib\b", "gb", t)                # «32GiB»
     t = _SEO_NOT.sub(" ", t)
     if DEFECT.search(t):
         return None, "дефект/запчастина"
@@ -266,7 +273,7 @@ def parse_title(title: str):
         mixed = len(found) >= 2
     # «32GB Kit» без «2x16»: кількість планок невідома, але їх більше однієї
     kit_word = mods == 1 and bool(re.search(r"\bkit\b|\bset\b|dual[- ]?(?:kit|channel)", t))
-    explicit_single = mods == 1 and bool(re.search(r"(?<![\d.])1\s*x\s*\d{1,3}\s?gb|\bein(?:e|en|zelne[rn]?)?\s+(?:riegel|modul)|"
+    explicit_single = mods == 1 and bool(re.search(r"(?<![\d.])1\s*x\s*\d{1,3}\s?gb|\bein(?:e|en|zelne[rn]?)?\s+(?:riegel|modul)|einzel(?:modul|riegel)|"
                                                    r"^\W*1\s*x\s+(?!\d)|\b1\s?(?:stk|stueck|st[uü]ck)\b", t)
                                          or part_capacity(t) == (1, total))
     return dict(gen=gen, form=form, ecc=ecc, total=total, modules=mods, kit=mods > 1, speed=parse_speed(t, gen),

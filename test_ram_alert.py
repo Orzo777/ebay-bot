@@ -138,6 +138,15 @@ class TestModelFromDesc(unittest.TestCase):
         self.assertIsNone(model_from_desc("DDR5 32GB", "Series X"))
 
 
+class TestPerUnitPrice(unittest.TestCase):
+    def test_capacity_per_module_is_not_price(self):
+        from ram_alert import _D_PER_UNIT
+        self.assertFalse(_D_PER_UNIT.search("16GB je Modul, 32GB insgesamt"))
+        self.assertFalse(_D_PER_UNIT.search("Kapazität je Riegel: 16GB"))
+        self.assertTrue(_D_PER_UNIT.search("Preis je Riegel"))
+        self.assertTrue(_D_PER_UNIT.search("120 € je Riegel"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

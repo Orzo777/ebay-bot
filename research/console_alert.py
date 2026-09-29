@@ -28,20 +28,32 @@ _SERIES_X = re.compile(r"serie[sn]?\s*x\b", re.I)
 _X_AND_S = re.compile(r"serie[sn]?\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|\bserie[sn]?\s+s\s*(?:/|\||&|und|oder|,)\s*x\b", re.I)
 _OTHER_CONSOLE = re.compile(r"\bserie[sn]?\s+s\b|\bseries-s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
 # «Fn ACC Ps5» за €150 (eBay 28.09) — продаж ігрового акаунта, не консолі
-_REJECT = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|\bacc\b|\baccount|"
+_REJECT_BASE = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|\bacc\b|\baccount|"
                      r"\bkonto\b|"
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
+                     # «Switch … HAC-001 nur Tablett» (eBay 29.09) — без дока/зарядки, не повна консоль
+                     r"\bnur\s+(?:das\s+)?tabl?ett?\b|ohne\s+(?:dock|joy-?\s?cons?|ladeger|ladekabel)|"
                      # eBay (27.09): ігри-колекційки та послуги в категорії Konsolen; японська Switch 2 — лише японська мова
                      r"collector|legacy\s+edition|\bwata\b|\bvga\b|graded|samm?lung|samlung|\blegit\b|"
                      r"timestamp|troph|\bjapan|"
                      # «⚠️ ACHTUNG Betrüger» (KA 28.09) — попередження, не продаж
                      r"\bachtung\b|\bwarnung\b|\bvorsicht\b|betr[uü]e?g|\bscam|"
                      # дефект у назві: «(Laufwerk liest keine Disks mehr)» (eBay 29.09)
-                     r"liest\s+keine|\bstreikt|laufwerk\s+(?:\w+\s+){0,2}(?:defekt|kaputt|geht\s+nicht)|"
-                     # гра / бонус до передзамовлення, а не консоль: «Switch 2 Pokemon Legenden Z-A + Vorbesteller Boni»,
-                     # «Metroid Prime 4 – Power-Set + Schlüsselanhänger», «Mario Tennis Fever + Tennisball» (eBay 29.09)
-                     r"vorbestell|pre-?order|\bboni\b|steelbook|dual\s?pack|power-?set|schlüsselanhänger|"
-                     r"tennisball", re.I)
+                     r"liest\s+keine|\bstreikt|laufwerk\s+(?:\w+\s+){0,2}(?:defekt|kaputt|geht\s+nicht)", re.I)
+# гра / бонус до передзамовлення, а не консоль: «Switch 2 Pokemon Legenden Z-A + Vorbesteller Boni»,
+# «Metroid Prime 4 – Power-Set + Schlüsselanhänger», «Mario Tennis Fever + Tennisball» (eBay 29.09) — якщо немає доказу консолі
+_GAME_ONLY = re.compile(r"vorbestell|pre-?order|\bboni\b|steelbook|dual\s?pack|power-?set|schlüsselanhänger|tennisball", re.I)
+_CONSOLE_PROOF = re.compile(r"konsole|console|handheld|\d\s?tb\b|\b\d{3}\s?gb\b|\bslim\b|\bdis[ck]\b|digital\s+edition|"
+                            r"cfi-?\d|hac-?\d|\boled\b", re.I)
+
+
+class _Reject:
+    """_REJECT_BASE + ігрові слова без доказу консолі; інтерфейс як у re.Pattern (.search)."""
+    def search(self, title: str):
+        return _REJECT_BASE.search(title) or (None if _CONSOLE_PROOF.search(title) else _GAME_ONLY.search(title))
+
+
+_REJECT = _Reject()
 _DIGITAL = re.compile(r"digital", re.I)
 _ACCESSORY = re.compile(r"controller|kontroller|headset|speichererweiterung|festplatte|\bssd\b|lenkrad|wheel|ständer|"
                         r"halterung|kühler|lüfter|skin|folie|hülle|tasche|\bcase\b|netzteil|kabel|\bspiele?\b|\bgame\b|"
@@ -188,7 +200,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
         return _skip(title, price, "PS5 Pro — не купуємо: забирає бюджет, на KA вже по ринку")
     if _PS5_OTHER.search(_PS5.sub("", title)):
         return _skip(title, price, "PS Portal / VR / разом з іншою консоллю")
-    digital = bool(_DIGITAL.search(title))
+    digital = bool(_DIGITAL.search(title) or re.search(r"cfi-?\s?\d{4}\s?b(?:\d{0,2})?\b", title, re.I))
     # «Digital + Laufwerk» / «Laufwerk für PS5» — дисковод окремо: без слова «Konsole» це аксесуар
     if _is_accessory(title, _PS5_ACCESSORY, _PS5, price, (PS5_DIGITAL if digital else PS5_DISC)["p25"]):
         return _skip(title, price, "схоже на аксесуар, а не на консоль")
@@ -221,11 +233,15 @@ SWITCH_OLED = dict(p25=162, med=172, st=25, name="Nintendo Switch OLED (вжив
 SWITCH_V2 = dict(p25=131, med=140, st=20, name="Nintendo Switch V1/V2 (вживана)", ship=7.69, ship_in=7.0, min=50)
 SWITCH_LITE = dict(p25=82, med=92, st=25, name="Nintendo Switch Lite (вживана)", ship=6.19, ship_in=5.5, min=30)
 SHIP_SWITCH, SHIP_IN_SWITCH = SWITCH2["ship"], SWITCH2["ship_in"]
-_SWITCH2 = re.compile(r"switch\s?2\b", re.I)
+_SWITCH2 = re.compile(r"switch\s?-?\s?2(?![\d.,])", re.I)   # «Switch 2Schwarz», «Switch-2» (eBay 29.09)
 # «Nitendo Switch», «Nintedo Switch», «Switch 1» (eBay 28.09)
 _SWITCH1 = re.compile(r"\bni\w{3,6}do\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|[1]\b|konsole|console)", re.I)
 _SWITCH1_EVIDENCE = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
-                               r"\bdock|neon|grau|\bmit\b|\binkl|bundle|set\b|paket|komplett|handheld", re.I)
+                               r"\bdock|neon|grau|\bmit\b|\bin[ck]l|bundle|set\b|paket|komplett|handheld|"
+                               # 29.09 (eBay, 10 з 14 «без доказу» були консолями): «Animal Crossing Edition», «Switch 2017»,
+                               # «+ 3 Spiele + Controller», «Plus 2 Spiele», «rot blau», «gebraucht», «guter Zustand»
+                               r"edition|\b20(?:1[7-9]|2\d)\b|\bplus\b|\d+\s*spiele|controller|\brot\b|\bblau\b|schwarz|"
+                               r"gebraucht|zustand|switch\b.*\+", re.I)
 _NOT_SWITCH = re.compile(r"hdmi|kvm|netzwerk|\blan\b|\bports?\b|usb|splitter|umschalt|\d\s?x\s?\d|schalter|gigabit|\bpoe\b|"
                          r"tp-?link|netgear|cisco|ubiquiti|mikrotik|zyxel|d-?link", re.I)
 _SWITCH_ACCESSORY = re.compile(r"controller|joy[\s-]?cons?\b|\bspiele?\b|\bgame\b|dock|tasche|hülle|"

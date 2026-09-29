@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
-from ram_alert import (PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
+from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
                        evaluate, refine_by_desc, tier)
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
@@ -383,7 +383,9 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
     if auction:
         head = [f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", "",
                 *auction_lines(r, it, now), f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
-                f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]]]
+                f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]],
+                *(["⚠️ Продавець пише, що НЕ тестовано — ставку роби з поправкою на ризик"]
+                  if desc and _DESC_UNTESTED.search(desc) else [])]
         return "\n".join(head), dict(r, verdict="AUCTION"), lst
     if r["verdict"] not in SEND_VERDICTS:
         return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price']:.0f} € + пересилка "
@@ -500,8 +502,8 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 r = r2
                 risk = risk_of(lst, desc, r.get("quick_sale", 0))
                 print(f" - [аукціон] {lst['title'][:70]} | ставка {lst['price']:.0f}€ -> макс. {r['cap'] - r['ship_in']:.0f}€")
-                if broken_reason(desc) or risk["hard"]:
-                    print("   дефект / шахрай — пропускаю")
+                if broken_reason(desc) or risk["hard"] or (desc and _DESC_UNTESTED.search(desc)):
+                    print("   дефект / шахрай / не тестовано — пропускаю")
                     continue
                 esc = html.escape
                 text = "\n".join([f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", "",

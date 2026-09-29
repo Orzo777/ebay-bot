@@ -52,7 +52,8 @@ _NO_SYSTEM = re.compile(r"(?:systemkauf|waren\s*(?:&|und)\s*dienstleistung\w*|di
 _TEMPLATE_PHRASES = [r"vor dem anschreiben kurz alles durchlesen", r"unnötige zeit", r"ich bin ein ehrlicher verkäufer",
                      r"meine bewertungen sprechen für sich", r"systemkauf", r"gegebenenfalls direkt blockiert",
                      r"klare und faire bedingungen"]
-_STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur versand|keine abholung|abholung nicht|"
+_STORY = re.compile(r"im ausland|auf montage|bin beruflich|umzug ins ausland|nur\s+(?:per\s+)?versand|keine abholung|abholung nicht|"
+                    r"wegen\s+(?:\w+\s+)?umzug|umgezogen|\bpendel|"
                     r"keine besichtigung|dringend|bundeswehr|soldat|krankenhaus|spedition|kurier|versand\s+nur\s+(?:gegen|per|bei|mit|über)|nur per post|"
                     r"wohne (?:jetzt |nun |derzeit )?(?:in|im)\s+(?:ausland|england|spanien|polen|frankreich|italien)", re.I)
 _TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)
@@ -64,7 +65,8 @@ def _title_of(page: str) -> str:
 
 
 # «Neu / OVP / versiegelt» дешевше ринку — улюблена приманка (PS5 Slim «unausgepackt» за €280 від акаунта 15 дн., 27.09)
-_NEW_BAIT = re.compile(r"\bneu\b|neuwertig|originalverpackt|versiegelt|ungeöffnet|unausgepackt|\bovp\b|sealed", re.I)
+_NEW_BAIT = re.compile(r"(?<!nicht )\bneu\b(?!wertig)|originalverpackt|versiegelt|ungeöffnet|unausgepackt|sealed|"
+                       r"(?:noch\s+)?in\s+(?:der\s+)?(?:original)?folie|nie\s+(?:benutzt|ausgepackt)", re.I)
 
 
 def parse_listing(page: str, price: float, quick_sale: float, today: date | None = None) -> dict:
@@ -127,6 +129,9 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
         score += 2
         reasons.append(f"акаунт {age_days} дн. і ціна {100 * price / quick_sale:.0f}% ринку")
         hard.append(f"молодий акаунт ({age_days} дн.) і ціна нижче 75% ринку")
+    # Легенда «лише пересилка / річ в іншому місті» + ціна нижче ринку — шаблон шахраїв і зі «старих» (зламаних) акаунтів
+    if story and quick_sale and price < 0.75 * quick_sale and (not m or age_days < 365):
+        hard.append(f"легенда ({', '.join(story)}) і ціна {100 * price / quick_sale:.0f}% ринку")
     if quick_sale and price < 0.7 * quick_sale and _NEW_BAIT.search(desc + " " + _title_of(page)):
         score += 1
         reasons.append("«нове / в плівці» набагато дешевше ринку")

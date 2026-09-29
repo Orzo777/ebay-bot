@@ -106,7 +106,7 @@ class TestPass6to8(unittest.TestCase):
 
     def test_forms_and_counts(self):
         cases = {"Kingston Fury Impact DDR5 32GB 5600": ("sodimm", 32, 1),
-                 "Kingston 32GB DDR4 DIMM KCP426SD8/32": ("udimm", 32, 1),
+                 "Kingston 32GB DDR4 DIMM KCP426SD8/32": ("sodimm", 32, 1),   # «S» після частоти — SO-DIMM
                  "Crucial Pro DDR5 32GB RAM CP32G56C46U5.C8B": ("udimm", 32, 1),
                  "Crucial 32GB CT16G4DFRA32A DDR4": ("udimm", 32, 2),
                  "Samsung 1*32 GB sodimm ddr 4m, 2666er": ("sodimm", 32, 1),
@@ -124,6 +124,26 @@ class TestPass6to8(unittest.TestCase):
         for t in ["Crucial 32GB (2x16GB) DDR4-3200 UDIMM Non-ECC", "16 GB DDR5 RAM KINGSTON UDIMM 4800 MHZ NON ECC", "DDR4 32GB nonecc"]:
             self.assertFalse(P(t)["ecc"], t)
         self.assertTrue(P("DDR4 32GB ECC UDIMM")["ecc"])
+
+
+class TestPass9(unittest.TestCase):
+    def test_parse(self):
+        cases = {"G.Skill Ripjaws V DDR4 CL16 32GB Kit": ("udimm", 32),
+                 "Kingston HyperX Predator 32 GB (2x16GB) HX426C13PB3K2/32 DDR4": ("udimm", 32),
+                 "2x 32GiB DDR4-3200 SODIMM CRUCIAL": ("sodimm", 64),
+                 "Samsung 32GB DDR4 M393A4K40EB3-CWEBY 2Rx4 PC4-3200AA": ("server", 32),
+                 "SK hynix 32GB DDR4 UDIMM HMAA4GU6CJR8N-XN": ("udimm", 32),
+                 "Crucial DDR5 5600MHz 32GB C46 K2 SO-RAM": ("sodimm", 32),
+                 "Crucial DDR4 32GB Laptopspeicher": ("sodimm", 32),
+                 }
+        self.assertIsInstance(P("DDR4 16GB 2x8GB für Gigabyte Aero 15X"), dict)   # «15X» — модель, не лот
+        for t, exp in cases.items():
+            r = P(t)
+            self.assertIsInstance(r, dict, (t, r))
+            self.assertEqual((r["form"], r["total"]), exp, t)
+        self.assertFalse(P("Kingston HyperX Predator 32 GB (2x16GB) HX426C13PB3K2/32 DDR4")["mixed"])
+        self.assertTrue(P("SK hynix 32GB DDR4 UDIMM HMAA4GU6CJR8N-XN")["explicit_single"])
+        self.assertTrue(P("Corsair Vengeance 32GB DDR5 6000 Einzelmodul")["explicit_single"])
 
 
 if __name__ == "__main__":

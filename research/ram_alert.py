@@ -270,7 +270,9 @@ def broken_reason(desc: str | None) -> str | None:
 _D_WANTED = re.compile(r"^\W{0,5}(?:hallo\W+|moin\W+|hi\W+)?(?:ich\s+)?such(?:e|en)\b|\bich\s+suche\s+(?:eine|einen|ein|die|den)\b",
                        re.I)
 _D_PER_UNIT = re.compile(r"preis\s+(?:ist\s+)?(?:pro|je|für\s+(?:einen|ein|eine|1))\s+(?:riegel|stück|modul|stick|speicherriegel)|"
-                         r"\bje\s+(?:riegel|stück|modul)\b|einzelpreis|stückpreis|preis\s+pro\s+stück", re.I)
+                         r"\d+\s*(?:€|eur\w*)\s*(?:\w+\s+){0,2}(?:je|pro)\s+(?:riegel|stück|modul|stick)\b|"
+                         r"(?:je|pro)\s+(?:riegel|stück|modul|stick)\s*(?:\w+\s+){0,2}\d+\s*(?:€|eur)|"
+                         r"einzelpreis|stückpreis|preis\s+pro\s+stück", re.I)
 _D_LAPTOP = re.compile(r"so-?\s?dimm|(?:für|aus|im|in)\s+(?:\w+\s+){0,2}(?:laptop|notebook)|laptop-?(?:ram|speicher)|"
                        r"notebook-?(?:ram|speicher)", re.I)
 _D_NOT_LAPTOP = re.compile(r"(?:nicht|kein\w*)\s+(?:\w+\s+){0,2}(?:für\s+)?(?:laptop|notebook)|desktop|\budimm", re.I)

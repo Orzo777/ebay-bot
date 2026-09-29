@@ -255,6 +255,22 @@ class TestPass6to8Consoles(unittest.TestCase):
             self.assertTrue(evaluate_console(t, p).get("type"), t)
 
 
+class TestPass9Consoles(unittest.TestCase):
+    def test_switch_consoles_without_konsole_word(self):
+        for t in ["Nintendo Switch Animal Crossing Edition", "Nintendo Switch 2017 .", "Nintendo Switch + 3 Spiele + Controller",
+                  "Nintendo Switch Plus 2 Spiele", "Nintendo Switch rot blau", "Nintendo Switch, guter Zustand"]:
+            self.assertTrue(evaluate_console(t, 100).get("type"), t)
+
+    def test_game_words_with_console_proof(self):
+        for t, p in [("PS5 Slim Disc + 2 DualSense Dual Pack Bundle", 300), ("Xbox Series X 1TB Konsole + Steelbook Starfield", 300)]:
+            self.assertTrue(evaluate_console(t, p).get("type"), t)
+
+    def test_models(self):
+        self.assertIn("Switch 2", evaluate_console("Nintendo Switch 2Schwarz mit Dock, Pro Controller2 und zwei Spiele", 200)["type"])
+        self.assertIn("Digital", evaluate_console("Sony Playstation 5, CFI-1216B mit 1 Controller", 221)["type"])
+        self.assertEqual(evaluate_console("Nintendo Switch Konsole 32 GB HAC-001 (01) nur Tablett", 90)["verdict"], "SKIP")
+
+
 if __name__ == "__main__":
     unittest.main()
 
