@@ -204,7 +204,8 @@ def _age_label(lst: dict, now: datetime) -> str:
         mins = (now - datetime.fromisoformat(lst["created"].replace("Z", "+00:00"))).total_seconds() / 60
     except (AttributeError, ValueError):
         return ""
-    return f"{mins:.0f} хв тому" if mins < 90 else f"{mins / 60:.0f} год тому"
+    return (f"{mins:.0f} хв тому" if mins < 90 else f"{mins / 60:.0f} год тому" if mins < 48 * 60
+            else f"{mins / 1440:.0f} дн. тому")
 
 
 def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:

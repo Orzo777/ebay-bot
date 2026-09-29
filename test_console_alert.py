@@ -273,6 +273,35 @@ class TestPass9Consoles(unittest.TestCase):
         self.assertEqual(evaluate_console("Nintendo Switch Konsole 32 GB HAC-001 (01) nur Tablett", 90)["verdict"], "SKIP")
 
 
+
+class TestPass11Consoles(unittest.TestCase):
+    def test_switch2_with_punctuation(self):
+        for t in ["Nintendo Switch 2, 256 GB, schwarz", "Nintendo Switch 2. Top Zustand", "Nintendo Switch 2,OVP"]:
+            self.assertIn("Switch 2", evaluate_console(t, 250).get("type") or "", t)
+
+    def test_switch_games_are_not_consoles(self):
+        for t in ["Nintendo Switch Mario Kart 8 Deluxe Zustand gut", "Pokemon Karmesin Nintendo Switch Edition",
+                  "Mario Kart 8 Deluxe Nintendo Switch gebraucht", "Nintendo Switch Mario Kart 8 Deluxe (2017)",
+                  "Nintendo Switch Sports + Beingurt", "Ring Fit Adventure (inkl. Ring-Con & Beingurt) - Nintendo Switch",
+                  "Nitro Deck Retro Switch Limitierte Edition, Nintendo Switch",
+                  "Konsolen Spiele Konvolut / Xbox360, Ps4 und Nintendo Switch - gebraucht"]:
+            for p in (50, 80):
+                self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", (t, p))
+
+    def test_switch_tablet_only(self):
+        for t in ["ORIGINAL NINTENDO SWITCH GAMEPAD Tablet HAC-001 (-01) ERSATZ KONSOLE XAJ #2",
+                  "Nintendo Switch V2, nur Konsole, XKJ100402xxx"]:
+            self.assertEqual(evaluate_console(t, 85)["verdict"], "SKIP", t)
+
+    def test_real_switch_still_ok(self):
+        for t in ["Nintendo Switch Konsole V2 grau", "Nintendo Switch mit 3 Spielen", "Nintendo Switch OLED weiß"]:
+            self.assertTrue(evaluate_console(t, 100).get("type"), t)
+
+    def test_misc(self):
+        self.assertIn("Digital", evaluate_console("Sony PS5 Slim CFI-2016 B01Y Konsole", 250)["type"])
+        self.assertEqual(evaluate_console("Xbox Series X Display Riss", 250)["verdict"], "SKIP")
+
+
 if __name__ == "__main__":
     unittest.main()
 

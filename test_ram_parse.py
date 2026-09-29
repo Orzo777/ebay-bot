@@ -146,5 +146,24 @@ class TestPass9(unittest.TestCase):
         self.assertTrue(P("Corsair Vengeance 32GB DDR5 6000 Einzelmodul")["explicit_single"])
 
 
+
+class TestPass11Ram(unittest.TestCase):
+    def test_forms(self):
+        cases = {"32GB DDR4 3200 RAM Kit (2x16GB) Desktop – nicht für Laptop": "udimm",
+                 "32GB DDR5 RAM 2x16GB für Gaming PC, kein Notebook RAM": "udimm",
+                 "Samsung 16GB DDR5 4800 M321R2GA3BB6-CQKVS": "server",
+                 "32GB DDR5 RAM für ASUS ROG Zephyrus G14": "sodimm",
+                 "Crucial DDR5 5600MHz 32GB C46 K2 SO-RAM": "sodimm"}
+        for t, f in cases.items():
+            self.assertEqual(P(t)["form"], f, t)
+
+    def test_kits(self):
+        self.assertEqual(P("Crucial DDR5 5600MHz 32GB C46 K2 SO-RAM")["modules"], 2)
+        self.assertEqual(P("Kingston FURY 32GB DDR5 6400 KF564C32RSK2-32")["modules"], 2)
+        self.assertEqual(P("G.Skill Trident Z5 RGB DDR5 32GB F5-6000J3040F16GX2-TZ5RK")["modules"], 2)
+        # продають одну планку з набору: номер набору не робить із неї кіт
+        self.assertEqual(P("Kingston FURY Beast DDR5 4800MHz 16GB DIMM KF548C38BBK2-32")["total"], 16)
+
+
 if __name__ == "__main__":
     unittest.main()

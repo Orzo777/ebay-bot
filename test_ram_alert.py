@@ -147,6 +147,18 @@ class TestPerUnitPrice(unittest.TestCase):
         self.assertTrue(_D_PER_UNIT.search("120 € je Riegel"))
 
 
+
+class TestSwitchTabletDesc(unittest.TestCase):
+    def test_incomplete_switch_by_description(self):
+        from console_alert import evaluate_console
+        from ram_alert import refine_by_desc
+        ev = lambda t, p, vb=False: evaluate_console(t, p, vb=vb)
+        r = evaluate_console("Nintendo Switch Konsole 32GB Pokemon Joycons", 85)
+        self.assertEqual(refine_by_desc(r, r["title"], 85, False, "Die Switch kommt ohne Zubehör.", ev)["verdict"], "SKIP")
+        self.assertEqual(refine_by_desc(r, r["title"], 85, False, "Lieferung ohne Joycons, Dock und Ladekabel", ev)["verdict"],
+                         "SKIP")
+
+
 if __name__ == "__main__":
     unittest.main()
 

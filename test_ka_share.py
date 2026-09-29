@@ -88,5 +88,18 @@ class TestEvaluate(unittest.TestCase):
         self.assertIn("Ціни немає", msg)
 
 
+class TestNoBuyReplyHasNoButtons(unittest.TestCase):
+    """29.09: «не бери» у відповідь на поділене оголошення — лише причина, без кнопок і тексту продавцю."""
+    def test_blocked_listing_goes_as_plain_text(self):
+        from unittest import mock
+        import ka_share
+        page = mock.Mock(status_code=200, text="<html></html>")
+        for msg in ["⛔ <b>Не бери — схоже на шахрая</b> · <i>PS5</i> — 250 €", "⏭ <b>Не бери</b> · <i>RAM</i> — 70 €"]:
+            with mock.patch("requests.get", return_value=page),                     mock.patch.object(ka_share, "evaluate_listing", return_value=(msg, {"verdict": "BUY", "title": "x"})),                     mock.patch("ram_mail_check.send_telegram_text") as txt, mock.patch("ram_mail_check.send_telegram_card") as card:
+                ka_share.main("https://www.kleinanzeigen.de/s-anzeige/ps5/3526564642-279-4176")
+            card.assert_not_called()
+            txt.assert_called_once_with(msg)
+
+
 if __name__ == "__main__":
     unittest.main()

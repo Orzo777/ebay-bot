@@ -150,6 +150,11 @@ def _send(html_text: str, kb: dict):
     return (r.json().get("result") or {}).get("message_id"), data["reply_markup"]
 
 
+def _is_no(msg: str) -> bool:
+    """Відповідь «не бери»: шахрай / дефект (⛔), невигідно чи не той товар (⏭), не читається (⚫)."""
+    return msg.lstrip().startswith(("⛔", "⏭", "⚫"))
+
+
 def main(text: str):
     import requests
 
@@ -160,13 +165,14 @@ def main(text: str):
     eid = ebay_item_id(text)
     if eid:   # посилання eBay (28.09): та сама оцінка, що й у сканері eBay; аукціон — з максимальною ставкою
         msg, res, lst = share_ebay(eid)
-        if res and res.get("verdict") in SEND_VERDICTS and lst:
-            auction = res.get("verdict") == "AUCTION"
-            kb = {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": lst["url"]}]]} if auction else keyboard(lst["url"], res)
-            mid, kb_json = _send(msg, kb) or (None, None)
+        if res and res.get("verdict") in SEND_VERDICTS and lst and not _is_no(msg):
+            mid, kb_json = _send(msg, keyboard(lst["url"], res)) or (None, None)
             add_to_card(mid, msg, kb_json, res, lst["title"], lst.get("images") or [])
-        else:
-            send_telegram_text(msg, (lst or {}).get("url"))
+        elif res and res.get("verdict") == "AUCTION" and lst:   # аукціон: лише «відкрити», ставку робиш сам
+            mid, kb_json = _send(msg, {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": lst["url"]}]]}) or (None, None)
+            add_to_card(mid, msg, kb_json, res, lst["title"], lst.get("images") or [])
+        else:   # «не бери» — лише причина, без кнопок (29.09: посилання в тебе вже є, текст продавцю не потрібен)
+            send_telegram_text(msg)
         print(msg)
         return
     url = listing_url(text)
@@ -179,11 +185,11 @@ def main(text: str):
         send_telegram_text(f"⚫ Оголошення не відкривається (код {r.status_code}) — можливо, його вже зняли.")
         return
     msg, res = evaluate_listing(r.text, url)
-    if res and res.get("verdict") in SEND_VERDICTS:
+    if res and res.get("verdict") in SEND_VERDICTS and not _is_no(msg):
         mid, kb = send_telegram_card(msg, url, seller_template(res), None, False, offer_template(res)) or (None, None)
         add_to_card(mid, msg, kb, res, res.get("title") or "", ka_images(r.text))
-    else:
-        send_telegram_text(msg, url)
+    else:   # «не бери» (шахрай, дефект, дорого, опис) — лише причина, без кнопок
+        send_telegram_text(msg)
     print(msg)
 
 

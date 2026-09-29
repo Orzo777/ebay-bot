@@ -32,8 +32,8 @@ LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|
                   r"\b(?:[5-9]|\d{2,})\s?(?:stk|stueck|st[uü]ck)\b", re.I)
 
 SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b|"
-                    r"\bm39[13][ab]|\b\d\s?rx4\b|-rb\d\b|\bhmaa?\w{2,4}r7|\bksm\d{2,3}r|\bm32[13]r\w*r", re.I)
-SODIMM = re.compile(r"so-?\s?dimm|\bs[o0][\s-]*ram\b|\bkcp\d{3}s[sd]\d|\b(laptop\w*|notebook\w*|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
+                    r"\bm39[13][ab]|\b\d\s?rx4\b|-rb\d\b|\bhmaa?\w{2,4}r7|\bksm\d{2,3}r|\bm321r", re.I)
+SODIMM = re.compile(r"so-?\s?dimm|\bs[o0]-?ram\b|\bso[\s-]ram\b(?!\s+(?:ist|war|läuft|laeuft))|\bkcp\d{3}s[sd]\d|\b(zephyrus|legion\s*(?:\d|pro|slim)|ideapad|zenbook|vivobook|thinkbook|xps\s?1[3-7]|omen\s?1[5-7]|helios|nitro\s?5|(?:aero|aorus)\s?1[5-7]x?|tuf\s+(?:gaming\s+)?[af]1[5-7]|galaxy\s?book|laptop\w*|notebook\w*|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
                     # номери ноутбучних модулів: Samsung M425R/M471A/M474A, Crucial …S5/…SFRA, Kingston KF…S…/KVR…S…
                     r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}|"
                     # Kingston Fury Impact / HyperX Impact — тільки ноутбучні (29.09: «Kingston Fury Impact» вважався настільною)
@@ -147,7 +147,8 @@ def guess_gen(t: str) -> str | None:
 # Ємність і кількість планок із номера моделі (eBay 28.09: «Corsair Vengeance RGB Pro CMW32GX4M2Z3600C18» без «32GB»):
 # Corsair CM?32GX4M2 = 2 планки, разом 32; Kingston KF432C16BBK2/32; G.Skill F4-3200C16D-32G (S/D/Q = 1/2/4); Crucial CT2K16G4.
 _PN = [(re.compile(r"\bcm[a-z]{1,3}(\d{1,3})gx[345]m(\d)"), lambda m: (int(m.group(2)), int(m.group(1)))),
-       (re.compile(r"\bk[fv][a-z0-9]*?k(\d)/(\d{1,3})\b"), lambda m: (int(m.group(1)), int(m.group(2)))),
+       (re.compile(r"\bk[fv][a-z0-9]*?k(\d)[/-](\d{1,3})\b"), lambda m: (int(m.group(1)), int(m.group(2)))),
+       (re.compile(r"\bf5-\d{4}[a-z]\d{4}[a-z](\d{2})gx(\d)"), lambda m: (int(m.group(2)), int(m.group(1)) * int(m.group(2)))),
        (re.compile(r"\bk(?:f|cp|vr|sm|th|cs)\d{2,3}[a-z0-9]*?/(\d{1,3})\b"), lambda m: (1, int(m.group(1)))),
        (re.compile(r"\bc[tp](\d{1,3})g\d{1,2}[a-z]"), lambda m: (1, int(m.group(1)))),
        (re.compile(r"\bf[345]-\d{4}c\d{2}([sdq])-(\d{1,3})g"), lambda m: ({"s": 1, "d": 2, "q": 4}[m.group(1)], int(m.group(2)))),
@@ -180,7 +181,8 @@ def parse_capacity(t: str):
         if len(k4) == 1:
             kit_set = k4
     pn = part_capacity(t)
-    if not kit_set and pn and pn[0] > 1 and pn[1] % pn[0] == 0 and (not singles or singles <= {pn[1], pn[1] // pn[0]}):
+    if not kit_set and pn and pn[0] > 1 and pn[1] % pn[0] == 0 and (not singles or (pn[1] in singles
+                                                                                  and singles <= {pn[1], pn[1] // pn[0]})):
         kit_set = {(pn[0], pn[1] // pn[0])}
     elif not kit_set and not singles and pn and pn[0] == 1:
         singles = {pn[1]}
@@ -232,6 +234,7 @@ def parse_title(title: str):
     t = re.sub(r"(?<=\d)\s*\*\s*(?=\d)", "x", t)           # «2*8GB» = «2x8GB»
     t = re.sub(r"[®™©️]", "", t)
     t = re.sub(r"(?<=\d)\s?gib\b", "gb", t)                # «32GiB»
+    t = re.sub(r"(?:(?<=[\s(])|^)k([2-4])(?=[\s),]|$)|\bkit\s+of\s+([2-4])\b", lambda m: f"{m.group(1) or m.group(2)}x ", t)
     t = _SEO_NOT.sub(" ", t)
     if DEFECT.search(t):
         return None, "дефект/запчастина"
@@ -256,8 +259,9 @@ def parse_title(title: str):
     ecc = bool(re.search(r"(?<!non[- ])(?<!non)\becc\b", t))
     if SERVER.search(t):
         form = "server"
-    elif SODIMM.search(t):
-        form = "sodimm"
+    elif SODIMM.search(t) and not (re.search(r"(?:nicht|kein\w*|no|not)\s+(?:\w+\s+){0,2}(?:laptop|notebook)", t)
+                                   and not re.search(r"so-?\s?dimm", t)):
+        form = "sodimm"   # «Desktop – nicht für Laptop», «kein Notebook RAM» — настільна (pass 11)
     else:
         form = "udimm"
     brand = "other"

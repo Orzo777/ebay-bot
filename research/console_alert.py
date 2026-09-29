@@ -31,6 +31,10 @@ _OTHER_CONSOLE = re.compile(r"\bserie[sn]?\s+s\b|\bseries-s\b|playstation|\bps[4
 _REJECT_BASE = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|\bacc\b|\baccount|"
                      r"\bkonto\b|"
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
+                     # «Xbox Series X Display Riss» (eBay 29.09) — тріщина
+                     r"\briss\b|gerissen|gebrochen|\bsprung\b|"
+                     # ігри/аксесуари в категорії консолей: «Ring Fit Adventure», «Nitro Deck», «Spiele Konvolut», «Videospiel»
+                     r"videospiel|ring\s?-?fit|nitro\s?deck|konvolut|"
                      # «Switch … HAC-001 nur Tablett» (eBay 29.09) — без дока/зарядки, не повна консоль
                      r"\bnur\s+(?:das\s+)?tabl?ett?\b|ohne\s+(?:dock|joy-?\s?cons?|ladeger|ladekabel)|"
                      # eBay (27.09): ігри-колекційки та послуги в категорії Konsolen; японська Switch 2 — лише японська мова
@@ -200,7 +204,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
         return _skip(title, price, "PS5 Pro — не купуємо: забирає бюджет, на KA вже по ринку")
     if _PS5_OTHER.search(_PS5.sub("", title)):
         return _skip(title, price, "PS Portal / VR / разом з іншою консоллю")
-    digital = bool(_DIGITAL.search(title) or re.search(r"cfi-?\s?\d{4}\s?b(?:\d{0,2})?\b", title, re.I))
+    digital = bool(_DIGITAL.search(title) or re.search(r"cfi-?\s?\d{4}\s?b(?:\d{0,2}[a-z]?)?\b", title, re.I))
     # «Digital + Laufwerk» / «Laufwerk für PS5» — дисковод окремо: без слова «Konsole» це аксесуар
     if _is_accessory(title, _PS5_ACCESSORY, _PS5, price, (PS5_DIGITAL if digital else PS5_DISC)["p25"]):
         return _skip(title, price, "схоже на аксесуар, а не на консоль")
@@ -233,9 +237,14 @@ SWITCH_OLED = dict(p25=162, med=172, st=25, name="Nintendo Switch OLED (вжив
 SWITCH_V2 = dict(p25=131, med=140, st=20, name="Nintendo Switch V1/V2 (вживана)", ship=7.69, ship_in=7.0, min=50)
 SWITCH_LITE = dict(p25=82, med=92, st=25, name="Nintendo Switch Lite (вживана)", ship=6.19, ship_in=5.5, min=30)
 SHIP_SWITCH, SHIP_IN_SWITCH = SWITCH2["ship"], SWITCH2["ship_in"]
-_SWITCH2 = re.compile(r"switch\s?-?\s?2(?![\d.,])", re.I)   # «Switch 2Schwarz», «Switch-2» (eBay 29.09)
+_SWITCH2 = re.compile(r"switch\s?-?\s?2(?!\d|[.,]\d)", re.I)   # «Switch 2Schwarz», «Switch-2» (eBay 29.09)
 # «Nitendo Switch», «Nintedo Switch», «Switch 1» (eBay 28.09)
 _SWITCH1 = re.compile(r"\bni\w{3,6}do\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|[1]\b|konsole|console)", re.I)
+# Сильні ознаки консолі (модель, пам'ять, Joy-Con, док) — на відміну від «Zustand/Edition/+», які пишуть і в назвах ігор
+_SWITCH1_STRONG = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
+                             r"\bdock|neon|handheld", re.I)
+# «nur Konsole», «Ersatzkonsole», «ohne Zubehör», «Tablet … Ersatz» (eBay 29.09: три такі «вигідні» Switch — лише планшет)
+_SWITCH1_INCOMPLETE = re.compile(r"\bnur\s+(?:die\s+)?konsole\b|ersatz-?\s?konsole|ohne\s+zubeh[öo]r|tabl?ett?\b.{0,30}ersatz", re.I)
 _SWITCH1_EVIDENCE = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
                                r"\bdock|neon|grau|\bmit\b|\bin[ck]l|bundle|set\b|paket|komplett|handheld|"
                                # 29.09 (eBay, 10 з 14 «без доказу» були консолями): «Animal Crossing Edition», «Switch 2017»,
@@ -263,6 +272,10 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
         # «Nintendo Switch Mario Kart 8 Deluxe» — гра з назвою платформи; консоль видно лише з моделі чи комплекту
         if not _SWITCH1_EVIDENCE.search(title):
             return _skip(title, price, "з назви не видно, що це консоль (схоже на гру для Switch)")
+        if not _SWITCH1_STRONG.search(title) and price < 0.75 * SWITCH_V2["p25"]:
+            return _skip(title, price, "з назви не видно, що це консоль, а для консолі ціна замала (схоже на гру)")
+        if _SWITCH1_INCOMPLETE.search(title):
+            return _skip(title, price, "лише планшет — без дока, Joy-Con чи зарядки")
         if re.search(r"\boled\b", title, re.I) and re.search(r"\bv\s?[12]\b|\blite\b", title, re.I):
             return _skip(title, price, "кілька моделей в одному оголошенні — ціна найдешевшої")
         oled = re.search(r"\boled\b", title, re.I) and not re.search(r"(?:nicht|kein)\s+oled", title, re.I)
