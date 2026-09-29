@@ -16,7 +16,7 @@ import re
 import time
 
 # Модель — найновіша Flash за псевдонімом; якщо псевдонім зникне, пробуємо конкретні
-MODELS = [m for m in [os.getenv("GEMINI_MODEL"), "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"] if m]
+MODELS = [m for m in [os.getenv("GEMINI_MODEL"), "gemini-flash-latest", "gemini-flash-lite-latest"] if m]   # решту — discover_models()
 API = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent"
 MAX_IMAGES = 3
 TIMEOUT = 25
@@ -114,7 +114,7 @@ def ask_gemini(images: list[bytes], prompt: str, key: str | None = None) -> dict
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
     order = ([_working["m"]] if "m" in _working else []) + [m for m in MODELS + discover_models(key)
                                                             if m != _working.get("m")]
-    order = list(dict.fromkeys(order))[:5]
+    order = list(dict.fromkeys(order))[:8]
     t_end = time.time() + 40   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
     for model in order + order[:1]:   # 503 «high demand» (29.09) — інша модель, потім ще раз перша
         if time.time() > t_end:
@@ -246,5 +246,6 @@ if __name__ == "__main__":
         it = _request_with_backoff("GET", "https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id",
                                    headers=c._headers(), params={"legacy_item_id": ebay_item_id(url)})
         imgs = ebay_images(it)
+    print("моделі:", discover_models(os.getenv("GEMINI_API_KEY", "")))
     print("очікуємо:", expectation(res), "\nфото:", imgs)
     print(photo_line(res, title, imgs))
