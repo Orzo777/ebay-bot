@@ -43,6 +43,9 @@ SODIMM = re.compile(r"so-?\s?dimm|\bs[o0]-?ram\b|\bso[\s-]ram\b(?!\s+(?:ist|war|
 
 _SODIMM_STRONG = re.compile(r"so-?\s?dimm|\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}|"
                             r"\bkcp\d{3}s[sd]\d|\bimpact\b|\b26[02]\s?-?\s?pin|\bhmaa?\d{1,3}gs6|\bhmcg\d{2}[a-z]{3}s", re.I)
+# Ті самі сильні ознаки, але без слова «SO-DIMM» (його можна заперечити: «kein SO-DIMM») — номери моделей, Impact, pin
+_SODIMM_PARTS = re.compile(r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}|"
+                            r"\bkcp\d{3}s[sd]\d|\bimpact\b|\b26[02]\s?-?\s?pin|\bhmaa?\d{1,3}gs6|\bhmcg\d{2}[a-z]{3}s", re.I)
 
 # (канонічна назва, regex) — порядок = пріоритет; бренди модулів раніше за виробників чипів
 BRANDS = [
@@ -174,7 +177,9 @@ def part_capacity(t: str):
 
 def parse_capacity(t: str):
     """→ (total_gb, modules, None) або (None, None, причина)."""
-    if re.search(r"einzel(?:modul|riegel)|\baus\s+(?:einem\s+)?(?:\d+\s?gb\s*)?(?:kit|set)\b", t):
+    if (re.search(r"einzel(?:modul|riegel)|\baus\s+(?:einem\s+)?(?:\d+\s?gb\s*)?(?:kit|set)\b", t)
+            and not re.search(r"(?:kein\w*|auch)\s+einzel|einzel\w*\s+(?:\w+\s+)?(?:auch\s+)?m(?:oe|ö)glich", t)
+            and not (_KIT1.search(t) or _KIT3.search(t))):
         caps = [int(x) for x in _SINGLE.findall(t) if int(x) in SANE_GB]
         if caps:
             return min(caps), 1, None
@@ -216,7 +221,9 @@ def parse_capacity(t: str):
         elif len(singles) == 1:
             # «2x Corsair … 32GB»: 2×16 чи 2×32 — невідомо; беремо дешевший варіант (разом 32), щоб не переоцінити
             m = next(iter(singles))
-            if m % n == 0 and m // n in SANE_GB:
+            if re.search(rf"\b{m}\s?gb\s+(?:module|riegel|sticks?|je|pro|each)\b", t) and n * m in SANE_GB:
+                kit_set = {(n, m)}                       # «Kit of 2 16GB Module» — 16 на планку (pass 13)
+            elif m % n == 0 and m // n in SANE_GB:
                 kit_set = {(n, m // n)}
     if kit_set:
         n, m = next(iter(kit_set))
@@ -235,6 +242,16 @@ def parse_capacity(t: str):
     if len(singles) > 1:
         return None, None, "кілька ємностей у назві (варіації)"
     return None, None, "ємність не вказана"
+
+
+def _not_laptop(t: str) -> bool:
+    """«nicht für Laptop», «no Laptop RAM», «kein SO-DIMM», «UDIMM kein SODIMM» — настільна, якщо немає сильних
+    SO-DIMM-ознак (номер моделі, Impact, 260-pin). «kein Laptop mehr» — навпаки, ноутбучна."""
+    neg_so = re.search(r"(?:nicht|kein\w*|no|not)\s+(?:ein\s+)?so-?\s?dimm", t)
+    neg_lap = re.search(r"(?:nicht|kein\w*|no|not)\s+(?:fuer\s+|for\s+)?(?:\w+\s+)?(?:laptop|notebook)\b(?!\s+mehr)", t)
+    if not (neg_so or neg_lap):
+        return False
+    return not _SODIMM_PARTS.search(t)
 
 
 def parse_title(title: str):
@@ -270,8 +287,7 @@ def parse_title(title: str):
     ecc = bool(re.search(r"(?<!non[- ])(?<!non)\becc\b", t))
     if SERVER.search(t):
         form = "server"
-    elif SODIMM.search(t) and not (re.search(r"(?:nicht|kein\w*)\s+(?:fuer\s+)?(?:\w+\s+)?(?:laptop|notebook)\b(?!\s+mehr)", t)
-                                   and re.search(r"desktop|\bpc\b|gaming", t) and not _SODIMM_STRONG.search(t)):
+    elif SODIMM.search(t) and not _not_laptop(t):
         form = "sodimm"   # «Desktop – nicht für Laptop», «kein Notebook RAM» — настільна (pass 11)
     else:
         form = "udimm"

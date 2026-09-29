@@ -301,9 +301,22 @@ def model_from_desc(title: str, desc: str | None) -> str | None:
 _D_SWITCH_INCOMPLETE = re.compile(r"\bohne\s+(?:(?:das|den|die|jegliche[sn]?)\s+)?(?:zubeh[öo]r\b(?!\s+ist)|dock\b(?!\s+möglich)|"
                                   r"joy-?\s?cons?\b(?!\W*drift)|ladekabel\b|netzteil\b)|\bnur\s+(?:das\s+)?tabl?ett?\b", re.I)
 # Слабкі ознаки в назві («Nintendo Switch gebraucht», «… Edition») — консоль лише якщо опис це підтверджує (pass 12)
-_D_CONSOLE_PROOF = re.compile(r"konsole|console|\bdock|joy-?\s?cons?|handheld|hac-?\d|\bv[12]\b|oled|tablet|"
-                              r"netzteil|ladekabel|ladegerät", re.I)
-_D_GAME = re.compile(r"spielmodul|cartridge|\bmodul\b|spielkarte|nur\s+(?:das\s+)?spiel|\bdownload-?code|\bhülle\s+und\s+spiel", re.I)
+_D_CONSOLE_PROOF = re.compile(r"konsole\b|console|\bdock\w*|joy-?\s?cons?|handheld-?konsole|hac-?\d|\bv[12]\b|tablet|"
+                              r"netzteil|netzkabel|ladekabel|ladegerät|ladestation|\bhdmi|\bcontroller\w*|\bstation\b", re.I)
+_D_GAME = re.compile(r"spielmodul|cartridge|\bmodul\b|spielkarte\w*|nur\s+(?:das\s+)?spiel\b|\bdownload-?code|\bhülle\s+und\s+spiel",
+                     re.I)
+# «Konsole nicht enthalten», «nicht Teil des Angebots», «kompatibel mit … OLED», «Handheld-Modus», «an die Konsole angeschlossen»
+_D_NO_CONSOLE = re.compile(r"konsole\s+(?:ist\s+|sind\s+)?(?:nicht|kein\w*)\s+(?:\w+\s+){0,3}(?:enthalten|dabei|teil|inklusive|im)|"
+                           r"ohne\s+(?:die\s+)?konsole|nicht\s+(?:die\s+)?konsole|kompatibel\s+mit|für\s+(?:die\s+)?(?:joy|konsole)|"
+                           r"an\s+(?:die|der|ihre)\s+konsole|handheld-?modus|\bnur\s+(?:das\s+)?spiel\b", re.I)
+
+
+def _console_proof_ok(d: str) -> bool:
+    """Опис підтверджує, що продається консоль: ≥1 доказ без заперечення; якщо є «Modul/Spielkarte» — ≥2 різні докази."""
+    if _D_NO_CONSOLE.search(d):
+        return False
+    hits = {m.group(0).lower()[:5] for m in _D_CONSOLE_PROOF.finditer(d)}
+    return len(hits) >= (2 if _D_GAME.search(d) else 1)
 
 
 def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | None, evaluate_fn) -> dict:
@@ -312,7 +325,7 @@ def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | No
     if res.get("verdict") not in SEND_VERDICTS:
         return res
     # слабкі ознаки консолі в назві — без підтвердження в описі (або без опису взагалі) не шлемо
-    if res.get("needs_console_proof") and (not _D_CONSOLE_PROOF.search(d) or _D_GAME.search(d)):
+    if res.get("needs_console_proof") and not _console_proof_ok(d):
         return dict(verdict="SKIP", reason="з назви й опису не видно, що це консоль (схоже на гру / аксесуар)", title=title,
                     price=price)
     if not d:
@@ -320,8 +333,7 @@ def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | No
     if _D_WANTED.search(d[:120]):
         return dict(verdict="SKIP", reason="це оголошення «шукаю», а не продаж", title=title, price=price)
     # Switch лише планшетом: «Lieferung ohne Joycons, Dock und Ladekabel», «kommt ohne Zubehör» (eBay 29.09); Lite — завжди без дока
-    if ("Switch" in res.get("type", "") and "Lite" not in res.get("type", "") and "Switch 2" not in res.get("type", "")
-            and _D_SWITCH_INCOMPLETE.search(d)):
+    if "Switch" in res.get("type", "") and "Lite" not in res.get("type", "") and _D_SWITCH_INCOMPLETE.search(d):
         return dict(verdict="SKIP", reason="за описом — лише планшет, без дока / Joy-Con / зарядки", title=title, price=price)
     extra = []
     is_ram = "total" in res

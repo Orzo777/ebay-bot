@@ -29,7 +29,7 @@ _X_AND_S = re.compile(r"serie[sn]?\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|\bserie[sn]
 _OTHER_CONSOLE = re.compile(r"\bserie[sn]?\s+s\b|\bseries-s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
 # «Fn ACC Ps5» за €150 (eBay 28.09) — продаж ігрового акаунта, не консолі
 _REJECT_BASE = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|\bacc\b|\baccount|"
-                     r"\bkonto\b|konsolen-?\s?spiele?\b|"   # «Konsolen Spiele Konvolut» — ігри для консолей (pass 12)
+                     r"\bkonto\b|"
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
                      # «Switch … HAC-001 nur Tablett» (eBay 29.09) — без дока/зарядки, не повна консоль
                      r"\bnur\s+(?:das\s+)?tabl?ett?\b|ohne\s+(?:dock|joy-?\s?cons?|ladeger|ladekabel)|"
@@ -45,22 +45,33 @@ _REJECT_BASE = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|
 _GAME_ONLY = re.compile(r"vorbestell|pre-?order|\bboni\b|steelbook|dual\s?pack|power-?set|schlüsselanhänger|tennisball|"
                         # «Ring Fit Adventure», «Nitro Deck», «Spiele Konvolut», «Beast Quest … Videospiel» — але
                         # «Videospielkonsole», «Konsole + Ring Fit», «OLED Konvolut» — консоль (pass 12)
-                        r"\bvideospiel\b|ring\s?-?fit|nitro\s?deck|konvolut", re.I)
+                        r"\bvideospiele?\b|konvolut|konsolen-?\s?spiele?\b", re.I)
+# «CRKD Nitro Deck Switch OLED», «Ring Fit Adventure … OLED kompatibel» (pass 13) — «OLED/Handheld» тут не доказ консолі;
+# консоль лише з «Konsole/HAC/…GB/TB» або коли аксесуар іде через «+ / mit / inkl» («Switch OLED + Ring Fit»)
+_ACC_GAME = re.compile(r"ring\s?-?fit|nitro\s?deck", re.I)
+_ACC_GAME_BUNDLED = re.compile(r"(?:\+|\bmit\b|\binkl\.?|\bund\b|&)\s*(?:\w+\s+)?(?:crkd\s+)?(?:ring\s?-?fit|nitro\s?deck)", re.I)
+_STRONG_PROOF = re.compile(r"konsole\b|console|hac-?\d|cfi-?\d|\b\d{2,3}\s?gb\b|\d\s?tb\b", re.I)
 # «Xbox Series X Display Riss» (eBay 29.09) — тріщина; але «kein Riss», «ohne Riss», «Siegel nicht gebrochen», «ungebrochen»
-_CRACK = re.compile(r"\briss(?:e|en)?\b|gerissen|gebrochen|\bsprung\b", re.I)
-_CRACK_OK = re.compile(r"(?:kein\w*|ohne|nicht|siegel\w*)\W+(?:\w+\W+){0,2}$|un$", re.I)
+_CRACK = re.compile(r"\briss(?:e|en)?\b|gerissen|gebrochen|\bsprung\b|displayriss|displaybruch|glasbruch|gesprungen", re.I)
+_CRACK_OK = re.compile(r"(?:kein\w*|ohne|nicht|siegel\w*)\W+(?:\w+\W+){0,4}$|un$", re.I)
+_CRACK_OK_AFTER = re.compile(r"^\W*(?::\s*)?(?:kein\w*|nein|nicht)\b", re.I)
 _CONSOLE_PROOF = re.compile(r"konsole|console|handheld|\d\s?tb\b|\b\d{3}\s?gb\b|\bslim\b|\bdis[ck]\b|digital\s+edition|"
                             r"cfi-?\d|hac-?\d|\boled\b|\d\s*controller", re.I)
+_CONSOLE_PROOF_PLURAL_OK = re.compile(r"konsolen", re.I)   # «Konsolen Spiele» — не доказ
 
 
 class _Reject:
     """_REJECT_BASE + ігрові слова без доказу консолі; інтерфейс як у re.Pattern (.search)."""
     def search(self, title: str):
-        m = _REJECT_BASE.search(title) or (None if _CONSOLE_PROOF.search(title) else _GAME_ONLY.search(title))
+        proof = _CONSOLE_PROOF.search(re.sub(r"konsolen\w*", " ", title, flags=re.I))
+        m = _REJECT_BASE.search(title) or (None if proof else _GAME_ONLY.search(title))
         if m:
             return m
+        a = _ACC_GAME.search(title)
+        if a and not _STRONG_PROOF.search(re.sub(r"konsolen\w*", " ", title, flags=re.I)) and not _ACC_GAME_BUNDLED.search(title):
+            return a
         for c in _CRACK.finditer(title):
-            if not _CRACK_OK.search(title[max(0, c.start() - 30):c.start()]):
+            if not (_CRACK_OK.search(title[max(0, c.start() - 45):c.start()]) or _CRACK_OK_AFTER.search(title[c.end():c.end() + 12])):
                 return c
         return None
 
@@ -252,7 +263,8 @@ _SWITCH1 = re.compile(r"\bni\w{3,6}do\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|
 _SWITCH1_STRONG = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
                              r"\bdock|neon|handheld", re.I)
 # «nur Konsole», «Ersatzkonsole», «ohne Zubehör», «Tablet … Ersatz» (eBay 29.09: три такі «вигідні» Switch — лише планшет)
-_SWITCH1_INCOMPLETE = re.compile(r"\bnur\s+(?:die\s+)?konsole\b(?!\W*(?:und|mit|\+|inkl|keine|ohne\s+spiel|dock|joy))|"
+_SWITCH1_INCOMPLETE = re.compile(r"\bnur\s+(?:die\s+)?konsole\b(?!\W*(?:(?:und|mit|\+|inkl\.?)\s*(?:\w+\s+)?(?:dock|joy)|"
+                                 r"(?:keine|ohne)\s+spiele?\b(?!.*(?:kein|ohne)\w*\s+(?:dock|joy))))|"
                                  r"ersatz-?\s?konsole|ohne\s+zubeh[öo]r", re.I)
 _SWITCH1_EVIDENCE = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|console|hac-?\d|\d{2,3}\s?gb|joy-?\s?cons?|"
                                r"\bdock|neon|grau|\bmit\b|\bin[ck]l|bundle|set\b|paket|komplett|handheld|"
