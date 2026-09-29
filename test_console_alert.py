@@ -62,7 +62,8 @@ class TestNegotiate(unittest.TestCase):
         r = evaluate_console("Xbox Series X Console", 360)
         self.assertEqual(r["verdict"], "NEGOTIATE")
         self.assertEqual(offer_price(r), 320)
-        t = offer_template(r)
+        self.assertIsNone(offer_template(r))   # «торгуйся»: один текст, одразу з пропозицією (29.09)
+        t = seller_template(r)
         self.assertIn("320 €", t)
         self.assertTrue(t.startswith("Hallo! Ich nehme die Xbox Series X für 320 €"))   # хук: одразу рішення і сума
         self.assertIn("reservieren", t)
@@ -140,8 +141,9 @@ class TestPS5(unittest.TestCase):
     def test_negotiate_zone_and_offer(self):
         r = evaluate_console("PS5 Slim Disc Edition 1TB", 320, vb=True)
         self.assertEqual(r["verdict"], "NEGOTIATE")
-        self.assertIn("die PS5", offer_template(r))
+        self.assertIn("die PS5", seller_template(r))
         self.assertIn("PSN", seller_template(r))
+        self.assertRegex(seller_template(r), r"für \d+ €")
 
     def test_not_ps5_goes_to_ram(self):
         self.assertIsNone(evaluate_console("Crucial 32GB DDR5 2x16GB", 100))

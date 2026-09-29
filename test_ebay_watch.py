@@ -220,8 +220,12 @@ class TestNegotiateFixedPrice(unittest.TestCase):
         self.assertIsNotNone(o)
         self.assertIn(f"für {o} €", ebay_message(r, o))
         self.assertIn("Preis an", ebay_message(r, o))
-        self.assertEqual(len(keyboard(lst["url"], r)["inline_keyboard"]), 3)
-        self.assertIn(f"{o} €", format_card(r, lst, risk_of(lst, "", 545), "new", NOW))
+        kb = keyboard(lst["url"], r)["inline_keyboard"]
+        self.assertEqual(len(kb), 2)   # «торгуйся»: одна кнопка, одразу з пропозицією (29.09)
+        self.assertIn(f"für {o} €", kb[1][0]["copy_text"]["text"])
+        card = format_card(r, lst, risk_of(lst, "", 545), "new", NOW)
+        self.assertIn(f"{o} €", card)
+        self.assertEqual(card.count("<code>"), 1)
 
     def test_too_cheap_headline(self):
         from ram_alert import evaluate, format_html
@@ -232,7 +236,7 @@ class TestNegotiateFixedPrice(unittest.TestCase):
 
 
 class TestAuctions(unittest.TestCase):
-    """28.09: аукціони — сповіщення за ≤3 год до кінця, якщо ставка ще нижча за межу; раз на оголошення."""
+    """Аукціони: сповіщення в останні 2–20 хв (29.09; було ≤3 год), якщо ставка ще нижча за межу; раз на оголошення."""
 
     def _it(self, bid, hours_left):
         from datetime import timedelta
@@ -245,10 +249,19 @@ class TestAuctions(unittest.TestCase):
     def test_candidate(self):
         from ebay_watch import auction_candidate
         st = {}
-        self.assertIsNone(auction_candidate(self._it(140, 30), st, NOW))    # ще далеко до кінця
-        self.assertIsNotNone(auction_candidate(self._it(140, 2), st, NOW))  # ≤3 год, ставка нижча межі
-        self.assertIsNone(auction_candidate(self._it(140, 2), st, NOW))     # вдруге — ні
-        self.assertIsNone(auction_candidate(dict(self._it(300, 2), itemId="v1|8|0"), {}, NOW))   # уже дорого
+        self.assertIsNone(auction_candidate(self._it(140, 2), st, NOW))        # 2 год — ще рано
+        self.assertIsNone(auction_candidate(self._it(140, 1 / 60), st, NOW))   # 1 хв — уже пізно
+        self.assertIsNotNone(auction_candidate(self._it(140, 0.25), st, NOW))  # 15 хв, ставка нижча межі
+        self.assertIsNone(auction_candidate(self._it(140, 0.2), st, NOW))      # вдруге — ні
+        self.assertIsNone(auction_candidate(dict(self._it(300, 0.25), itemId="v1|8|0"), {}, NOW))   # уже дорого
+
+    def test_last_minutes_text(self):
+        from ebay_watch import auction_candidate, auction_lines
+        it = dict(self._it(140, 0.25), itemId="v1|7|0")
+        lst, r = auction_candidate(it, {}, NOW)
+        text = " ".join(auction_lines(r, it, NOW))
+        self.assertIn("15 хв", text)
+        self.assertIn("1–2 хв до кінця", text)
 
     def test_share_link_ids(self):
         from ebay_watch import ebay_item_id

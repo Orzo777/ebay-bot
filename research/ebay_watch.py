@@ -245,8 +245,12 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
         lines.append(f"⚠️ {esc(n)}")
     lines += ["", f"<i>{esc(r['title'][:90])}</i>",
               "Оплата лише через eBay (гарантія повернення грошей). Не пиши продавцю поза eBay.",
-              "", "✉️ Текст продавцю («Frage an den Verkäufer», натисни — скопіюється):",
-              f"<code>{esc(ebay_message(r))}</code>"]
+              ""]
+    if offer is not None and r["verdict"] == "NEGOTIATE":   # «торгуйся»: один текст, одразу з пропозицією (29.09)
+        lines += [f"✉️ Текст продавцю з пропозицією {offer} €" + (" (потім «Preisvorschlag senden»):" if lst["offer"]
+                  else " («Frage an den Verkäufer», потім купуй за новою ціною):"), f"<code>{esc(ebay_message(r, offer))}</code>"]
+        return "\n".join(lines)
+    lines += ["✉️ Текст продавцю («Frage an den Verkäufer», натисни — скопіюється):", f"<code>{esc(ebay_message(r))}</code>"]
     if offer is not None:
         lines += ["", f"✉️ З пропозицією {offer} €" + (" (потім «Preisvorschlag senden»):" if lst["offer"]
                                                        else " (питання продавцю, потім купуй за новою ціною):"),
@@ -284,9 +288,13 @@ def fetch_desc(client, item_id: str) -> str | None:
 
 
 def keyboard(url: str, r: dict) -> dict:
+    offer = offer_ebay(r)
+    if offer is not None and r.get("verdict") == "NEGOTIATE":   # «торгуйся»: одна кнопка, одразу з пропозицією
+        return {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": url}],
+                                    [{"text": f"📋 Текст із пропозицією {offer} €",
+                                      "copy_text": {"text": ebay_message(r, offer)[:256]}}]]}
     rows = [[{"text": "🔗 Відкрити на eBay", "url": url}],
             [{"text": "📋 Скопіювати текст продавцю", "copy_text": {"text": ebay_message(r)[:256]}}]]
-    offer = offer_ebay(r)
     if offer is not None:
         rows.append([{"text": f"📋 Текст із пропозицією {offer} €", "copy_text": {"text": ebay_message(r, offer)[:256]}}])
     return {"inline_keyboard": rows}
@@ -327,16 +335,25 @@ def ebay_item_id(text: str) -> str | None:
     return None
 
 
+try:
+    from zoneinfo import ZoneInfo
+    _BERLIN = ZoneInfo("Europe/Berlin")
+except Exception:   # Windows без tzdata
+    _BERLIN = timezone(timedelta(hours=2))
+
+
 def auction_lines(r: dict, it: dict, now: datetime) -> list[str]:
     """Аукціон: показана ціна — поточна ставка, не кінцева. Радимо максимальну ставку (eBay сам підніматиме до неї)."""
     bids = it.get("bidCount") or 0
     try:
         end = datetime.fromisoformat(it["itemEndDate"].replace("Z", "+00:00"))
         left = end - now
-        left_txt = (f"{left.days} дн. {left.seconds // 3600} год" if left.days else f"{left.seconds // 3600} год "
-                    f"{left.seconds % 3600 // 60} хв")
+        left_txt = (f"{left.days} дн. {left.seconds // 3600} год" if left.days else
+                    f"{left.seconds // 3600} год {left.seconds % 3600 // 60} хв" if left.seconds >= 3600 else
+                    f"<b>{left.seconds // 60} хв</b>")
+        left_txt += f" (о {end.astimezone(_BERLIN):%H:%M})"
     except (KeyError, ValueError, TypeError):
-        left_txt = "?"
+        left, left_txt = None, "?"
     max_bid = int((r["cap"] - r["ship_in"]) // 1)
     good_bid = int((r["good"] - r["ship_in"]) // 1)
     lines = [f"🔨 <b>Аукціон</b>: зараз {r['price']:.0f} € ({bids} ставок), до кінця {left_txt}.",
@@ -344,8 +361,14 @@ def auction_lines(r: dict, it: dict, now: datetime) -> list[str]:
     if r["price"] >= max_bid:
         lines.append(f"⛔ Уже дорожче вигідного: максимум для нас {max_bid} € (з пересилкою {r['cap']:.0f} €).")
     else:
-        lines.append(f"👉 Постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €) і забудь — eBay підніматиме "
-                     f"її сам лише до потрібної. Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €.")
+        if left is not None and left <= timedelta(hours=1):
+            lines.append(f"👉 За 1–2 хв до кінця постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €): "
+                         f"eBay підніме лише до потрібної, а конкуренти не встигнуть перебити. "
+                         f"Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €.")
+        else:
+            lines.append(f"👉 Постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €) — eBay підніматиме "
+                         f"її сам лише до потрібної. Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €. "
+                         f"Краще ставити в останні хвилини — бот нагадає за ~20 хв до кінця.")
     return lines
 
 
@@ -396,8 +419,13 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
 
 # Аукціони (28.09): поточна ставка — не ціна. Сповіщаємо ОДИН раз, коли до кінця ≤ 3 год, а ставка ще нижча за нашу
 # межу: користувач ставить максимальну ставку й забуває (eBay сам торгується за нього до цієї суми).
-AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 480), ("(xbox series x, ps5, playstation 5, switch 2)", CONSOLE_CAT, 1, 420)]
-AUCTION_HOURS = 3.0
+# 29.09 (прохання користувача): сповіщення в ОСТАННІ хвилини — ставка вже майже кінцева, а пізня ставка не провокує
+# торг (конкуренти не встигають перебити). Вікно 20 хв > інтервал опитування (3 хв) + пауза між запусками Actions (1–3 хв):
+# гарантовано встигаємо хоча б раз. Раніше 2 хв — уже пізно (Telegram + відкрити eBay + поставити ставку).
+# Усі наші категорії: RAM DDR4/DDR5, Xbox Series X, PS5, Switch 2 і перша Switch (OLED / V1-V2 / Lite).
+AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 480),
+                   ("(xbox series x, ps5, playstation 5, switch 2, nintendo switch, switch oled, switch lite)", CONSOLE_CAT, 1, 420)]
+AUCTION_MINUTES = (2, 20)
 
 
 def fetch_auctions(client, q: str, cat: str, lo: int, hi: int) -> list[dict]:
@@ -410,7 +438,7 @@ def fetch_auctions(client, q: str, cat: str, lo: int, hi: int) -> list[dict]:
 
 
 def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict] | None:
-    """Аукціон, що закінчується ≤ AUCTION_HOURS і досі дешевший за нашу максимальну ставку (раз на оголошення)."""
+    """Аукціон, що закінчується за AUCTION_MINUTES і досі дешевший за нашу максимальну ставку (раз на оголошення)."""
     done = state.setdefault("auctions", {})
     if it.get("itemId") in done:
         return None
@@ -418,7 +446,7 @@ def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict]
         end = datetime.fromisoformat(it["itemEndDate"].replace("Z", "+00:00"))
     except (KeyError, ValueError, TypeError):
         return None
-    if not (timedelta(0) < end - now <= timedelta(hours=AUCTION_HOURS)):
+    if not (timedelta(minutes=AUCTION_MINUTES[0]) <= end - now <= timedelta(minutes=AUCTION_MINUTES[1])):
         return None
     it = dict(it, price=it.get("currentBidPrice") or it.get("price"))
     lst = listing_of(it)
@@ -481,7 +509,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         else:
             send_card(format_card(r, lst, risk, why, now), lst["url"], r)
         sent += 1
-    if state["round"] % 2 == 0:   # аукціони — через раз, по черзі із запитами самовивозу
+    if state["round"] % 2 == 0:   # аукціони — через коло (~6 хв; квота API): у вікно 20 хв потрапляємо щонайменше двічі
         for q, cat, lo, hi in AUCTION_QUERIES:
             try:
                 raw = fetch_auctions(client, q, cat, lo, hi)

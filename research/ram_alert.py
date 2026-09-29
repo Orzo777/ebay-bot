@@ -382,12 +382,15 @@ def buyer_message(r: dict, offer: int | None = None) -> str:
 
 
 def offer_template(r: dict) -> str | None:
+    """Другий текст (із пропозицією ціни) — лише для «МОЖНА»: там можна й купити як є.
+    «ТОРГУЙСЯ» (29.09, прохання користувача): один текст, одразу зі знижкою — див. seller_template."""
     o = offer_price(r)
-    return None if o is None else buyer_message(r, o)
+    return None if o is None or r.get("verdict") == "NEGOTIATE" else buyer_message(r, o)
 
 
 def seller_template(r: dict) -> str:
-    return buyer_message(r)
+    o = offer_price(r) if r.get("verdict") == "NEGOTIATE" else None
+    return buyer_message(r, o)
 
 
 def desc_line(r: dict) -> str | None:
@@ -467,8 +470,10 @@ def format_html(r: dict) -> str:
     for note in r.get("notes", []):
         lines += ["", f"⚠️ {escape(note)}"]
     lines += ["", f"<i>{escape(r['title'][:90])}</i>", "",
-              "✉️ Текст продавцю (натисни — скопіюється):", f"<code>{escape(seller_template(r))}</code>"]
-    if offer is not None:
+              (f"✉️ Текст продавцю з пропозицією {offer} € (натисни — скопіюється):"
+               if offer is not None and r["verdict"] == "NEGOTIATE" else "✉️ Текст продавцю (натисни — скопіюється):"),
+              f"<code>{escape(seller_template(r))}</code>"]
+    if offer is not None and r["verdict"] != "NEGOTIATE":
         lines += ["", f"✉️ З пропозицією {offer} €:", f"<code>{escape(offer_template(r))}</code>"]
     return "\n".join(lines)
 

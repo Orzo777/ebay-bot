@@ -124,9 +124,11 @@ def build_keyboard(link: str | None, seller_text: str, search: str | None = None
     rows = []
     if link:
         rows.append([{"text": "🔗 Відкрити оголошення", "url": link}])
-    rows.append([{"text": "📋 Скопіювати текст продавцю", "copy_text": {"text": seller_text[:256]}}])
+    own = re.search(r"für (\d+) €", seller_text)   # «ТОРГУЙСЯ»: єдиний текст уже з пропозицією
+    rows.append([{"text": f"📋 Текст із пропозицією {own.group(1)} €" if own else "📋 Скопіювати текст продавцю",
+                  "copy_text": {"text": seller_text[:256]}}])
     if offer_text:
-        price = re.search(r"Wären (\d+) €", offer_text)
+        price = re.search(r"für (\d+) €", offer_text)
         label = f"📋 Текст із пропозицією {price.group(1)} €" if price else "📋 Текст із пропозицією ціни"
         rows.append([{"text": label, "copy_text": {"text": offer_text[:256]}}])
     if search:
