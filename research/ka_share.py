@@ -123,14 +123,42 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
         return format_html(res), res
     head = f"⏭ <b>Не бери</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €" + (" VB" if info["vb"] else "")
     if res.get("cap"):
-        head += (f"\nДля {escape(res['type'])} вигідно лише до {int(item_for_cost(res['cap'], ship))} € "
+        # продавця перевіряємо й тут (29.09: PS5 за 310 € — «дорого», а насправді акаунт 0 дн. і 71% ринку = шахрай)
+        risk = parse_listing(page, info["price"], res.get("quick_sale", 0))
+        if risk.get("block"):
+            lines = [f"⛔ <b>Не бери — схоже на шахрая</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €"]
+            return "\n".join(lines + ["   • " + escape(h) for h in risk["hard"]]), res
+        broken = broken_reason(risk.get("desc"))
+        if broken:
+            return (f"⛔ <b>Не бери — в описі дефект</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €\n"
+                    f"   • «{escape(broken)}»"), res
+        cap_item = int(item_for_cost(res['cap'], ship))
+        head += (f"\nДля {escape(res['type'])} вигідно лише до {cap_item} € "
                  f"в оголошенні (продається за {res['quick_sale']}–{res['median_sale']} €).")
+        head += bargain_line(res, info["price"], cap_item)
     elif res["verdict"] == "UNKNOWN" and not re.search(r"ddr|\bram\b|arbeitsspeicher|so-?dimm|speicher", info["title"], re.I):
         head += ("\nЦей товар бот не оцінює. Оцінює: оперативку, Xbox Series X, PS5, Nintendo Switch / Switch 2 "
                  "(і цілі ПК у ПК-боті). Інше ми досліджували — маржі на Kleinanzeigen немає.")
     elif res.get("reason"):
         head += f"\n{escape(res['reason'])}"
     return "\n".join([head] + [f"⚠️ {escape(n)}" for n in notes]), res
+
+
+def bargain_line(res: dict, price: float, cap_item: int) -> str:
+    """«Якщо зторгуєшся»: заробіток при реальній знижці (−5…10%) і на межі вигідності — рішення за тобою."""
+    from ram_alert import total_for
+    if not res.get("net_q") or cap_item <= 0 or cap_item < 0.8 * price:
+        return ""   # до вигідної ціни задалеко — торг не допоможе
+    pts = sorted({int(price * 0.95 // 5 * 5), int(price * 0.9 // 5 * 5), cap_item // 5 * 5}, reverse=True)
+    bits = []
+    for p in pts:
+        if p >= price:
+            continue
+        total = total_for(res, p)
+        profit = res["net_q"] - total
+        bits.append(f"за {p} € → заробіток ≈ {profit:.0f} € ({100 * profit / total:.0f}%)")
+    return ("\n🤝 Якщо зторгуєшся: " + "; ".join(bits) + ". Наш поріг — 30% маржі (запас на ризик і повільний продаж)."
+            if bits else "")
 
 
 def _send(html_text: str, kb: dict):

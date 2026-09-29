@@ -101,5 +101,23 @@ class TestNoBuyReplyHasNoButtons(unittest.TestCase):
             txt.assert_called_once_with(msg)
 
 
+class TestBargainLine(unittest.TestCase):
+    """29.09: PS5 за 310 € — «вигідно до 279»; користувач питав, чи 290 після торгу ще вигідно."""
+    def test_shows_profit_after_bargain(self):
+        from console_alert import evaluate_console
+        from ka_share import bargain_line
+        r = evaluate_console("Sony PlayStation 5 Slim Disc Edition 1TB", 310, shipping=11)
+        line = bargain_line(r, 310, 279)
+        self.assertIn("за 290 €", line)
+        self.assertIn("за 275 €", line)
+        self.assertIn("30%", line)
+
+    def test_too_far_from_ceiling(self):
+        from console_alert import evaluate_console
+        from ka_share import bargain_line
+        r = evaluate_console("Sony PlayStation 5 Slim Disc Edition 1TB", 450, shipping=11)
+        self.assertEqual(bargain_line(r, 450, 279), "")
+
+
 if __name__ == "__main__":
     unittest.main()
