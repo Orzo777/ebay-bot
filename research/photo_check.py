@@ -177,6 +177,9 @@ def compare(exp: dict, ph: dict) -> tuple[list[str], list[str]]:
     return bad, warn
 
 
+STATS = {"ok": 0, "fail": 0}
+
+
 def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool] | None:
     """→ (рядок для картки, чи є розбіжність) або None (немає ключа / фото / відповіді)."""
     from html import escape
@@ -188,6 +191,8 @@ def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool]
     t0 = time.time()
     imgs = [b for b in (_download(u) for u in image_urls[:MAX_IMAGES]) if b]
     ph = ask_gemini(imgs, PROMPT.format(title=title.replace('"', "'")[:120]))
+    if imgs:   # для сторожа: чи відповідає Gemini (research/health.py)
+        STATS["ok" if ph else "fail"] += 1
     print(f"   [фото] {len(imgs)} фото, {time.time() - t0:.1f} с: {json.dumps(ph, ensure_ascii=False)[:300] if ph else '—'}")
     if not ph:
         return None

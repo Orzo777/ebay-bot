@@ -32,6 +32,8 @@ sys.path.insert(0, "research")
 import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
+import health
+from photo_check import STATS as PHOTO_STATS
 from photo_check import add_to_card
 from pc_alert import evaluate_pc, pc_card_lines
 from ram_alert import (CONSOLE_NO_MODEL, SEND_VERDICTS, apply_pickup, broken_reason, evaluate, format_html, model_from_desc,
@@ -586,6 +588,7 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         folders.append(trash)
     since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
     alerts_sent = new_mails = 0
+    photo0 = dict(PHOTO_STATS)
     for folder in folders:
         if m.select(folder, readonly=True)[0] != "OK":    # readonly: нічого не позначаємо прочитаним
             print("Не відкрилась папка:", folder)
@@ -614,7 +617,11 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         ).raise_for_status()
         print("ПК-бот: надіслано перевірочне повідомлення")
     if not dry_run and not pc_replay:
-        save_state(state_path, {"seen_ids": list(seen), "seen_ads": list(seen_ads), "hint_times": hint_times})
+        health.bump(state, "ka_mails", new_mails)   # для щоденного звіту (research/daily_report.py)
+        health.bump(state, "ka_cards", alerts_sent)
+        health.track_photo(state, photo0, PHOTO_STATS)
+        state.update({"seen_ids": list(seen), "seen_ads": list(seen_ads), "hint_times": hint_times})
+        save_state(state_path, state)
     print(f"Нових листів оброблено: {new_mails}; сповіщень: {alerts_sent}")
 
 

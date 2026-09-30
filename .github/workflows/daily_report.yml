@@ -1,0 +1,63 @@
+name: daily-report
+
+# Щоденний звіт «✅ все працює» в бот «Облік і продаж». Запускає сторож в Apps Script (tools/watchdog.gs)
+# щоранку о 9:00 за Берліном — cron у GitHub запізнюється на години. Лише читає кеші станів ботів
+# (нічого не зберігає) і список запусків за добу; в лог — тільки лічильники.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Лише показати звіт у лозі, не надсилати"
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore eBay watcher state (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ebay_watch_state.json
+          key: ebaywatch-report-${{ github.run_id }}
+          restore-keys: ebaywatch-
+
+      - name: Restore KA mail state (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ram_mail_state.json
+          key: rammailstate-report-${{ github.run_id }}
+          restore-keys: rammailstate-
+
+      - name: Workflow runs for the last day
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          since=$(date -u -d '25 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh api --paginate "repos/${{ github.repository }}/actions/runs?per_page=100&created=%3E$since"             --jq '.workflow_runs[]' | jq -s . > runs.json
+          echo "запусків: $(jq length runs.json)"
+
+      - name: Send report
+        env:
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          python research/daily_report.py --ebay ebay_watch_state.json --ka ram_mail_state.json --runs runs.json \
+            ${{ inputs.dry_run && '--dry-run' || '' }}

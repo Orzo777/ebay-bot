@@ -29,6 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
+import health
+from photo_check import STATS as PHOTO_STATS
 from photo_check import add_to_card, ebay_images, photo_line
 from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
                        evaluate, refine_by_desc, tier)
@@ -475,7 +477,8 @@ def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict]
 def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
     first_run = not state.get("items")
-    sent = 0
+    sent = auctions_sent = api_errors = 0
+    calls0, photo0 = CALLS["n"], dict(PHOTO_STATS)
     state["round"] = state.get("round", 0) + 1
     jobs = [(q, False) for q in QUERIES] + ([(q, True) for q in PICKUP_QUERIES] if state["round"] % 2 else [])
     merged = {}   # одне оголошення може прийти з обох запитів — самовивіз «прилипає»
@@ -484,6 +487,8 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             raw = fetch_new(client, q, cat, lo, hi, pickup)
         except Exception as e:
             print(f"   [{q}] помилка API: {e}")
+            api_errors += 1
+            quota_error(state, e, now)
             continue
         for it in raw:
             lst = listing_of(it)
@@ -533,6 +538,8 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 raw = fetch_auctions(client, q, cat, lo, hi)
             except Exception as e:
                 print(f"   [аукціони {q}] помилка API: {e}")
+                api_errors += 1
+                quota_error(state, e, now)
                 continue
             for it in raw:
                 cand = auction_candidate(it, state, now)
@@ -561,13 +568,38 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 else:
                     mid, kb = send_card(text, lst["url"], dict(r, verdict="BUY"), auction=True) or (None, None)
                     add_to_card(mid, text, kb, r, lst["title"], lst.get("images") or [])
-                sent += 1
+                auctions_sent += 1
         cut = (now - timedelta(days=2)).isoformat()
         state["auctions"] = {k: v for k, v in state.get("auctions", {}).items() if v >= cut}
     if first_run:
         print(f"   перший запуск: запам'ятав {len(state.get('items', {}))} оголошень, сповіщення — з наступного кругу")
     prune(state, now)
-    return sent
+    track_round(state, len(jobs), api_errors, sent, auctions_sent, CALLS["n"] - calls0, photo0, now)
+    return sent + auctions_sent
+
+
+def quota_error(state: dict, e: Exception, now: datetime, send=health.office_send):
+    """Денна квота Browse API (5 000) закінчилась — жоден пошук не пройде до півночі за Тихоокеанським часом."""
+    if re.search(r"429|quota|exceeded|too many", str(e), re.I):
+        health.alert(state, "ebay_quota", "🛑 eBay API: закінчилась денна квота запитів (5 000). eBay-сторож і оцінка "
+                     "eBay-посилань не працюють до ~9:00 за Берліном; Kleinanzeigen працює як звичайно. "
+                     "Якщо повторюється щодня — скажи, зменшимо частоту перевірок.", 12, now, send)
+
+
+def track_round(state: dict, n_jobs: int, api_errors: int, cards: int, auctions: int, calls: int, photo0: dict,
+                now: datetime, send=health.office_send):
+    """Лічильники для щоденного звіту + сповіщення, якщо eBay API не відповідає 3 кола поспіль (~10 хв)."""
+    health.bump(state, "ebay_rounds", 1, now)
+    health.bump(state, "ebay_calls", calls, now)
+    health.bump(state, "ebay_api_errors", api_errors, now)
+    health.bump(state, "ebay_cards", cards, now)
+    health.bump(state, "ebay_auctions", auctions, now)
+    health.track_photo(state, photo0, PHOTO_STATS, now, send)
+    state["api_down_run"] = state.get("api_down_run", 0) + 1 if n_jobs and api_errors >= n_jobs else 0
+    if state["api_down_run"] >= 3:
+        health.alert(state, "ebay_api", "⚠️ eBay API не відповідає вже " + str(state["api_down_run"]) + " кола поспіль "
+                     "(~10 хв). Нові оголошення eBay зараз не перевіряються. Якщо це збій eBay — мине саме; "
+                     "якщо триває годинами — перевір секрети EBAY_APP_ID / EBAY_CERT_ID.", 6, now, send)
 
 
 def main():
