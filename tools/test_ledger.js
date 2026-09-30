@@ -3,7 +3,7 @@ const fs = require('fs');
 const vm = require('vm');
 const ctx = {};
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync(__dirname + '/ledger.gs', 'utf8') + '\nthis.parseMail_ = parseMail_; this.words_ = words_; this.category_ = category_;', ctx);
+vm.runInContext(fs.readFileSync(__dirname + '/ledger.gs', 'utf8') + '\nthis.parseMail_ = parseMail_; this.words_ = words_; this.category_ = category_; this.officeToken_ = officeToken_;', ctx);
 
 function mail(from, subject, body, html) {
   return { getFrom: () => from, getSubject: () => subject, getPlainBody: () => body, getBody: () => html || body,
@@ -62,6 +62,20 @@ check('pickup', [added[2].price, added[2].src, added[2].status], [30, 'Само�
 check('foreign chat ignored', [cmd('купив 45 X', 999), added.length], [true, 3]);
 check('not a command', cmd('https://www.kleinanzeigen.de/s-anzeige/x/1-225-1'), false);
 check('no price', [cmd('купив OWC'), /спершу сума/.test(said[said.length - 1])], [true, true]);
+
+// другий бот «Облік і продаж»
+check('office token', [ctx.officeToken_({ getProperty: (k) => ({ OFFICE_BOT_TOKEN: 'O', TELEGRAM_BOT_TOKEN: 'M' })[k] }),
+                        ctx.officeToken_({ getProperty: (k) => ({ TELEGRAM_BOT_TOKEN: 'M' })[k] })], ['O', 'M']);
+const office = (text, chat) => vm.runInContext('officeMessage(__m)', Object.assign(ctx, { __m: { text: text, chat: { id: chat || 7 } } }));
+let n = said.length;
+office('допомога', 999);
+check('office foreign chat silent', said.length, n);
+office('допомога');
+check('office help', /облік і продаж/i.test(said[said.length - 1]), true);
+office('https://www.kleinanzeigen.de/s-anzeige/x/1-225-1');
+check('office link not evaluated', /Не зрозумів/.test(said[said.length - 1]), true);
+office('купив 20 Kingston 8GB');
+check('office ledger command', added[added.length - 1].price, 20);
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

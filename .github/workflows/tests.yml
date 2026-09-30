@@ -18,5 +18,5 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: node tools/test_ledger.js && node tools/test_kafilter.js   # Apps Script: облік і фільтр скаму
+      - run: node tools/test_ledger.js && node tools/test_kafilter.js && node tools/test_webhook.js   # Apps Script: облік, фільтр скаму, два боти
       - run: python -m unittest test_identity test_pipeline test_econ test_check test_apiusage test_feed test_ram test_ram_parse test_ram_alert test_console_alert test_ram_mail_hint test_ka_listing_check test_ka_share test_price_refresh test_pc_alert test_ebay_watch test_photo_check test_audit_cases -v

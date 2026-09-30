@@ -17,6 +17,8 @@
  *   3. Угорі вибрати функцію setupLedger → «Виконати» → дозволити доступ (Gmail + Таблиці) → у журналі буде посилання.
  *   4. Щоб команди «купив/продав» працювали, оновіть і Code.gs (gmail_trigger.gs з репозиторію) та
  *      «Розгорнути» → «Керування розгортаннями» → ✏ → «Версія: нова» → «Розгорнути».
+ *   5. (Окремий бот «Облік і продаж», щоб не змішувати з картками покупок) BotFather → /newbot → токен у властивість
+ *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
 const LEDGER_TITLE = 'Облік перепродажу';
@@ -335,12 +337,57 @@ function processLedger() {
 }
 
 // ------------------------------------------------------------------ Telegram
-function notify_(text) {
+// Облік і продаж — в окремому боті «Облік і продаж» (OFFICE_BOT_TOKEN), щоб не змішувати з картками покупок.
+// Поки другого бота немає — пише в основний, як раніше.
+const OFFICE_KEYBOARD = { keyboard: [[{ text: 'облік' }, { text: 'допомога' }]], resize_keyboard: true, is_persistent: true };
+const OFFICE_HELP = 'Тут облік і продаж (картки покупок — в основному боті).\n' +
+  '• купив 45 OWC 2x16 DDR4 — записати покупку (додай ebay / самовивіз, якщо не KA)\n' +
+  '• продав 110 OWC — записати продаж\n' +
+  '• облік — підсумок і посилання на таблицю\n' +
+  'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення.';
+
+function officeToken_(props) {
+  return props.getProperty('OFFICE_BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
+}
+
+function notify_(text, markup) {
   const props = PropertiesService.getScriptProperties();
-  const tok = props.getProperty('TELEGRAM_BOT_TOKEN'), chat = props.getProperty('TELEGRAM_CHAT_ID');
-  if (!tok || !chat) return;
-  UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', {
-    method: 'post', payload: { chat_id: chat, text: text, disable_web_page_preview: 'true' }, muteHttpExceptions: true });
+  const tok = officeToken_(props), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  if (!tok || !chat) return null;
+  const payload = { chat_id: chat, text: text, disable_web_page_preview: 'true' };
+  if (markup) payload.reply_markup = JSON.stringify(markup);
+  return UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', {
+    method: 'post', payload: payload, muteHttpExceptions: true });
+}
+
+/** Усе, що пишуть боту «Облік і продаж» (doPost у Code.gs з ?bot=office). Посилання тут не оцінюються. */
+function officeMessage(msg) {
+  const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
+  if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
+  if (ledgerCommand(msg)) return;
+  if (/^\/?(допомога|help|start)/i.test(String(msg.text || '').trim())) { notify_(OFFICE_HELP, OFFICE_KEYBOARD); return; }
+  notify_('Не зрозумів. ' + OFFICE_HELP + '\n\nОголошення для оцінки — кидай в основний бот.', OFFICE_KEYBOARD);
+}
+
+/**
+ * Один раз після створення бота «Облік і продаж»: прив'язує його до цього ж вебзастосунку (адресу бере
+ * з основного бота, нічого копіювати не треба) і надсилає вітання з кнопками.
+ */
+function connectOfficeBot() {
+  const props = PropertiesService.getScriptProperties();
+  const main = props.getProperty('TELEGRAM_BOT_TOKEN'), office = props.getProperty('OFFICE_BOT_TOKEN');
+  if (!office) throw new Error('Додай у «Властивості скрипту» OFFICE_BOT_TOKEN — токен нового бота від BotFather.');
+  if (office === main) throw new Error('OFFICE_BOT_TOKEN збігається з основним — потрібен токен НОВОГО бота.');
+  const info = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + main + '/getWebhookInfo').getContentText());
+  const base = String((info.result || {}).url || '').split('?')[0];
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(base)) throw new Error('Основний бот не прив\'язаний до вебзастосунку: ' + base);
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + office + '/setWebhook', {
+    method: 'post', muteHttpExceptions: true,
+    payload: { url: base + '?bot=office', allowed_updates: '["message"]', drop_pending_updates: 'true' } });
+  console.log('webhook: ' + r.getContentText());
+  const s = notify_('✅ Бот «Облік і продаж» підключено.\n\n' + OFFICE_HELP, OFFICE_KEYBOARD);
+  if (s && s.getResponseCode() === 403) console.log('Бот не може написати першим: відкрий його в Telegram і натисни «Start», потім запусти ще раз.');
+  else console.log('готово — перевір Telegram');
 }
 
 /**

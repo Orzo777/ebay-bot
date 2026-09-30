@@ -71,13 +71,20 @@ function doPost(e) {
   try {
     lock.waitLock(10000);
     const update = JSON.parse(e.postData.contents);
+    // Другий бот «Облік і продаж» (ledger.gs) приходить сюди ж з адресою …/exec?bot=office; у кожного бота свої update_id
+    const office = !!(e.parameter && e.parameter.bot === 'office');
+    const seenKey = office ? 'TG_SEEN_OFFICE' : 'TG_SEEN';
     const props = PropertiesService.getScriptProperties();
-    const seen = JSON.parse(props.getProperty('TG_SEEN') || '[]');
+    const seen = JSON.parse(props.getProperty(seenKey) || '[]');
     if (seen.indexOf(update.update_id) >= 0) return HtmlService.createHtmlOutput('ok');
     seen.push(update.update_id);
-    props.setProperty('TG_SEEN', JSON.stringify(seen.slice(-200)));
+    props.setProperty(seenKey, JSON.stringify(seen.slice(-200)));
     const msg = update.message;
     if (!msg || !msg.chat) return HtmlService.createHtmlOutput('ok');
+    if (office) {
+      if (typeof officeMessage === 'function') officeMessage(msg);
+      return HtmlService.createHtmlOutput('ok');
+    }
     // Команди обліку («купив 45 OWC …», «продав 110 OWC», «облік») обробляє ledger.gs — у GitHub не пересилаємо
     if (typeof ledgerCommand === 'function' && ledgerCommand(msg)) return HtmlService.createHtmlOutput('ok');
     // Посилання буває сховане «під словом» (text_link) або в підписі до фото — збираємо все
