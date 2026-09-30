@@ -107,6 +107,18 @@ for t, f in forms14.items():
     bad += not (r and r["form"] == f)
 
 
+# ---- 30.09: картки eBay від користувача (гра й аксесуари як «PS5 — БЕРИ») ----
+for t, p in [("Baldur's Gate 3 Deluxe Edition PS5 - Neu, Versiegelt", 170),
+             ("PS5 Bundle: Pulse Elite Headset (NEU/OVP) + HD-Kamera wurde schon mal benutzt", 160),
+             ("Starfield Premium Edition Xbox Series X", 60), ("Final Fantasy 16 - Limited Deluxe Edition - PS5 - Deutsche Verpackung", 150)]:
+    chk(t, p, False)
+for t, p in [("Sony PlayStation 5 Slim Disc 1TB", 300), ("PS5 Konsole weiß", 280), ("Sony PlayStation 5 Disc Edition Videospielkonsole", 300)]:
+    chk(t, p, True)
+chk("PlayStation 5 mit 2 Controllern", 300, True, "Konsole läuft einwandfrei, zwei Controller dabei")
+chk("PlayStation 5 mit 2 Controllern", 300, False, "Spiel für die PS5 Konsole")
+chk("Verkaufe meine PS5", 300, True, "Die PS5 mit Controller und Kabel")
+
+
 class TestAuditCases(unittest.TestCase):
     def test_all_cases_pass(self):
         self.assertEqual(bad, 0)

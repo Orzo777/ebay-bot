@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
-from photo_check import add_to_card, ebay_images
+from photo_check import add_to_card, ebay_images, photo_line
 from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
                        evaluate, refine_by_desc, tier)
 
@@ -513,8 +513,11 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             print("   [DRY RUN] надіслав би картку")
         else:
             card = format_card(r, lst, risk, why, now)
-            mid, kb = send_card(card, lst["url"], r) or (None, None)
-            add_to_card(mid, card, kb, r, lst["title"], lst.get("images") or [])
+            ph = photo_line(r, lst["title"], lst.get("images") or [])
+            if ph and ph[1]:
+                print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку не надсилаю: " + re.sub(r"<[^>]+>", "", ph[0]).replace("\n", " ")[:200])
+                continue
+            send_card(card + ("\n\n" + ph[0] if ph else ""), lst["url"], r)
         sent += 1
     if state["round"] % 2 == 0:   # аукціони — через коло (~6 хв; квота API): у вікно 20 хв потрапляємо щонайменше двічі
         for q, cat, lo, hi in AUCTION_QUERIES:

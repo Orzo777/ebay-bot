@@ -197,6 +197,9 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
         return _skip(title, total, "Series X Digital — інша ціна продажу, не виміряна")
     if _is_accessory(title, _ACCESSORY, _SERIES_X, price, XBOX_SERIES_X["p25"]):
         return _skip(title, total, "схоже на аксесуар, а не на консоль")
+    weak = weak_console_title(title, _SERIES_X)
+    if weak:
+        return _skip(title, total, weak)
     if total < MIN_PRICE:
         return _skip(title, total, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
     real = XBOX_SERIES_X
@@ -209,7 +212,7 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
         notes.insert(0, "Підозріло дешево: частина таких оголошень — шахраї. Жодних переказів наперед.")
     return dict(verdict=verdict, type=real["name"], price=total, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
-                brand="Microsoft", title=title, notes=notes, net_q=net_q,
+                brand="Microsoft", title=title, notes=notes, net_q=net_q, needs_console_proof=weak == "",
                 item_acc="die Xbox Series X", check_q="Laufen Laufwerk und Controller einwandfrei, keine Sperre?",
                 buy_cost=cost, ship_in=ship_in, vb=vb)
 
@@ -234,6 +237,35 @@ _PS5_ACCESSORY = re.compile(r"controller|dualsense|headset|laufwerk|disc\s*drive
 _PS5_CONSOLE = re.compile(r"konsole|console|\d\s?tb\b|825\s?gb|\bmit\b|\binkl|\+|\bbundle\b|\bslim\b", re.I)
 
 
+# 30.09 (eBay): «Baldur's Gate 3 Deluxe Edition PS5 - Neu, Versiegelt» €170 і «PS5 Bundle: Pulse Elite Headset (NEU/OVP) +
+# HD-Kamera» €160 пішли як «PS5 — БЕРИ». Сильний доказ консолі — модель/пам'ять/«Konsole»; без нього:
+#  • гра — назва платформи ПІСЛЯ власної назви («<Гра> PS5») + ознаки гри (Edition, versiegelt, USK…) → SKIP;
+#  • аксесуари, що не йдуть у комплекті з консоллю (Headset, Kamera, Lenkrad…) → SKIP;
+#  • інакше — консоль лише якщо опис це підтвердить (needs_console_proof, див. ram_alert.refine_by_desc).
+_STRONG_CONSOLE_TITLE = re.compile(r"konsole\b|console|spielkonsole|\bslim\b|\bdis[ck]\b|digital|\b\d{3}\s?gb\b|\d\s?tb\b|"
+                                   r"cfi-?\d|laufwerk|\bfat\b|\bstandard\b", re.I)
+_GAME_SIGNAL = re.compile(r"edition|deluxe|\bgoty\b|versiegelt|sealed|\busk\b|\bpegi\b|\bspiel\b|\bgame\b|steelbook|"
+                          r"\bdlc\b|remaster|\bcollection\b", re.I)
+_TITLE_FILLER = re.compile(r"^(?:sony|playstation|microsoft|xbox|nintendo|original|neue?s?|neuwertige?|gebrauchte?|verkaufe|"
+                           r"meine|biete|top|wie|die|eine?|der|das|und|mit|zustand|sehr|gut|guter|super|ps|series|x|s)$", re.I)
+_NON_BUNDLE_ACC = re.compile(r"headset|kopfh[öo]rer|earbuds|\bpulse\b|kamera|camera|lenkrad|wheel|pedal|\bvr\b|ständer|"
+                             r"halterung|lüfter|kühler|ladestation|fernbedienung|media\s?remote|faceplate|cover|skin", re.I)
+
+
+def weak_console_title(title: str, name_re: re.Pattern) -> str | None:
+    """→ причина SKIP («гра» / «аксесуари») або "" (слабкі ознаки — треба підтвердження в описі) або None (сильний доказ)."""
+    if _STRONG_CONSOLE_TITLE.search(re.sub(r"konsolen\w*", " ", title, flags=re.I)):
+        return None
+    name = name_re.search(title)
+    if name:
+        words = [w for w in re.findall(r"[A-Za-zÄÖÜäöüß'][\wÄÖÜäöüß']+", title[:name.start()]) if not _TITLE_FILLER.match(w)]
+        if len(words) >= 2 and _GAME_SIGNAL.search(title):
+            return "схоже на гру для консолі (назва гри перед назвою платформи)"
+    if _NON_BUNDLE_ACC.search(title):
+        return "схоже на аксесуари без самої консолі"
+    return ""
+
+
 def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict | None:
     """None — не PS5 (далі оцінює RAM-логіка); інакше словник у форматі ram_alert.evaluate()."""
     if not _PS5.search(title):
@@ -249,6 +281,9 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
     # «Digital + Laufwerk» / «Laufwerk für PS5» — дисковод окремо: без слова «Konsole» це аксесуар
     if _is_accessory(title, _PS5_ACCESSORY, _PS5, price, (PS5_DIGITAL if digital else PS5_DISC)["p25"]):
         return _skip(title, price, "схоже на аксесуар, а не на консоль")
+    weak = weak_console_title(title, _PS5)
+    if weak:
+        return _skip(title, price, weak)
     if price < MIN_PRICE:
         return _skip(title, price, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
     real = PS5_DIGITAL if digital else PS5_DISC
@@ -262,7 +297,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
         notes.insert(0, "Підозріло дешево: частина таких оголошень — шахраї. Жодних переказів наперед.")
     return dict(verdict=verdict, type=real["name"], price=price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
-                brand="Sony", title=title, notes=notes, net_q=net_q, item_acc="die PS5",
+                brand="Sony", title=title, notes=notes, net_q=net_q, item_acc="die PS5", needs_console_proof=weak == "",
                 check_q=("Läuft alles einwandfrei (Controller), keine PSN-Sperre?" if digital
                          else "Laufen Laufwerk und Controller einwandfrei, keine PSN-Sperre?"),
                 buy_cost=cost, ship_in=ship_in, vb=vb)

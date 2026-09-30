@@ -43,7 +43,7 @@ class TestPhotoCheck(unittest.TestCase):
                 'https://img.kleinanzeigen.de/api/v1/prod-ads/images/35/35a26f80-95c0-4f6c-b0e1-53177f8aa286?rule=$_57.AUTO '
                 'https://img.kleinanzeigen.de/api/v1/prod-ads/images/b9/b9d94559-d038-4be6-9bc3-6a6f43e3ee59?rule=$_59.JPG')
         self.assertEqual(len(ka_images(page)), 2)
-        self.assertTrue(ka_images(page)[0].endswith("?rule=$_59.JPG"))
+        self.assertTrue(ka_images(page)[0].endswith("?rule=$_57.JPG"))
 
 
 if __name__ == "__main__":

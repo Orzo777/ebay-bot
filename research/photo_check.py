@@ -16,10 +16,10 @@ import re
 import time
 
 # Модель — найновіша Flash за псевдонімом; якщо псевдонім зникне, пробуємо конкретні
-MODELS = [m for m in [os.getenv("GEMINI_MODEL"), "gemini-flash-latest", "gemini-flash-lite-latest"] if m]   # решту — discover_models()
+MODELS = [m for m in [os.getenv("GEMINI_MODEL"), "gemini-flash-lite-latest", "gemini-flash-latest"] if m]   # решту — discover_models()
 API = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent"
 MAX_IMAGES = 3
-TIMEOUT = 25
+TIMEOUT = 20
 _working = {}
 
 _KA_IMG = re.compile(r"img\.kleinanzeigen\.de/api/v1/prod-ads/images/([0-9a-f]{2}/[0-9a-f-]{36})")
@@ -28,12 +28,13 @@ _KA_IMG = re.compile(r"img\.kleinanzeigen\.de/api/v1/prod-ads/images/([0-9a-f]{2
 def ka_images(page: str) -> list[str]:
     """Фото з HTML сторінки оголошення KA, у порядку галереї (перше — головне), великий розмір."""
     ids = list(dict.fromkeys(_KA_IMG.findall(page or "")))
-    return [f"https://img.kleinanzeigen.de/api/v1/prod-ads/images/{i}?rule=$_59.JPG" for i in ids[:MAX_IMAGES]]
+    return [f"https://img.kleinanzeigen.de/api/v1/prod-ads/images/{i}?rule=$_57.JPG" for i in ids[:MAX_IMAGES]]
 
 
 def ebay_images(item: dict) -> list[str]:
     urls = [(item.get("image") or {}).get("imageUrl")] + [x.get("imageUrl") for x in item.get("additionalImages") or []]
-    return [u for u in dict.fromkeys(urls) if u][:MAX_IMAGES]
+    urls = [re.sub(r"/s-l\d+\.", "/s-l800.", u) for u in urls if u]   # 1600 px не потрібні — швидше відповідь моделі
+    return list(dict.fromkeys(urls))[:MAX_IMAGES]
 
 
 # ----------------------------------------------------------------------------- що ми очікуємо (з нашої оцінки)
@@ -64,7 +65,8 @@ Look ONLY at the photos (not the title) and answer with JSON:
   "console_model": one of "xbox series x", "xbox series s", "xbox one", "ps5 disc", "ps5 digital", "ps5 pro", "ps4",
       "switch 2", "switch oled", "switch v1/v2", "switch lite", "other", or null if no console is visible.
       PS5 disc = has a disc slot/drive bulge; Series X = tall black tower, Series S = small white box,
-  "only_box_or_accessory": true if the photos show only packaging, a controller or another accessory but no console / no RAM stick,
+  "only_box_or_accessory": true if the photos show only packaging, a video game, a controller, a headset, a camera or another
+      accessory but no console itself / no RAM stick (a console's own box next to the console does not count),
   "visible_damage": true if cracks, burn marks, missing parts or bent pins are clearly visible,
   "confidence": "high" | "medium" | "low"}}"""
 
@@ -115,7 +117,7 @@ def ask_gemini(images: list[bytes], prompt: str, key: str | None = None) -> dict
     order = ([_working["m"]] if "m" in _working else []) + [m for m in MODELS + discover_models(key)
                                                             if m != _working.get("m")]
     order = list(dict.fromkeys(order))[:8]
-    t_end = time.time() + 40   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
+    t_end = time.time() + 50   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
     for model in order + order[:1]:   # 503 «high demand» (29.09) — інша модель, потім ще раз перша
         if time.time() > t_end:
             break

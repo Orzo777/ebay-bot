@@ -309,7 +309,9 @@ _D_GAME = re.compile(r"spielmodul|cartridge|\bmodul\b|spielkarte\w*|nur\s+(?:das
 _D_NO_CONSOLE = re.compile(r"konsole\s+(?:ist\s+|sind\s+|wird\s+)?(?:nicht|kein\w*)\s+(?:\w+\s+){0,3}"
                            r"(?:enthalten|dabei|teil\b|inklusive|mitverkauft|im\s+lieferumfang)|"
                            r"ohne\s+(?:die\s+)?konsole\b|nicht\s+die\s+konsole\b(?!,?\s*sondern)|\bnur\s+(?:das\s+)?spiel\b|"
-                           r"\bnur\s+das\s+modul\b|für\s+(?:die\s+)?joy-?\s?cons?\b", re.I)
+                           r"\bnur\s+das\s+modul\b|für\s+(?:die\s+)?joy-?\s?cons?\b|"
+                           r"(?:für|kompatibel\s+mit)\s+(?:die\s+|der\s+|deine\s+|ihre\s+)?(?:ps\s?5|playstation\s*5|xbox[\w\s]{0,10}|"
+                           r"switch[\w\s]{0,6})\s*-?\s*konsole", re.I)
 
 
 def _console_proof_ok(d: str) -> bool:
