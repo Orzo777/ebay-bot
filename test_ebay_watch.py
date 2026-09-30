@@ -255,6 +255,22 @@ class TestAuctions(unittest.TestCase):
         self.assertIsNone(auction_candidate(self._it(140, 0.2), st, NOW))      # вдруге — ні
         self.assertIsNone(auction_candidate(dict(self._it(300, 0.25), itemId="v1|8|0"), {}, NOW))   # уже дорого
 
+    def test_low_bid_is_not_a_scam_floor(self):
+        # 30.09: «дешевше €150» / «заглушка» — для фіксованих цін; ставка 45 € за 15 хв до кінця — шанс, а не шахрай
+        from ebay_watch import auction_candidate
+        it = dict(self._it(45, 0.25), itemId="v1|6|0", title="Nintendo Switch Konsole Grau 32 GB mit Joy-Con")
+        got = auction_candidate(it, {}, NOW)
+        self.assertIsNotNone(got)
+        self.assertEqual(got[1]["price"], 45)
+
+    def test_bid_up_to_ceiling(self):
+        # на останніх хвилинах — до самої межі (було 90% межі)
+        from ebay_watch import auction_candidate, evaluate_ebay, listing_of
+        base = self._it(100, 0.25)
+        cap = evaluate_ebay(listing_of(dict(base, price=base["currentBidPrice"])))["cap"]
+        self.assertIsNotNone(auction_candidate(dict(self._it(round(cap - 8), 0.25), itemId="v1|5|0"), {}, NOW))
+        self.assertIsNone(auction_candidate(dict(self._it(round(cap), 0.25), itemId="v1|4|0"), {}, NOW))
+
     def test_last_minutes_text(self):
         from ebay_watch import auction_candidate, auction_lines
         it = dict(self._it(140, 0.25), itemId="v1|7|0")

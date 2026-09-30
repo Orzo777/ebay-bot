@@ -458,7 +458,15 @@ def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict]
     if lst["price"] is None or lst["country"] not in (None, "DE"):
         return None
     r = evaluate_ebay(lst)
-    if "net_q" not in r or lst["price"] + r["ship_in"] >= 0.9 * r["cap"]:
+    # Поточна ставка — не ціна: «дешевше €150» / «заглушка 1 €» (захист від шахраїв у фіксованих цінах) до аукціону
+    # не застосовуємо (30.09). Межу беремо з оцінки за умовною ціною, а вартість — за реальною ставкою.
+    if "net_q" not in r and (r.get("wrong_type") is False or "заглушка" in (r.get("reason") or "")):
+        probe = evaluate_ebay(dict(lst, price=999.0))
+        if "net_q" in probe:
+            cost = lst["price"] + probe["ship_in"]
+            r = dict(probe, price=lst["price"], buy_cost=cost, profit_est=probe["net_q"] - cost, verdict="BUY")
+    # На останніх хвилинах запас не потрібен: максимальна ставка = межа; переб'ють — нічого не втрачаєш (30.09; було 0.9×)
+    if "net_q" not in r or lst["price"] + r["ship_in"] >= r["cap"]:
         return None
     done[it["itemId"]] = now.isoformat()
     return lst, r
