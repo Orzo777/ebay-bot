@@ -110,5 +110,6 @@ function install() {
 }
 
 function uninstall() {
-  ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  // лише свій тригер: облік (ledger.gs) і фільтр скаму (kafilter.gs) мають власні
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'check') ScriptApp.deleteTrigger(t); });
 }
