@@ -78,6 +78,9 @@ check('unprocessed mail', /не обробив/.test(w.text()), true);
 w = setup(Object.assign({ auth: true }, okMail));
 w.run();
 check('token alert', [w.sent.length, /GitHub-токен/.test(w.text())], [1, true]);
+w = setup(Object.assign({ props: { GITHUB_TOKEN: '' } }, okMail));
+w.run();
+check('no token alert', [w.sent.length, /немає GitHub-токена/.test(w.text())], [1, true]);
 
 // 8. зник тригер check
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], triggers: ['kaFilter', 'processLedger'] }, okMail));

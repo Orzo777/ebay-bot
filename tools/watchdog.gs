@@ -27,6 +27,7 @@ function wdBerlinHour_(now) { return Number(Utilities.formatDate(now, 'Europe/Be
 function wdGh_(path, method, payload) {
   const props = PropertiesService.getScriptProperties();
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  if (!token) throw new Error('GH_AUTH немає');   // 30.09: токен був у рядку Code.gs і зник після оновлення файлу
   const opt = { method: method || 'get', muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' } };
   if (payload) { opt.contentType = 'application/json'; opt.payload = JSON.stringify(payload); }
@@ -130,9 +131,11 @@ function watchdog() {
   [wdEbay_, wdFailures_, wdKaMail_, wdTriggers_].forEach(function (f) {
     try { f(st, now, msgs); } catch (e) {
       if (/GH_AUTH/.test(String(e))) {
-        wdOnce_(st, 'gh_auth', 12, '🔑 GitHub-токен в Apps Script не працює (' + String(e).replace(/.*GH_AUTH /, '') +
-                ', мабуть, прострочений). Без нього картки з Kleinanzeigen не приходять. Створи новий токен на GitHub ' +
-                'і заміни GITHUB_TOKEN у «Властивостях скрипту».', msgs, now);
+        wdOnce_(st, 'gh_auth', 12, (/GH_AUTH немає/.test(String(e))
+                ? '🔑 В Apps Script немає GitHub-токена. Без нього картки з Kleinanzeigen і «поділитися» не працюють. '
+                : '🔑 GitHub-токен в Apps Script не працює (' + String(e).replace(/.*GH_AUTH /, '') + ', мабуть, прострочений). ' +
+                  'Без нього картки з Kleinanzeigen і «поділитися» не працюють. Створи новий токен на GitHub і ') +
+                'Запиши його у ⚙ «Властивості скрипту» як GITHUB_TOKEN (не в код — оновлення файлу його зітре).', msgs, now);
       } else {
         console.log(f.name + ': ' + e);
       }
