@@ -78,6 +78,8 @@ function doPost(e) {
     props.setProperty('TG_SEEN', JSON.stringify(seen.slice(-200)));
     const msg = update.message;
     if (!msg || !msg.chat) return HtmlService.createHtmlOutput('ok');
+    // Команди обліку («купив 45 OWC …», «продав 110 OWC», «облік») обробляє ledger.gs — у GitHub не пересилаємо
+    if (typeof ledgerCommand === 'function' && ledgerCommand(msg)) return HtmlService.createHtmlOutput('ok');
     // Посилання буває сховане «під словом» (text_link) або в підписі до фото — збираємо все
     const urls = [].concat(msg.entities || [], msg.caption_entities || [])
       .map(function (en) { return en.url || ''; }).filter(Boolean);
