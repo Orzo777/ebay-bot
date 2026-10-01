@@ -311,7 +311,8 @@ function processLedger() {
           row = addPurchase_({ date: p.date, title: p.title, src: p.src, link: p.link, price: p.price, ship: p.ship,
                                fee: p.fee, id: p.id, status: 'Оплачено' });
           what = 'купівля записана';
-          notify_('📒 Записав покупку: ' + p.title + (p.price != null ? ' — ' + p.price + ' €' : '') +
+          notify_('📒 Записав покупку №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.price != null ? ' — ' + p.price + ' €' : '') +
+                  '\nКоли отримаєш і перевіриш — «продати ' + (row - LEDGER_FIRST + 1) + '»' +
                   (p.price == null ? '\n⚠️ Суму не знайшов у листі — впиши в таблиці.' : ''));
         }
       } else if (p.kind === 'shipped' || p.kind === 'delivered' || p.kind === 'cancel') {
@@ -343,11 +344,14 @@ function processLedger() {
 // ------------------------------------------------------------------ Telegram
 // Облік і продаж — в окремому боті «Облік і продаж» (OFFICE_BOT_TOKEN), щоб не змішувати з картками покупок.
 // Поки другого бота немає — пише в основний, як раніше.
-const OFFICE_KEYBOARD = { keyboard: [[{ text: 'облік' }, { text: 'допомога' }]], resize_keyboard: true, is_persistent: true };
+const OFFICE_KEYBOARD = { keyboard: [[{ text: 'облік' }, { text: 'продати' }, { text: 'допомога' }]], resize_keyboard: true,
+  is_persistent: true };
 const OFFICE_HELP = 'Тут облік і продаж (картки покупок — в основному боті).\n' +
   '• купив 45 OWC 2x16 DDR4 — записати покупку (додай ebay / самовивіз, якщо не KA)\n' +
   '• продав 110 OWC — записати продаж\n' +
   '• облік — підсумок і посилання на таблицю\n' +
+  '• продати 3 — готове оголошення для eBay: ціна, пороги Preisvorschlag, назва й опис німецькою ' +
+  '(3 — номер у таблиці; «продати» без номера — список того, що на руках)\n' +
   'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення.';
 
 function officeToken_(props) {
@@ -368,7 +372,7 @@ function notify_(text, markup) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
-  if (ledgerCommand(msg)) return;
+  if (sellCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(допомога|help|start)/i.test(String(msg.text || '').trim())) { notify_(OFFICE_HELP, OFFICE_KEYBOARD); return; }
   notify_('Не зрозумів. ' + OFFICE_HELP + '\n\nОголошення для оцінки — кидай в основний бот.', OFFICE_KEYBOARD);
 }
@@ -440,5 +444,62 @@ function ledgerCommand(msg) {
     notify_('💰 Записав продаж: ' + sh.getRange(row, COL.title).getValue() + ' — ' + amount + ' €' +
             (profit !== '' ? '\nПрибуток ≈ ' + Number(profit).toFixed(2) + ' €' : ''));
   }
+  return true;
+}
+
+
+// ------------------------------------------------------------------ «продати N» (01.10)
+// Ціну купівлі передаємо в GitHub зашифрованою: репозиторій публічний, а параметри запуску видно в журналі.
+// Ключ — токен бота «Облік і продаж» (той самий є в секретах GitHub як OFFICE_BOT_TOKEN). Пара — research/sell.py.
+function hmacHex_(key, msg) {
+  return Utilities.computeHmacSha256Signature(msg, key, Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+
+function sealSell_(data, key, nonce) {
+  const raw = Utilities.newBlob(JSON.stringify(data)).getBytes();
+  let ks = [];
+  for (let i = 0; ks.length < raw.length; i++) ks = ks.concat(Utilities.computeHmacSha256Signature(nonce + ':' + i, key, Utilities.Charset.UTF_8));
+  const blob = Utilities.base64Encode(raw.map(function (b, i) { return b ^ ks[i]; }));
+  return { blob: blob, mac: hmacHex_(key, 'mac:' + nonce + ':' + blob).slice(0, 32), nonce: nonce };
+}
+
+function sellCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?(?:продати|продаж)(?=\s|$)\s*(\d{1,4})?(?=\s|$)\s*([\s\S]*)$/i);
+  if (!m) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID')) || !props.getProperty('LEDGER_ID')) return true;
+  const sh = ledger_().getSheetByName('Угоди');
+  const last = sh.getLastRow();
+  const rows = last >= LEDGER_FIRST ? sh.getRange(LEDGER_FIRST, 1, last - LEDGER_FIRST + 1, COL.id).getValues() : [];
+  const open = function (v) { return v[COL.title - 1] && ['Продано', 'Повернено', 'Скасовано'].indexOf(v[COL.status - 1]) < 0; };
+  let idx = -1;
+  const extra = (m[2] || '').trim();
+  if (m[1]) idx = Number(m[1]) - 1;
+  else if (extra) idx = findRow_(null, extra, true) - LEDGER_FIRST;
+  if (!m[1] && !extra) {
+    const list = rows.map(function (v, i) { return open(v) ? '№' + (i + 1) + ' ' + v[COL.title - 1] + ' — ' + v[COL.status - 1] : ''; })
+      .filter(Boolean);
+    notify_(list.length ? 'Що продаємо? Напиши «продати N»:\n' + list.slice(-15).join('\n') : 'На руках нічого немає — усе продано.');
+    return true;
+  }
+  if (idx < 0 || idx >= rows.length || !rows[idx][COL.title - 1]) {
+    notify_(m[1] ? 'У таблиці немає №' + m[1] + '. Напиши «продати» — покажу список.' : 'Не знайшов «' + extra + '» серед непроданого.');
+    return true;
+  }
+  const v = rows[idx];
+  if (!open(v)) { notify_('№' + (idx + 1) + ' «' + v[COL.title - 1] + '» — статус «' + v[COL.status - 1] + '», не продаю.'); return true; }
+  const title = m[1] && extra ? extra : String(v[COL.title - 1]);
+  const cost = Number(v[COL.spent - 1]) || Number(v[COL.price - 1]) || null;
+  const key = officeToken_(props);
+  const sealed = sealSell_({ row: idx + 1, title: title, cost: cost }, key, Utilities.getUuid().replace(/-/g, ''));
+  const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/sell.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: 'main', inputs: sealed }) });
+  notify_(r.getResponseCode() === 204
+    ? '⏳ Готую оголошення для №' + (idx + 1) + ' «' + title + '» — приблизно хвилина.'
+    : '⚠️ Не зміг запустити підготовку оголошення (GitHub ' + r.getResponseCode() + ').');
   return true;
 }

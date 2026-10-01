@@ -1,0 +1,68 @@
+name: sell
+
+# «продати N» у боті «Облік і продаж» (01.10): Apps Script (tools/ledger.gs) бере рядок з обліку, шифрує назву і ціну
+# купівлі токеном бота й запускає цей workflow; research/sell.py рахує ціну й пороги Preisvorschlag, пише назву й опис
+# німецькою і шле картку в бот. Репозиторій публічний — тому blob зашифрований, а в лог не пишемо ні ціну, ні прибуток.
+
+on:
+  workflow_dispatch:
+    inputs:
+      blob:
+        description: "Зашифровані дані (з Apps Script)"
+        required: false
+        default: ""
+      mac:
+        description: "Підпис"
+        required: false
+        default: ""
+      nonce:
+        description: "Nonce"
+        required: false
+        default: ""
+      test_title:
+        description: "Перевірка без Apps Script: назва товару (без ціни купівлі, лише в лог)"
+        required: false
+        default: ""
+
+concurrency:
+  group: sell
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Self-check (unit tests)
+        run: python -m unittest test_sell
+
+      - name: Prepare listing
+        env:
+          EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+          EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BLOB: ${{ inputs.blob }}
+          MAC: ${{ inputs.mac }}
+          NONCE: ${{ inputs.nonce }}
+          TEST_TITLE: ${{ inputs.test_title }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          if [ -n "$TEST_TITLE" ]; then
+            python research/sell.py --title "$TEST_TITLE" --dry-run
+          else
+            python research/sell.py --blob "$BLOB" --mac "$MAC" --nonce "$NONCE"
+          fi
