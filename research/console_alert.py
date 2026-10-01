@@ -401,6 +401,34 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
 evaluate_switch2 = evaluate_switch   # стара назва (тести, ka_share)
 
 
+# ---------------- Сторож цін (01.10): поточні ціни продажу консолей з research/ram_prices.json ----------------
+# research/price_refresh.py щодня зсуває p25/медіану разом з цінами вживаних консолей на eBay (як для RAM). Словники типів
+# оновлюються НА МІСЦІ (на них посилаються за тотожністю: «real is SWITCH2»). Знімок Terapeak у коді змінився —
+# поправку з файлу ігноруємо, доки сторож не перерахує. RAM_PRICES_OFF=1 — лише цифри Terapeak (тести).
+CONSOLE_TYPES = {"XBOX_SERIES_X": XBOX_SERIES_X, "PS5_DISC": PS5_DISC, "PS5_DIGITAL": PS5_DIGITAL, "SWITCH2": SWITCH2,
+                 "SWITCH_OLED": SWITCH_OLED, "SWITCH_V2": SWITCH_V2, "SWITCH_LITE": SWITCH_LITE}
+CONSOLE_BASE = {k: (v["p25"], v["med"]) for k, v in CONSOLE_TYPES.items()}
+
+
+def _apply_refresh(path: str | None = None):
+    import json
+    import os
+    if os.getenv("RAM_PRICES_OFF") == "1":
+        return
+    try:
+        with open(path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return
+    for k, e in (data.get("consoles") or {}).items():
+        t = CONSOLE_TYPES.get(k)
+        if t and (e.get("p25_tp"), e.get("med_tp")) == CONSOLE_BASE[k] and e.get("p25") and e.get("med"):
+            t["p25"], t["med"] = e["p25"], e["med"]
+
+
+_apply_refresh()
+
+
 if __name__ == "__main__":
     import sys
 

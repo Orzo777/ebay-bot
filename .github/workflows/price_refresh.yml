@@ -1,14 +1,13 @@
 name: price-refresh
 
-# Нова роль бота (з 23.09.2026): щотижня оновлює ціни продажу RAM, від яких ram_alert рахує стелі
-# купівлі для сповіщень Kleinanzeigen. Пошук дешевих лотів на самому eBay (poll.yml) зупинено:
-# ринок eBay вирівняний, а API-квота потрібна для досліджень.
-# 16 викликів Browse API; коміт research/ram_prices.json лише якщо щось змінилось;
-# у Telegram — коротке зведення, тільки коли стелі зсунулись на ≥2%.
+# Сторож ринкових цін (з 01.10 — щодня, RAM і консолі): ціни продажу, від яких рахуються стелі купівлі.
+# Запускає eBay-сторож раз на добу після 05:00 UTC (research/ebay_watch.py); cron нижче — запасний.
+# ~35 викликів Browse API (+~20 раз на місяць — замір нових категорій); коміт research/ram_prices.json;
+# у бот «Облік і продаж» — лише коли тип подешевшав на ≥5% / подорожчав на ≥10% за тиждень або знайшлась нова категорія.
 
 on:
   schedule:
-    - cron: "0 6 * * 1"   # понеділок 06:00 UTC
+    - cron: "30 6 * * *"   # щодня 06:30 UTC (запасний — основний запуск від eBay-сторожа)
   workflow_dispatch: {}
 
 concurrency:
@@ -32,7 +31,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Self-check (unit tests)
-        run: python -m unittest test_ram_parse test_ram_alert test_price_refresh
+        run: python -m unittest test_ram_parse test_ram_alert test_console_alert test_price_refresh
 
       - name: Refresh prices
         env:
@@ -40,6 +39,7 @@ jobs:
           EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
           PYTHONIOENCODING: utf-8
         run: python research/price_refresh.py
 
@@ -51,6 +51,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "без змін"
           else
-            git commit -m "price-refresh: weekly RAM sale prices $(date -u +%F)"
-            git push
+            git commit -m "price-refresh: RAM & console sale prices $(date -u +%F)"
+            git pull --rebase -q origin main && git push
           fi

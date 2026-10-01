@@ -581,6 +581,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
     track_round(state, len(jobs), api_errors, sent, auctions_sent, CALLS["n"] - calls0, photo0, now)
     if state["round"] % 20 == 0 and not dry_run:   # ~раз на годину
         ka_dispatch_check(state, now)
+        price_refresh_check(state, now)
     return sent + auctions_sent
 
 
@@ -595,6 +596,37 @@ def _last_ka_dispatch() -> datetime | None:
     if runs is None:
         return None
     return datetime.fromisoformat(runs[0]["created_at"].replace("Z", "+00:00")) if runs else datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+
+def _prices_updated() -> str:
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"), encoding="utf-8") as fh:
+            return json.load(fh).get("updated", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def _dispatch(workflow: str) -> int:
+    import requests
+    tok = os.getenv("GH_API_TOKEN")
+    if not tok:
+        return 0
+    r = requests.post(f"https://api.github.com/repos/{os.getenv('GITHUB_REPOSITORY', 'Orzo777/ebay-bot')}/actions/workflows/"
+                      f"{workflow}/dispatches", json={"ref": "main"}, timeout=15,
+                      headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json"})
+    return r.status_code
+
+
+def price_refresh_check(state: dict, now: datetime, updated_fn=_prices_updated, dispatch=_dispatch):
+    """Сторож цін — раз на добу (cron GitHub запізнюється на години): після 5:00 UTC, якщо ціни сьогодні ще не оновлено."""
+    today = now.strftime("%Y-%m-%d")
+    if now.hour < 5 or updated_fn() >= today or state.get("refresh_dispatched") == today:
+        return False
+    code = dispatch("price_refresh.yml")
+    print(f"   [сторож цін] запуск: {code}")
+    if code == 204:
+        state["refresh_dispatched"] = today
+    return code == 204
 
 
 def ka_dispatch_check(state: dict, now: datetime, send=health.office_send, last_fn=_last_ka_dispatch):

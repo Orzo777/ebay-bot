@@ -1,5 +1,7 @@
 """Тести фільтра шахраїв research/ka_listing_check.py на фрагментах у форматі реальної сторінки
 оголошення Kleinanzeigen (26.09.2026). Без мережі."""
+import os as _os
+_os.environ.setdefault("RAM_PRICES_OFF", "1")   # цифри Terapeak, а не щоденні ціни сторожа (research/ram_prices.json)
 import sys
 import unittest
 from datetime import date

@@ -25,7 +25,7 @@ except Exception:   # Windows без tzdata
 
 BAD = ("failure", "timed_out", "startup_failure")
 NAMES = {"ebay-watch": "eBay-сторож", "ram-mail-alert": "KA-пошта", "ka-share": "«поділитися»", "tests": "тести",
-         "daily-report": "звіт", "sell": "«продати»", "weekly-report": "тижневий звіт"}
+         "daily-report": "звіт", "sell": "«продати»", "weekly-report": "тижневий звіт", "price-refresh": "сторож цін"}
 
 
 def _load(path: str | None) -> dict:

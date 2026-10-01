@@ -21,7 +21,7 @@ const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
 const WD_TRIGGERS = { check: 'пошта KA → бот', kaFilter: 'фільтр скаму', processLedger: 'облік' };
 const WD_FLAKY = ['ram-mail-alert'];   // разовий збій Gmail IMAP («System Error») — лише якщо двічі поспіль
 const WD_NAMES = { 'ebay-watch': 'eBay-сторож', 'ram-mail-alert': 'KA-пошта', 'ka-share': '«поділитися»',
-  'tests': 'тести', 'daily-report': 'щоденний звіт', 'sell': '«продати»', 'weekly-report': 'тижневий звіт' };
+  'tests': 'тести', 'daily-report': 'щоденний звіт', 'sell': '«продати»', 'weekly-report': 'тижневий звіт', 'price-refresh': 'сторож цін' };
 
 function wdBerlinHour_(now) { return Number(Utilities.formatDate(now, 'Europe/Berlin', 'H')); }
 

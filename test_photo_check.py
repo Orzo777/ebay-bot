@@ -1,4 +1,6 @@
 """Тести перевірки фото (research/photo_check.py): що ми очікуємо і як порівнюємо з відповіддю моделі. Без мережі."""
+import os as _os
+_os.environ.setdefault("RAM_PRICES_OFF", "1")   # цифри Terapeak, а не щоденні ціни сторожа (research/ram_prices.json)
 import sys
 import unittest
 

@@ -1,4 +1,6 @@
 """Тести оцінки ПК для ПК-бота (research/pc_alert.py) на реальних назвах Kleinanzeigen. Без мережі."""
+import os as _os
+_os.environ.setdefault("RAM_PRICES_OFF", "1")   # цифри Terapeak, а не щоденні ціни сторожа (research/ram_prices.json)
 import sys
 import unittest
 

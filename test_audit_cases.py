@@ -1,4 +1,6 @@
 """Кейси аудитів eBay/KA (кола 12–13, 29.09): регресії, які вже раз ламались. Без мережі."""
+import os as _os
+_os.environ.setdefault("RAM_PRICES_OFF", "1")   # цифри Terapeak, а не щоденні ціни сторожа (research/ram_prices.json)
 import sys
 import unittest
 
