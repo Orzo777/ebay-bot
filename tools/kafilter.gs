@@ -5,13 +5,15 @@
  * «PayPal Freunde», «schreib mir auf WhatsApp», «Überweisung» (30.09: ~9 з 10 відповідей). Цей скрипт щохвилини
  * переглядає листи-сповіщення KA про нові повідомлення і такі — позначає міткою «KA скам» і переносить у Кошик
  * (Gmail зберігає Кошик 30 днів — якщо фільтр помилився, лист можна повернути: мітка «KA скам» у лівому меню).
- * Сам чат у Kleinanzeigen не зачіпається — лише лист на пошті.
+ * Перевіряє кожні 5 хв лише нові листи. Сам чат у Kleinanzeigen не зачіпається — лише лист на пошті.
  *
  * Установка: «+» → «Скрипт» → kafilter → вставити цей файл → 💾 → функція installKaFilter → «Виконати» → дозволити.
  * Перевірити без видалення: функція kaFilterDryRun → «Виконати» → у журналі список, що було б прибрано.
  */
 
-const KA_MSG_QUERY = 'from:kleinanzeigen newer_than:3d subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb) ' +
+// Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
+// разом із check() вичерпав денний Gmail-ліміт Google 01.10.
+const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
 // Оплата без захисту покупця, контакт поза KA, передоплата — те саме, що блокує бот в описах оголошень
@@ -46,9 +48,12 @@ function kaMessageText_(body) {
 }
 
 function kaFilter_(dry) {
-  let label = GmailApp.getUserLabelByName('KA скам') || GmailApp.createLabel('KA скам');
+  const props = PropertiesService.getScriptProperties();
+  const started = Date.now();
+  const since = dry ? started - 3 * 86400e3 : (Number(props.getProperty('KA_FILTER_TS')) || started - 86400e3) - 5 * 60e3;
+  let label = null;
   let n = 0;
-  GmailApp.search(KA_MSG_QUERY, 0, 50).forEach(function (th) {
+  GmailApp.search(KA_MSG_QUERY + ' after:' + Math.floor(since / 1000), 0, dry ? 50 : 20).forEach(function (th) {
     const msgs = th.getMessages();
     const last = msgs[msgs.length - 1];
     const reason = kaScamReason_(kaMessageText_(last.getPlainBody()));
@@ -56,10 +61,12 @@ function kaFilter_(dry) {
     n++;
     console.log((dry ? '[перевірка] ' : '') + 'скам (' + reason + '): ' + last.getSubject());
     if (!dry) {
+      label = label || GmailApp.getUserLabelByName('KA скам') || GmailApp.createLabel('KA скам');
       th.addLabel(label);
       th.moveToTrash();
     }
   });
+  if (!dry) props.setProperty('KA_FILTER_TS', String(started));
   console.log(n ? 'прибрано: ' + n : 'шахрайських відповідей немає');
 }
 
@@ -70,7 +77,7 @@ function installKaFilter() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'kaFilter') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('kaFilter').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('kaFilter').timeBased().everyMinutes(5).create();
   kaFilterDryRun();
-  console.log('фільтр увімкнено (щохвилини)');
+  console.log('фільтр увімкнено (кожні 5 хв)');
 }

@@ -19,6 +19,7 @@ const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
   '-subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb)';
 const WD_TRIGGERS = { check: 'пошта KA → бот', kaFilter: 'фільтр скаму', processLedger: 'облік' };
+const WD_FLAKY = ['ram-mail-alert'];   // разовий збій Gmail IMAP («System Error») — лише якщо двічі поспіль
 const WD_NAMES = { 'ebay-watch': 'eBay-сторож', 'ram-mail-alert': 'KA-пошта', 'ka-share': '«поділитися»',
   'tests': 'тести', 'daily-report': 'щоденний звіт' };
 
@@ -67,8 +68,14 @@ function wdFailures_(st, now, msgs) {
   const runs = (wdGh_('/actions/runs?per_page=50').json || {}).workflow_runs || [];
   st.failSeen = st.failSeen || [];
   const lines = [];
-  runs.forEach(function (r) {
+  runs.forEach(function (r, i) {
     if (r.status !== 'completed' || WD_BAD.indexOf(r.conclusion) < 0 || st.failSeen.indexOf(r.id) >= 0) return;
+    if (WD_FLAKY.indexOf(r.name) >= 0) {
+      const prev = runs.slice(i + 1).filter(function (p) { return p.name === r.name && p.status === 'completed' && p.conclusion !== 'cancelled'; })[0];
+      const next = runs.slice(0, i).filter(function (p) { return p.name === r.name && p.status === 'completed' && p.conclusion !== 'cancelled'; }).pop();
+      if (next && next.conclusion === 'success') { st.failSeen.push(r.id); return; }   // наступний запуск пройшов
+      if (!prev || WD_BAD.indexOf(prev.conclusion) < 0) return;                       // поки один — чекаємо наступного
+    }
     st.failSeen.push(r.id);
     if (now.getTime() - new Date(r.updated_at).getTime() > 3 * 3600e3) return;   // давні збої не ворушимо
     lines.push('• ' + (WD_NAMES[r.name] || r.name) + (r.conclusion === 'startup_failure' ? ' (не стартував)' : '') + ': ' + r.html_url);
@@ -107,6 +114,21 @@ function wdKaMail_(st, now, msgs) {
   }
 }
 
+// check() щохвилини пише LAST_CHECK_OK після пошуку в Gmail; давно не писав — Gmail відмовляє або тригер мертвий
+function wdCheckAlive_(st, now, msgs) {
+  const ok = Number(PropertiesService.getScriptProperties().getProperty('LAST_CHECK_OK')) || 0;
+  if (!ok) return;   // стара версія Code.gs — ще не пише
+  const min = Math.round((now.getTime() - ok) / 60000);
+  if (min > 15 && !st.checkDown) {
+    st.checkDown = true;
+    msgs.push('⛔ Пошта KA → бот не працює вже ' + min + ' хв: функція check в Apps Script падає. Нові оголошення ' +
+              'з Kleinanzeigen приходитимуть пачками із запізненням. Apps Script → «Виконання» — там текст помилки.');
+  } else if (min <= 15 && st.checkDown) {
+    st.checkDown = false;
+    msgs.push('✅ Пошта KA → бот знову працює.');
+  }
+}
+
 function wdTriggers_(st, now, msgs) {
   const have = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
   const miss = Object.keys(WD_TRIGGERS).filter(function (f) { return have.indexOf(f) < 0; });
@@ -128,7 +150,7 @@ function watchdog() {
   const st = JSON.parse(props.getProperty('WD_STATE') || '{}');
   const now = new Date();
   const msgs = [];
-  [wdEbay_, wdFailures_, wdKaMail_, wdTriggers_].forEach(function (f) {
+  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_].forEach(function (f) {
     try { f(st, now, msgs); } catch (e) {
       if (/GH_AUTH/.test(String(e))) {
         wdOnce_(st, 'gh_auth', 12, (/GH_AUTH немає/.test(String(e))
@@ -138,6 +160,11 @@ function watchdog() {
                 'Запиши його у ⚙ «Властивості скрипту» як GITHUB_TOKEN (не в код — оновлення файлу його зітре).', msgs, now);
       } else {
         console.log(f.name + ': ' + e);
+        // 01.10: Gmail-ліміт Google вичерпався, а сторож мовчав — тепер про будь-яку помилку перевірки пише
+        wdOnce_(st, 'err_' + f.name, 6, /too many times|invoked too many|Service/i.test(String(e))
+          ? '⛔ Google обмежив Apps Script на сьогодні (' + String(e).slice(0, 120) + '). Пошта KA → бот може не працювати ' +
+            'до скидання ліміту (~доба). Напиши мені — розберемось.'
+          : '⚠️ Сторож: помилка перевірки ' + f.name + ': ' + String(e).slice(0, 200), msgs, now);
       }
     }
   });

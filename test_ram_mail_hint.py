@@ -170,6 +170,18 @@ class TestProcess(unittest.TestCase):
         rmc._process(ka_mail("X Box Series S", 219, search_id="9", age_min=600), 6, False, set(), {})
         self.assertEqual(len(self.hints), 1)
 
+    def test_late_mail_only_good_deals_silent(self):
+        # 01.10: Apps Script не спрацював, запасний cron приніс листи 2-годинної давнини пачкою
+        rmc._process(ka_mail("Xbox Series X 1TB", 340, ad_id="11", age_min=120), 6, False, set(), {})   # NEGOTIATE
+        self.assertEqual(len(self.cards), 0)
+        rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="12", age_min=120), 6, False, set(), {})   # вигідно
+        self.assertEqual(len(self.cards), 1)
+        self.assertIn("Запізніла картка", self.cards[0][0])
+        self.assertTrue(self.cards[0][4])   # тихо
+        rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="13", age_min=20), 6, False, set(), {})
+        self.assertNotIn("Запізніла", self.cards[1][0])
+        self.assertFalse(self.cards[1][4])
+
 
 if __name__ == "__main__":
     unittest.main()

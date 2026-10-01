@@ -14,7 +14,7 @@ function setup(o) {
     Date: class extends Date { constructor(...a) { super(...(a.length ? a : [NOW])); } },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => store[k] || null, setProperty: (k, v) => { store[k] = v; } }) },
     Utilities: { formatDate: (d, tz, f) => f === 'H' ? String((d.getUTCHours() + 2) % 24) : '13:00' },
-    GmailApp: { search: () => o.mail === undefined ? [] : [{ getLastMessageDate: () => new Date(o.mail) }] },
+    GmailApp: { search: () => { if (o.gmailErr) throw new Error(o.gmailErr); return o.mail === undefined ? [] : [{ getLastMessageDate: () => new Date(o.mail) }]; } },
     ScriptApp: { getProjectTriggers: () => (o.triggers || ['check', 'kaFilter', 'processLedger']).map((f) => ({ getHandlerFunction: () => f })) },
     UrlFetchApp: { fetch: (u, opt) => {
       calls.push([opt && opt.method || 'get', u.replace(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+/, '')]);
@@ -86,6 +86,28 @@ check('no token alert', [w.sent.length, /немає GitHub-токена/.test(w.
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], triggers: ['kaFilter', 'processLedger'] }, okMail));
 w.run();
 check('missing trigger', /немає тригера: check/.test(w.text()), true);
+
+// 9. Gmail-ліміт Google (01.10) → повідомлення, а не тиша
+w = setup({ ebay: [run('in_progress', null, ago(5))], gmailErr: 'Service invoked too many times for one day: gmail.' });
+w.run();
+check('gmail quota alert', /Google обмежив Apps Script/.test(w.text()), true);
+
+// 10. check() давно не писав LAST_CHECK_OK → тривога; знову пише → «знову працює»
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { LAST_CHECK_OK: String(NOW.getTime() - 30 * 60000) } }, okMail));
+w.run();
+check('check down', /не працює вже 30 хв/.test(w.text()), true);
+w.store.LAST_CHECK_OK = String(NOW.getTime() - 60000);
+w.run();
+check('check back', /знову працює/.test(w.text()), true);
+
+// 11. разовий збій KA-пошти, за яким успіх — тиша; два поспіль — повідомлення
+const rm = (id, c, min) => run('completed', c, ago(min), { id: id, name: 'ram-mail-alert', html_url: 'https://gh/' + id });
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], all: [rm(12, 'success', 5), rm(11, 'cancelled', 8), rm(10, 'failure', 10), rm(9, 'success', 20)] }, okMail));
+w.run();
+check('flaky single failure silent', w.sent.length, 0);
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], all: [rm(21, 'failure', 5), rm(20, 'failure', 10), rm(19, 'success', 20)] }, okMail));
+w.run();
+check('two failures reported', /gh\/21/.test(w.text()), true);
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

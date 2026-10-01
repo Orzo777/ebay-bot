@@ -338,6 +338,22 @@ class TestPass12Regressions(unittest.TestCase):
         self.assertEqual(self._ev("Nintendo Switch Konsole V2 32GB", 70, "Lieferung ohne Joycons, Dock und Ladekabel"), "SKIP")
 
 
+class TestSwitch2Games0110(unittest.TestCase):
+    """01.10 (eBay-аукціон): «EA Sports FC 26 - Nintendo Switch 2» за €10 пішов як консоль."""
+    def test_game_titles_skipped(self):
+        for t in ("EA Sports FC 26 - Nintendo Switch 2", "Donkey Kong Bananza Switch 2",
+                  "Pokémon Legends Z-A Nintendo Switch 2 Edition"):
+            r = evaluate_console(t, 10)
+            self.assertEqual(r["verdict"], "SKIP", t)
+            self.assertIn("гру", r["reason"], t)
+
+    def test_console_titles_still_evaluated(self):
+        for t in ("Nintendo Switch 2 Konsole", "Mario Kart World Bundle Nintendo Switch 2", "Neue Nintendo Switch 2",
+                  "Verkaufe meine Switch 2", "Switch 2 Mario Kart World Set", "Nintendo Switch 2 schwarz neuwertig",
+                  "Nintendo Switch 2 + Mario Kart World"):
+            self.assertNotEqual(evaluate_console(t, 250)["verdict"], "SKIP", t)
+
+
 if __name__ == "__main__":
     unittest.main()
 

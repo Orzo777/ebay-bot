@@ -18,22 +18,23 @@
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
-const QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:1d';
+// Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
+// читав сотні листів щохвилини (KA складає сповіщення однієї підписки в одну розмову) — Gmail-ліміт Google
+// вичерпався о 5:00, і до вечора бот не отримував сигналу про нові листи.
+const QUERY = 'from:noreply@kleinanzeigen.de in:anywhere';
 
 function check() {
   const props = PropertiesService.getScriptProperties();
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   if (!token) throw new Error('Немає токена: додайте GITHUB_TOKEN у ⚙ «Властивості скрипту» (крок 2).');
 
-  const seen = JSON.parse(props.getProperty('SEEN') || '[]');
-  const ids = [];
-  let fresh = 0;
-  GmailApp.search(QUERY, 0, 30).forEach(function (thread) {
-    thread.getMessages().forEach(function (msg) {
-      ids.push(msg.getId());
-      if (seen.indexOf(msg.getId()) < 0) fresh++;
-    });
+  const last = Number(props.getProperty('LAST_MAIL_TS')) || Date.now() - 3600e3;   // мс найновішого вже переданого листа
+  let newest = last, fresh = 0;
+  GmailApp.search(QUERY + ' after:' + (Math.floor(last / 1000) - 120), 0, 20).forEach(function (thread) {
+    const t = thread.getLastMessageDate().getTime();
+    if (t > last) { fresh++; newest = Math.max(newest, t); }
   });
+  props.setProperty('LAST_CHECK_OK', String(Date.now()));   // для сторожа: пошук у Gmail працює
   if (!fresh) {
     console.log('нових листів немає');
     return;
@@ -48,11 +49,11 @@ function check() {
       muteHttpExceptions: true,
     });
   if (resp.getResponseCode() !== 204) {
-    // SEEN не оновлюємо — наступної хвилини спробуємо ще раз
+    // LAST_MAIL_TS не оновлюємо — наступної хвилини спробуємо ще раз
     throw new Error('GitHub ' + resp.getResponseCode() + ': ' + resp.getContentText());
   }
-  props.setProperty('SEEN', JSON.stringify(ids.slice(0, 300)));
-  console.log('запущено бота, нових листів: ' + fresh);
+  props.setProperty('LAST_MAIL_TS', String(newest));
+  console.log('запущено бота, нових розмов: ' + fresh);
 }
 
 /**

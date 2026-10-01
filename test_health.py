@@ -67,6 +67,20 @@ class EbayWatchHealthTest(unittest.TestCase):
         t = health.totals(st["stats"], 24, NOW)
         self.assertEqual((t["ebay_rounds"], t["ebay_cards"], t["ebay_calls"], t["ebay_api_errors"]), (6, 1, 38, 32))
 
+    def test_ka_dispatch_dead_man(self):
+        st, sent = {}, []
+        day = datetime(2026, 10, 1, 10, 0, tzinfo=timezone.utc)   # 12:00 за Берліном
+        ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(hours=1))
+        self.assertEqual(sent, [])
+        ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(hours=5))
+        self.assertEqual(len(sent), 1)
+        self.assertIn("5 год", sent[0])
+        st2, sent2 = {}, []
+        night = datetime(2026, 10, 1, 2, 0, tzinfo=timezone.utc)
+        ebay_watch.ka_dispatch_check(st2, night, sent2.append, lambda: night - timedelta(hours=8))
+        ebay_watch.ka_dispatch_check(st2, day, sent2.append, lambda: None)   # GitHub API недоступний — мовчимо
+        self.assertEqual(sent2, [])
+
 
 def _run(name, start_h_ago, end_h_ago=None, conclusion="success", status="completed", url="u"):
     iso = lambda h: (NOW - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")

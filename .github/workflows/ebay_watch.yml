@@ -54,6 +54,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}   # службові сповіщення (квота, Gemini)
+          GH_API_TOKEN: ${{ github.token }}   # сторож: чи запускає Apps Script KA-пошту
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PYTHONIOENCODING: utf-8
         run: |

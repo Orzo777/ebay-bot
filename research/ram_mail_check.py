@@ -170,6 +170,11 @@ def save_state(path, state):
     json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False)
 
 
+# Лист старший за годину (Apps Script не спрацював, картку приніс запасний cron) — лише «вигідно/дуже вигідно», тихо
+LATE_HOURS = 1.0
+LATE_VERDICTS = ("BUY-EXCELLENT", "BUY-GOOD")
+
+
 def _mail_age_hours(msg) -> float | None:
     try:
         dt = parsedate_to_datetime(msg.get("Date"))
@@ -510,6 +515,10 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         if stale:
             print(f"   старіший за {max_age_hours:.0f} год — не сповіщаю")
             continue
+        late = age is not None and age > LATE_HOURS
+        if late and res["verdict"] not in LATE_VERDICTS:   # 01.10: пачки застарілих карток — лише справді вигідні
+            print(f"   лист {age * 60:.0f} хв тому — запізно для «{res['verdict']}», не сповіщаю")
+            continue
         risk = check_listing(lst["link"], lst["price"], res.get("quick_sale", 0))
         print(f"   продавець: {risk['level'] + ' ' + '; '.join(risk['reasons']) if risk else 'не перевірено'}")
         if risk and risk["level"] == "gone":
@@ -540,7 +549,9 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             print("   [DRY RUN] надіслав би картку")
         else:
             card = format_html(res)
-            mid, kb = send_telegram_card(card, lst["link"], seller_template(res), slink, False, offer_template(res)) or (None, None)
+            if late:
+                card = f"⏰ <b>Запізніла картка</b>: лист прийшов {age * 60:.0f} хв тому — могли вже купити\n\n" + card
+            mid, kb = send_telegram_card(card, lst["link"], seller_template(res), slink, late, offer_template(res)) or (None, None)
             add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [])   # фото → рядок «📷 …» (29.09)
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній

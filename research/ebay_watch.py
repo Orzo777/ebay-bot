@@ -31,7 +31,7 @@ from console_alert import evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
 import health
 from photo_check import STATS as PHOTO_STATS
-from photo_check import add_to_card, ebay_images, photo_line
+from photo_check import ebay_images, photo_line
 from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
                        evaluate, refine_by_desc, tier)
 
@@ -566,8 +566,12 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 if dry_run:
                     print("   [DRY RUN] надіслав би картку аукціону")
                 else:
-                    mid, kb = send_card(text, lst["url"], dict(r, verdict="BUY"), auction=True) or (None, None)
-                    add_to_card(mid, text, kb, r, lst["title"], lst.get("images") or [])
+                    # фото — ДО надсилання, як для «Sofort-Kaufen» (01.10: гра «EA Sports FC 26 - Switch 2» пішла з ⛔ у картці)
+                    ph = photo_line(r, lst["title"], lst.get("images") or [])
+                    if ph and ph[1]:
+                        print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку аукціону не надсилаю")
+                        continue
+                    send_card(text + ("\n\n" + ph[0] if ph else ""), lst["url"], dict(r, verdict="BUY"), auction=True)
                 auctions_sent += 1
         cut = (now - timedelta(days=2)).isoformat()
         state["auctions"] = {k: v for k, v in state.get("auctions", {}).items() if v >= cut}
@@ -575,7 +579,39 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         print(f"   перший запуск: запам'ятав {len(state.get('items', {}))} оголошень, сповіщення — з наступного кругу")
     prune(state, now)
     track_round(state, len(jobs), api_errors, sent, auctions_sent, CALLS["n"] - calls0, photo0, now)
+    if state["round"] % 20 == 0 and not dry_run:   # ~раз на годину
+        ka_dispatch_check(state, now)
     return sent + auctions_sent
+
+
+def _last_ka_dispatch() -> datetime | None:
+    """Коли Apps Script востаннє запускав KA-пошту (workflow_dispatch ram_mail_alert.yml)."""
+    import requests
+    tok = os.getenv("GH_API_TOKEN")
+    r = requests.get(f"https://api.github.com/repos/{os.getenv('GITHUB_REPOSITORY', 'Orzo777/ebay-bot')}"
+                     "/actions/workflows/ram_mail_alert.yml/runs", params={"event": "workflow_dispatch", "per_page": 1},
+                     headers={"Authorization": f"Bearer {tok}"} if tok else {}, timeout=15)
+    runs = r.json().get("workflow_runs") or [] if r.status_code == 200 else None
+    if runs is None:
+        return None
+    return datetime.fromisoformat(runs[0]["created_at"].replace("Z", "+00:00")) if runs else datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+
+def ka_dispatch_check(state: dict, now: datetime, send=health.office_send, last_fn=_last_ka_dispatch):
+    """Незалежно від Apps Script: вдень >3 год без запуску KA-пошти від Apps Script — сигнал (01.10: Gmail-ліміт
+    Google вимкнув check() з 5:00 до вечора, сторож в Apps Script теж не зміг попередити)."""
+    try:
+        last = last_fn()
+    except Exception as e:
+        print(f"   [сторож] GitHub API: {e.__class__.__name__}")
+        return
+    if last is None or not 9 <= now.astimezone(_BERLIN).hour < 23:
+        return
+    hours = (now - last).total_seconds() / 3600
+    if hours > 3:
+        health.alert(state, "ka_dispatch", f"⛔ Apps Script уже {hours:.0f} год не запускав обробку листів Kleinanzeigen. "
+                     "Картки з KA приходитимуть пачками із запізненням (запасний запуск GitHub — раз на кілька годин). "
+                     "Apps Script → «Виконання»: чи працює check і чи немає помилок.", 6, now, send)
 
 
 def quota_error(state: dict, e: Exception, now: datetime, send=health.office_send):

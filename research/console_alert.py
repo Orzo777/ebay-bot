@@ -329,6 +329,10 @@ _SWITCH1_EVIDENCE = re.compile(r"oled|lite|\bv\s?[12]\b|switch\s*1\b|konsole|con
                                # «+ 3 Spiele + Controller», «Plus 2 Spiele», «rot blau», «gebraucht», «guter Zustand»
                                r"edition|\b20(?:1[7-9]|2\d)\b|\bplus\b|\d+\s*spiele|controller|\brot\b|\bblau\b|schwarz|"
                                r"gebraucht|zustand|switch\b.*\+", re.I)
+# 01.10 (eBay-аукціон): «EA Sports FC 26 - Nintendo Switch 2» за ставку €10 пішов як консоль. Назва гри перед
+# «Switch 2» без жодної ознаки консолі/комплекту — гра. «Edition» тут НЕ ознака консолі (ігри теж «Edition»).
+_SWITCH2_EVIDENCE = re.compile(r"konsole|console|\d{3}\s?gb|joy-?\s?cons?|\bdock|\bmit\b|\bin[ck]l|bundle|\bset\b|paket|"
+                               r"komplett|handheld|\+|controller|gebraucht|zustand|\bovp\b", re.I)
 _NOT_SWITCH = re.compile(r"hdmi|kvm|netzwerk|\blan\b|\bports?\b|usb|splitter|umschalt|\d\s?x\s?\d|schalter|gigabit|\bpoe\b|"
                          r"tp-?link|netgear|cisco|ubiquiti|mikrotik|zyxel|d-?link", re.I)
 _SWITCH_ACCESSORY = re.compile(r"controller|joy[\s-]?cons?\b|\bspiele?\b|\bgame\b|dock|tasche|hülle|"
@@ -347,6 +351,10 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
     weak = False
     if _SWITCH2.search(title):
         real = SWITCH2
+        pre = [w for w in re.findall(r"[A-Za-zÄÖÜäöüß'][\wÄÖÜäöüß']+", title[:_SWITCH2.search(title).start()])
+               if not _TITLE_FILLER.match(w) and not re.match(r"ni\w{3,6}do$", w, re.I)]
+        if len(pre) >= 2 and not _SWITCH2_EVIDENCE.search(title):
+            return _skip(title, price, "схоже на гру для Switch 2 (назва гри перед назвою платформи)")
     elif _SWITCH1.search(title):
         # «Nintendo Switch Mario Kart 8 Deluxe» — гра з назвою платформи; консоль видно лише з моделі чи комплекту
         if not _SWITCH1_EVIDENCE.search(title):

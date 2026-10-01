@@ -288,7 +288,10 @@ function processLedger() {
   const done = {};
   if (log.getLastRow() > 1) log.getRange(2, 1, log.getLastRow() - 1, 1).getValues().forEach(function (r) { done[r[0]] = 1; });
   const msgs = [];
-  GmailApp.search(LEDGER_QUERY, 0, 100).forEach(function (th) {
+  // Перший прохід — 45 днів; далі лише розмови з листами за останні 2 доби (Gmail-ліміт Google, 01.10)
+  const props = PropertiesService.getScriptProperties();
+  const full = !props.getProperty('LEDGER_SCANNED');
+  GmailApp.search(LEDGER_QUERY + (full ? '' : ' newer_than:2d'), 0, full ? 100 : 30).forEach(function (th) {
     th.getMessages().forEach(function (m) { if (!done[m.getId()]) msgs.push(m); });
   });
   msgs.sort(function (a, b) { return a.getDate() - b.getDate(); });   // спершу давніші: купівля раніше за доставку
@@ -334,6 +337,7 @@ function processLedger() {
     }
     log.appendRow([m.getId(), m.getDate(), p.from || m.getFrom(), m.getSubject(), what, row || '', p.snippet || '']);
   });
+  if (full) props.setProperty('LEDGER_SCANNED', '1');
 }
 
 // ------------------------------------------------------------------ Telegram
