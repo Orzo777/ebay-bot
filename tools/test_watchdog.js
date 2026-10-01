@@ -13,16 +13,18 @@ function setup(o) {
     console: { log: () => {} },
     Date: class extends Date { constructor(...a) { super(...(a.length ? a : [NOW])); } },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => store[k] || null, setProperty: (k, v) => { store[k] = v; } }) },
-    Utilities: { formatDate: (d, tz, f) => f === 'H' ? String((d.getUTCHours() + 2) % 24) : '13:00' },
+    Utilities: { formatDate: (d, tz, f) => f === 'H' ? String((d.getUTCHours() + 2) % 24)
+      : f === 'dd.MM' ? String(d.getUTCDate()).padStart(2, '0') + '.' + String(d.getUTCMonth() + 1).padStart(2, '0') : '13:00' },
     GmailApp: { search: () => { if (o.gmailErr) throw new Error(o.gmailErr); return o.mail === undefined ? [] : [{ getLastMessageDate: () => new Date(o.mail) }]; } },
     ScriptApp: { getProjectTriggers: () => (o.triggers || ['check', 'kaFilter', 'processLedger']).map((f) => ({ getHandlerFunction: () => f })) },
     UrlFetchApp: { fetch: (u, opt) => {
       calls.push([opt && opt.method || 'get', u.replace(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+/, '')]);
       if (/telegram/.test(u)) { sent.push(opt.payload); return { getResponseCode: () => 200 }; }
       if (o.auth) return { getResponseCode: () => 401, getContentText: () => '' };
-      if (/dispatches/.test(u)) return { getResponseCode: () => o.dispatch || 204, getContentText: () => '' };
+      if (/dispatches/.test(u)) return { getResponseCode: () => o.dispatch || 204, getContentText: () => '', getHeaders: () => ({}) };
       const runs = /ebay_watch/.test(u) ? o.ebay || [] : /ram_mail_alert/.test(u) ? o.mailRuns || [] : o.all || [];
-      return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ workflow_runs: runs }) };
+      return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ workflow_runs: runs }),
+               getHeaders: () => (o.expires ? { 'github-authentication-token-expiration': o.expires } : {}) };
     } },
   };
   vm.createContext(ctx);
@@ -108,6 +110,15 @@ check('flaky single failure silent', w.sent.length, 0);
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], all: [rm(21, 'failure', 5), rm(20, 'failure', 10), rm(19, 'success', 20)] }, okMail));
 w.run();
 check('two failures reported', /gh\/21/.test(w.text()), true);
+
+// 12. токен GitHub закінчується за 5 днів → попередження раз на добу; за 30 днів — тиша
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], expires: '2026-10-05 10:00:00 UTC' }, okMail));
+w.run();
+w.run();
+check('token expiry warned once', [w.sent.length, /закінчується 05\.10/.test(w.text()), /через 4 дн\./.test(w.text())], [1, true, true]);
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], expires: '2026-11-15 10:00:00 UTC' }, okMail));
+w.run();
+check('far expiry silent', w.sent.length, 0);
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
