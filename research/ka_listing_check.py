@@ -151,7 +151,18 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
     # block: у підписках картки не буде зовсім; лишаються 🟢 і 🟡 лише з «м'яких» ознак (молодий акаунт, короткий опис)
     from photo_check import ka_images
     return dict(level=level, score=score, reasons=reasons, seller=seller, block=bool(hard), hard=hard, desc=desc,
-                buy_now=bool(_BUY_NOW_RE.search(page)), images=ka_images(page))
+                buy_now=bool(_BUY_NOW_RE.search(page)), images=ka_images(page), page_price=page_price(page))
+
+
+_PAGE_PRICE = re.compile(r'ad_price"\s*:\s*"(\d+(?:\.\d+)?)"|adPrice:\s*(\d+(?:\.\d+)?)')
+
+
+def page_price(page: str) -> float | None:
+    """Поточна ціна на сторінці оголошення. 01.10: у листі KA було 80 €, а продавець за кілька хвилин підняв до 120 € VB —
+    картка показала стару ціну. 0 / «Zu verschenken» / не знайдено → None."""
+    m = _PAGE_PRICE.search(page or "")
+    v = float(m.group(1) or m.group(2)) if m else 0.0
+    return v or None
 
 
 def check_listing(link: str | None, price: float, quick_sale: float) -> dict | None:

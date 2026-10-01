@@ -160,19 +160,36 @@ def send_telegram_card(html_text: str, link: str | None, seller_text: str, searc
 
 def load_state(path):
     if os.path.exists(path):
-        return json.load(open(path, encoding="utf-8"))
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
     return {"seen_ids": []}
 
 
 def save_state(path, state):
     state["seen_ids"] = state["seen_ids"][-2000:]
     state["seen_ads"] = state.get("seen_ads", [])[-3000:]
-    json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, ensure_ascii=False)
 
 
 # Лист старший за годину (Apps Script не спрацював, картку приніс запасний cron) — лише «вигідно/дуже вигідно», тихо
 LATE_HOURS = 1.0
 LATE_VERDICTS = ("BUY-EXCELLENT", "BUY-GOOD")
+
+
+def message_ids(m, ids: list[bytes]) -> dict:
+    """Номер листа в папці → Message-ID, одним запитом IMAP (лише заголовок, без тексту)."""
+    out = {}
+    if not ids:
+        return out
+    typ, data = m.fetch(b",".join(ids).decode(), "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+    for item in data or []:
+        if isinstance(item, tuple) and item[0]:
+            mid = item[0].split()[0]
+            v = email.message_from_bytes(item[1] or b"").get("Message-ID")
+            if v:
+                out[mid] = v
+    return out
 
 
 def _mail_age_hours(msg) -> float | None:
@@ -523,6 +540,17 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         print(f"   продавець: {risk['level'] + ' ' + '; '.join(risk['reasons']) if risk else 'не перевірено'}")
         if risk and risk["level"] == "gone":
             continue
+        now_px = (risk or {}).get("page_price")
+        if now_px and abs(now_px - lst["price"]) >= 1:   # продавець змінив ціну після листа — рахуємо за поточною
+            print(f"   ціна на сторінці {now_px:.0f} € (у листі {lst['price']:.0f} €)")
+            old_px, lst = lst["price"], dict(lst, price=now_px)
+            res = evaluate_console(lst["title"], now_px, vb=vb) or evaluate(lst["title"], now_px, vb=vb)
+            if pickup:
+                apply_pickup(res)
+            if res["verdict"] not in SEND_VERDICTS:
+                print(f"   за поточною ціною: {res['verdict']} — не сповіщаю")
+                continue
+            res.setdefault("notes", []).insert(0, f"Продавець змінив ціну: у листі було {old_px:.0f} €, зараз {now_px:.0f} €.")
         if risk and risk.get("block"):   # PayPal Freunde, «без Sicher bezahlen», WhatsApp, свіжий акаунт — не показуємо
             print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
             continue
@@ -600,25 +628,39 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
     since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
     alerts_sent = new_mails = 0
     photo0 = dict(PHOTO_STATS)
-    for folder in folders:
-        if m.select(folder, readonly=True)[0] != "OK":    # readonly: нічого не позначаємо прочитаним
-            print("Не відкрилась папка:", folder)
-            continue
-        ids = m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since})')[1][0].split()
-        print(f"Папка {folder}: листів від {FROM_FILTER} з {since}: {len(ids)}")
-        for mid in ids:
-            msg = email.message_from_bytes(m.fetch(mid, "(BODY.PEEK[])")[1][0][1])
-            msgid = msg.get("Message-ID") or f"{folder}:{mid.decode()}"
-            if pc_replay:
-                if IGNORE_SEARCH_RE.search(_decode(msg.get("Subject"))):
-                    alerts_sent += _process(msg, max_age_hours, False, set(), None)
+    aborted = None
+    try:
+        for folder in folders:
+            if m.select(folder, readonly=True)[0] != "OK":    # readonly: нічого не позначаємо прочитаним
+                print("Не відкрилась папка:", folder)
                 continue
-            if msgid in seen:
-                continue
-            seen.add(msgid)
-            new_mails += 1
-            alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads, hint_times)
-    m.logout()
+            ids = m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since})')[1][0].split()
+            print(f"Папка {folder}: листів від {FROM_FILTER} з {since}: {len(ids)}")
+            # 01.10: щоразу тягнули ПОВНІ тексти всіх ~400 листів за 2 доби (навіть оброблених) — ~3 хв на запуск, і Gmail
+            # обривав з'єднання «System Error». Тепер одним запитом лише Message-ID, повний лист — тільки для нових.
+            known = {} if pc_replay else message_ids(m, ids)
+            for mid in ids:
+                key = known.get(mid)
+                if key and (key in seen) and not dry_run:
+                    continue
+                msg = email.message_from_bytes(m.fetch(mid, "(BODY.PEEK[])")[1][0][1])
+                msgid = msg.get("Message-ID") or f"{folder}:{mid.decode()}"
+                if pc_replay:
+                    if IGNORE_SEARCH_RE.search(_decode(msg.get("Subject"))):
+                        alerts_sent += _process(msg, max_age_hours, False, set(), None)
+                    continue
+                if msgid in seen:
+                    continue
+                seen.add(msgid)
+                new_mails += 1
+                alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads, hint_times)
+    except (imaplib.IMAP4.abort, imaplib.IMAP4.error, OSError) as e:   # оброблене до збою зберігаємо — без дублів карток
+        aborted = e
+        print(f"Gmail IMAP обірвав з'єднання: {e} — оброблене збережу, решту візьме наступний запуск")
+    try:
+        m.logout()
+    except Exception:
+        pass
     if pc_replay and not alerts_sent and PC_BOT_TOKEN:   # листів про ПК ще не було — перевіряємо сам зв'язок
         import requests
 
@@ -634,6 +676,8 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         state.update({"seen_ids": list(seen), "seen_ads": list(seen_ads), "hint_times": hint_times})
         save_state(state_path, state)
     print(f"Нових листів оброблено: {new_mails}; сповіщень: {alerts_sent}")
+    if aborted:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
