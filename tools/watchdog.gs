@@ -14,6 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
+const VER_WATCHDOG = '2026-10-02a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -173,7 +174,37 @@ function watchdog() {
   console.log(msgs.length ? msgs.join('\n\n') : 'усе гаразд');
 }
 
+// Раз на добу: чи файли в Apps Script тієї ж версії, що на GitHub (їх вставляють вручну — легко пропустити оновлення)
+const WD_FILES = [['gmail_trigger.gs', 'code.gs', 'VER_CODE', true], ['ledger.gs', 'ledger.gs', 'VER_LEDGER', true],
+  ['kafilter.gs', 'kafilter.gs', 'VER_KAFILTER', false], ['watchdog.gs', 'watchdog.gs', 'VER_WATCHDOG', false]];
+
+function wdLocalVersion_(name) {   // старий файл без константи → '' (теж «застарів»)
+  return { VER_CODE: typeof VER_CODE === 'undefined' ? '' : VER_CODE,
+    VER_LEDGER: typeof VER_LEDGER === 'undefined' ? '' : VER_LEDGER,
+    VER_KAFILTER: typeof VER_KAFILTER === 'undefined' ? '' : VER_KAFILTER,
+    VER_WATCHDOG: typeof VER_WATCHDOG === 'undefined' ? '' : VER_WATCHDOG }[name] || '';
+}
+
+function wdVersions_(now) {
+  const old = [];
+  let redeploy = false;
+  WD_FILES.forEach(function (f) {
+    const r = UrlFetchApp.fetch('https://raw.githubusercontent.com/' + REPO + '/main/tools/' + f[0], { muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) return;
+    const m = r.getContentText().match(new RegExp("const " + f[2] + " = '([^']+)'"));
+    if (m && m[1] !== wdLocalVersion_(f[2])) { old.push(f[1] + ' ← tools/' + f[0]); redeploy = redeploy || f[3]; }
+  });
+  if (!old.length) return '';
+  return '🔄 На GitHub є новіші версії файлів Apps Script — заміни їх вміст (Raw → скопіювати все → вставити → 💾):\n' +
+    old.map(function (s) { return '• ' + s; }).join('\n') +
+    (redeploy ? '\nПотім «Ввести в дію» → «Керування розгортаннями» → ✏ → «Нова версія» → «Ввести в дію».' : '');
+}
+
 function dailyReport() {
+  try {
+    const v = wdVersions_(new Date());
+    if (v) wdSend_(v, new Date());
+  } catch (e) { console.log('версії: ' + e); }
   let code;
   try { code = wdGh_('/actions/workflows/daily_report.yml/dispatches', 'post', { ref: 'main' }).code; } catch (e) { code = String(e); }
   if (code !== 204) wdSend_('⚠️ Не зміг запустити щоденний звіт (GitHub ' + code + ').', new Date());

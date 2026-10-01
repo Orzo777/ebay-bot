@@ -464,12 +464,12 @@ def format_html(r: dict) -> str:
     from html import escape
 
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — БЕРИ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — БЕРИ</b>",
-           "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>",
+           "BUY": "🟡 <b>МОЖНА — вигода помірна</b>",
            "NEGOTIATE": "💬 <b>ТОРГУЙСЯ — трохи дорожче стелі</b>"}[r["verdict"]]
     if too_cheap(r):
         tag = cheap_headline(r)
     offer = offer_price(r)
-    profit = (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" if r["verdict"] != "NEGOTIATE"
+    profit = (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" + (f" (+{100 * r['profit_est'] / r['buy_cost']:.0f}% до вкладеного)" if r.get('buy_cost') else "") if r["verdict"] != "NEGOTIATE"
               else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)")
     lines = [
         tag,

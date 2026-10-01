@@ -213,7 +213,7 @@ def _age_label(lst: dict, now: datetime) -> str:
 def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
     esc = html.escape
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — КУПУЙ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — КУПУЙ</b>",
-           "BUY": "🟡 <b>МОЖНА, але маржа тонка</b>",
+           "BUY": "🟡 <b>МОЖНА — вигода помірна</b>",
            "NEGOTIATE": "💬 <b>ЗАПРОПОНУЙ ЦІНУ — трохи дорожче стелі</b>"}[r["verdict"]]
     if too_cheap(r):
         tag = cheap_headline(r, ebay=True)
@@ -227,7 +227,7 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
         f"<b>{lst['price']:.0f} €</b> + {ship_txt} = <b>{r['buy_cost']:.0f} €</b>"
         + (" · Preisvorschlag можна" if lst["offer"] else " · фіксована ціна"),
         "",
-        (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" if r["verdict"] != "NEGOTIATE"
+        (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" + (f" (+{100 * r['profit_est'] / r['buy_cost']:.0f}% до вкладеного)" if r.get('buy_cost') else "") if r["verdict"] != "NEGOTIATE"
          else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)"),
         *([(f"🤝 Preisvorschlag <b>{offer} €</b>" if lst["offer"] else f"🤝 Напиши продавцю: <b>{offer} €</b> "
             "(Preisvorschlag вимкнений — хай знизить ціну)") + f" (разом ≈ {offer + r['ship_in']:.0f} €) → заробіток ≈ "

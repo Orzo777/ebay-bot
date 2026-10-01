@@ -1,0 +1,18 @@
+{
+ "gmail_trigger.gs": {
+  "ver": "2026-10-02a",
+  "sha": "2668638b15624ca9"
+ },
+ "ledger.gs": {
+  "ver": "2026-10-02a",
+  "sha": "bcd95bd8ddedd11f"
+ },
+ "kafilter.gs": {
+  "ver": "2026-10-02a",
+  "sha": "1e6e062f9df06887"
+ },
+ "watchdog.gs": {
+  "ver": "2026-10-02a",
+  "sha": "eb3a74cdace99d36"
+ }
+}
