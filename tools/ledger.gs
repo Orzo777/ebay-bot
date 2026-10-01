@@ -339,12 +339,22 @@ function processLedger() {
     log.appendRow([m.getId(), m.getDate(), p.from || m.getFrom(), m.getSubject(), what, row || '', p.snippet || '']);
   });
   if (full) props.setProperty('LEDGER_SCANNED', '1');
+  weeklyIfDue_(props, new Date());
+}
+
+// Щопонеділка з 9:00 за Берліном — один раз на тиждень (ключ — дата понеділка)
+function weeklyIfDue_(props, now) {
+  const day = Utilities.formatDate(now, 'Europe/Berlin', 'u'), hour = Number(Utilities.formatDate(now, 'Europe/Berlin', 'H'));
+  const key = Utilities.formatDate(now, 'Europe/Berlin', 'yyyy-MM-dd');
+  if (day !== '1' || hour < 9 || props.getProperty('WEEKLY_SENT') === key) return false;
+  if (weeklyReport()) props.setProperty('WEEKLY_SENT', key);
+  return true;
 }
 
 // ------------------------------------------------------------------ Telegram
 // Облік і продаж — в окремому боті «Облік і продаж» (OFFICE_BOT_TOKEN), щоб не змішувати з картками покупок.
 // Поки другого бота немає — пише в основний, як раніше.
-const OFFICE_KEYBOARD = { keyboard: [[{ text: 'облік' }, { text: 'продати' }, { text: 'допомога' }]], resize_keyboard: true,
+const OFFICE_KEYBOARD = { keyboard: [[{ text: 'облік' }, { text: 'продати' }, { text: 'звіт' }, { text: 'допомога' }]], resize_keyboard: true,
   is_persistent: true };
 const OFFICE_HELP = 'Тут облік і продаж (картки покупок — в основному боті).\n' +
   '• купив 45 OWC 2x16 DDR4 — записати покупку (додай ebay / самовивіз, якщо не KA)\n' +
@@ -352,6 +362,8 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '• облік — підсумок і посилання на таблицю\n' +
   '• продати 3 — готове оголошення для eBay: ціна, пороги Preisvorschlag, назва й опис німецькою ' +
   '(3 — номер у таблиці; «продати» без номера — список того, що на руках)\n' +
+  '• виставив 3 [124] — товар №3 уже на eBay (статус «Виставлено», ціну — в нотатки), щоб звіт не нагадував\n' +
+  '• звіт — тижневий звіт: прибуток, точність прогнозів, залежаний товар, що дають підписки (сам приходить щопонеділка)\n' +
   'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення.';
 
 function officeToken_(props) {
@@ -372,7 +384,11 @@ function notify_(text, markup) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
-  if (sellCommand_(msg) || ledgerCommand(msg)) return;
+  if (sellCommand_(msg) || listedCommand_(msg) || ledgerCommand(msg)) return;
+  if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
+    notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
+    return;
+  }
   if (/^\/?(допомога|help|start)/i.test(String(msg.text || '').trim())) { notify_(OFFICE_HELP, OFFICE_KEYBOARD); return; }
   notify_('Не зрозумів. ' + OFFICE_HELP + '\n\nОголошення для оцінки — кидай в основний бот.', OFFICE_KEYBOARD);
 }
@@ -456,7 +472,7 @@ function hmacHex_(key, msg) {
     .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
 }
 
-function sealSell_(data, key, nonce) {
+function seal_(data, key, nonce) {
   const raw = Utilities.newBlob(JSON.stringify(data)).getBytes();
   let ks = [];
   for (let i = 0; ks.length < raw.length; i++) ks = ks.concat(Utilities.computeHmacSha256Signature(nonce + ':' + i, key, Utilities.Charset.UTF_8));
@@ -492,7 +508,7 @@ function sellCommand_(msg) {
   const title = m[1] && extra ? extra : String(v[COL.title - 1]);
   const cost = Number(v[COL.spent - 1]) || Number(v[COL.price - 1]) || null;
   const key = officeToken_(props);
-  const sealed = sealSell_({ row: idx + 1, title: title, cost: cost }, key, Utilities.getUuid().replace(/-/g, ''));
+  const sealed = seal_({ row: idx + 1, title: title, cost: cost }, key, Utilities.getUuid().replace(/-/g, ''));
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/sell.yml/dispatches', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -501,5 +517,69 @@ function sellCommand_(msg) {
   notify_(r.getResponseCode() === 204
     ? '⏳ Готую оголошення для №' + (idx + 1) + ' «' + title + '» — приблизно хвилина.'
     : '⚠️ Не зміг запустити підготовку оголошення (GitHub ' + r.getResponseCode() + ').');
+  return true;
+}
+
+
+// ------------------------------------------------------------------ тижневий звіт (01.10)
+// Рядки обліку → зашифровано (як «продати») → GitHub weekly_report.yml → research/weekly_report.py → бот «Облік і продаж».
+function iso_(v) { return v instanceof Date ? Utilities.formatDate(v, 'Europe/Berlin', 'yyyy-MM-dd') : (v || ''); }
+function num_(v) { return v === '' || v == null || isNaN(Number(v)) ? null : Math.round(Number(v) * 100) / 100; }
+
+function ledgerRows_() {
+  const sh = ledger_().getSheetByName('Угоди');
+  const last = sh.getLastRow();
+  if (last < LEDGER_FIRST) return [];
+  return sh.getRange(LEDGER_FIRST, 1, last - LEDGER_FIRST + 1, COL.id).getValues()
+    .map(function (v, i) {
+      return { n: i + 1, date: iso_(v[COL.date - 1]), title: String(v[COL.title - 1]).slice(0, 90), cat: v[COL.cat - 1],
+        src: v[COL.src - 1], spent: num_(v[COL.spent - 1]) != null ? num_(v[COL.spent - 1]) : num_(v[COL.price - 1]),
+        status: v[COL.status - 1], sdate: iso_(v[COL.sdate - 1]), sprice: num_(v[COL.sprice - 1]), net: num_(v[COL.net - 1]),
+        profit: num_(v[COL.profit - 1]) };
+    })
+    .filter(function (r) { return r.title; });
+}
+
+function weeklyReport() {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('LEDGER_ID')) return false;
+  let rows = ledgerRows_();
+  // вхідні параметри GitHub ≤ 65 000 символів: усі непродані + останні продажі
+  while (rows.length > 20 && JSON.stringify(rows).length > 40000) {
+    const i = rows.findIndex(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) >= 0; });
+    if (i < 0) break;
+    rows.splice(i, 1);
+  }
+  const sealed = seal_({ rows: rows, today: iso_(new Date()) }, officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
+  const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/weekly_report.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: 'main', inputs: sealed }) });
+  console.log('тижневий звіт: GitHub ' + r.getResponseCode());
+  return r.getResponseCode() === 204;
+}
+
+// «виставив 3 124» → статус «Виставлено» (+ ціна в нотатки) — для тижневого звіту: що на продажу, а що лежить
+function listedCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?(?:виставив|виставила)(?=\s|$)\s*(\d{1,4})?(?:\s+(\d+(?:[.,]\d{1,2})?))?/i);
+  if (!m) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID')) || !props.getProperty('LEDGER_ID')) return true;
+  if (!m[1]) { notify_('Напиши так: «виставив 3 124» — номер у таблиці і ціна (ціну можна не писати).'); return true; }
+  const sh = ledger_().getSheetByName('Угоди');
+  const row = Number(m[1]) + LEDGER_FIRST - 1;
+  const title = row <= sh.getLastRow() ? sh.getRange(row, COL.title).getValue() : '';
+  if (!title) { notify_('У таблиці немає №' + m[1] + '.'); return true; }
+  const st = sh.getRange(row, COL.status).getValue();
+  if (['Продано', 'Повернено', 'Скасовано'].indexOf(st) >= 0) { notify_('№' + m[1] + ' — статус «' + st + '», не змінюю.'); return true; }
+  sh.getRange(row, COL.status).setValue('Виставлено');
+  if (m[2]) {
+    const note = String(sh.getRange(row, COL.note).getValue() || '');
+    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'виставлено за ' + m[2].replace(',', '.') + ' € ' +
+      Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM'));
+  }
+  notify_('🏷 №' + m[1] + ' «' + title + '» — виставлено' + (m[2] ? ' за ' + m[2] + ' €' : '') + '. Коли продаси — «продав ' +
+          (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '» (або лист eBay запише сам).');
   return true;
 }

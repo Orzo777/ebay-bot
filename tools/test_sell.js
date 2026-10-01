@@ -20,7 +20,7 @@ let bad = 0;
 const check = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) { bad++; console.log('!!', name, JSON.stringify(got)); } };
 
 // вектор: Python-тест розшифровує саме його (test_sell.py, VECTOR)
-const v = ctx.sealSell_({ row: 3, title: 'OWC 2x16GB DDR4 für iMac', cost: 45.5 }, '123:ABC', 'n0nce');
+const v = ctx.seal_({ row: 3, title: 'OWC 2x16GB DDR4 für iMac', cost: 45.5 }, '123:ABC', 'n0nce');
 check('vector', v, { blob: 'ckNGkBdsfkbzaDMDdkUQy2CAcFUVcmcL47hP7XagKCLHDNhFMfmX+ODbR4DI3gCFZpjESsJhH5H5',
   mac: '61231ce607032562185d2078ff7a8ccd', nonce: 'n0nce' });
 

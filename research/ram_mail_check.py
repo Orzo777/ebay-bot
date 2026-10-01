@@ -653,7 +653,12 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
                     continue
                 seen.add(msgid)
                 new_mails += 1
-                alerts_sent += _process(msg, max_age_hours, dry_run, seen_ads, hint_times)
+                sent_now = _process(msg, max_age_hours, dry_run, seen_ads, hint_times)
+                alerts_sent += sent_now
+                if not dry_run:   # для тижневого звіту: що дає кожна підписка (research/weekly_report.py)
+                    sub = search_name(_decode(msg.get("Subject")))[:40]
+                    health.bump(state, "sub_mails|" + sub)
+                    health.bump(state, "sub_cards|" + sub, sent_now)
     except (imaplib.IMAP4.abort, imaplib.IMAP4.error, OSError) as e:   # оброблене до збою зберігаємо — без дублів карток
         aborted = e
         print(f"Gmail IMAP обірвав з'єднання: {e} — оброблене збережу, решту візьме наступний запуск")
