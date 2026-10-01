@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-10-02a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-10-02b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -89,6 +89,11 @@ function doPost(e) {
     }
     // Команди обліку («купив 45 OWC …», «продав 110 OWC», «облік») обробляє ledger.gs — у GitHub не пересилаємо
     if (typeof sellCommand_ === 'function' && sellCommand_(msg)) return HtmlService.createHtmlOutput('ok');   // відповідь — у бот обліку
+    // «звіт» / «виставив 3» в основному боті — теж команди обліку (а не посилання для оцінки)
+    if (typeof officeMessage === 'function' && /^\/?(звіт|виставив|виставила)(?=\s|$)/i.test(String(msg.text || '').trim())) {
+      officeMessage(msg);
+      return HtmlService.createHtmlOutput('ok');
+    }
     if (typeof ledgerCommand === 'function' && ledgerCommand(msg)) return HtmlService.createHtmlOutput('ok');
     // Посилання буває сховане «під словом» (text_link) або в підписі до фото — збираємо все
     const urls = [].concat(msg.entities || [], msg.caption_entities || [])

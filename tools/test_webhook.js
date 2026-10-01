@@ -26,5 +26,8 @@ post(1, 'облік', 'office');
 check('office dedup', office.length, 1);
 post(1, 'x');
 check('main dedup', fetched.length, 1);
+post(5, 'звіт');
+check('office command from main bot → ledger, not GitHub', [fetched.length, office[office.length - 1]], [1, 'звіт']);
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
