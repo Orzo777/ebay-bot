@@ -5,131 +5,251 @@
    "name": "DDR5 UDIMM 32 ГБ (2×16) кіт",
    "p25_tp": 331,
    "med_tp": 382,
-   "ratio": 1.0129,
+   "ratio": 1.0235,
    "anchor_ask": 486.19,
    "anchor_date": "2026-09-23",
-   "ask": 492.44,
-   "sellers": 114,
-   "updated": "2026-09-28",
-   "p25": 335,
-   "med": 387
+   "ask": 497.6,
+   "sellers": 110,
+   "updated": "2026-10-01",
+   "p25": 339,
+   "med": 391,
+   "asks": [
+    [
+     "2026-10-01",
+     497.6
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     339
+    ]
+   ]
   },
   "ddr5|udimm|0|64|2": {
    "name": "DDR5 UDIMM 64 ГБ (2×32) кіт",
    "p25_tp": 544,
    "med_tp": 677,
-   "ratio": 0.9783,
+   "ratio": 1.0,
    "anchor_ask": 919.99,
    "anchor_date": "2026-09-23",
-   "ask": 900.0,
-   "sellers": 64,
-   "updated": "2026-09-28",
-   "p25": 532,
-   "med": 662
+   "ask": 920.0,
+   "sellers": 68,
+   "updated": "2026-10-01",
+   "p25": 544,
+   "med": 677,
+   "asks": [
+    [
+     "2026-10-01",
+     920.0
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     544
+    ]
+   ]
   },
   "ddr5|sodimm|0|32|1": {
    "name": "DDR5 SO-DIMM 32 ГБ",
    "p25_tp": 230,
    "med_tp": 255,
-   "ratio": 1.0,
+   "ratio": 1.0328,
    "anchor_ask": 406.19,
    "anchor_date": "2026-09-28",
-   "ask": 406.19,
-   "sellers": 33,
-   "updated": "2026-09-28",
-   "p25": 230,
-   "med": 255
+   "ask": 419.5,
+   "sellers": 38,
+   "updated": "2026-10-01",
+   "p25": 238,
+   "med": 263,
+   "asks": [
+    [
+     "2026-10-01",
+     419.5
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     238
+    ]
+   ]
   },
   "ddr5|sodimm|0|16|1": {
    "name": "DDR5 SO-DIMM 16 ГБ",
    "p25_tp": 120,
    "med_tp": 149,
-   "ratio": 1.0,
+   "ratio": 0.9834,
    "anchor_ask": 229.0,
    "anchor_date": "2026-09-23",
-   "ask": 229.0,
-   "sellers": 37,
-   "updated": "2026-09-28",
-   "p25": 120,
-   "med": 149
+   "ask": 225.19,
+   "sellers": 39,
+   "updated": "2026-10-01",
+   "p25": 118,
+   "med": 147,
+   "asks": [
+    [
+     "2026-10-01",
+     225.19
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     118
+    ]
+   ]
   },
   "ddr4|udimm|0|32|2": {
    "name": "DDR4 UDIMM 32 ГБ (2×16) кіт",
    "p25_tp": 134,
    "med_tp": 154,
-   "ratio": 1.0,
+   "ratio": 1.0486,
    "anchor_ask": 205.99,
    "anchor_date": "2026-09-28",
-   "ask": 205.99,
-   "sellers": 154,
-   "updated": "2026-09-28",
-   "p25": 134,
-   "med": 154
+   "ask": 216.0,
+   "sellers": 159,
+   "updated": "2026-10-01",
+   "p25": 141,
+   "med": 161,
+   "asks": [
+    [
+     "2026-10-01",
+     216.0
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     141
+    ]
+   ]
   },
   "ddr4|udimm|0|64|2": {
    "name": "DDR4 UDIMM 64 ГБ (2×32) кіт",
    "p25_tp": 267,
    "med_tp": 306,
-   "ratio": 1.0,
+   "ratio": 0.9879,
    "anchor_ask": 496.0,
    "anchor_date": "2026-09-28",
-   "ask": 496.0,
-   "sellers": 48,
-   "updated": "2026-09-28",
-   "p25": 267,
-   "med": 306
+   "ask": 489.98,
+   "sellers": 38,
+   "updated": "2026-10-01",
+   "p25": 264,
+   "med": 302,
+   "asks": [
+    [
+     "2026-10-01",
+     489.98
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     264
+    ]
+   ]
   },
   "ddr4|sodimm|0|32|1": {
    "name": "DDR4 SO-DIMM 32 ГБ",
    "p25_tp": 122,
    "med_tp": 149,
-   "ratio": 0.9977,
+   "ratio": 0.985,
    "anchor_ask": 183.62,
    "anchor_date": "2026-09-23",
-   "ask": 183.19,
-   "sellers": 48,
-   "updated": "2026-09-28",
-   "p25": 122,
-   "med": 149
+   "ask": 180.87,
+   "sellers": 56,
+   "updated": "2026-10-01",
+   "p25": 120,
+   "med": 147,
+   "asks": [
+    [
+     "2026-10-01",
+     180.87
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     120
+    ]
+   ]
   },
   "ddr4|sodimm|0|64|2": {
    "name": "DDR4 SO-DIMM 64 ГБ (2×32) кіт",
    "p25_tp": 214,
    "med_tp": 260,
-   "ratio": 1.0,
+   "ratio": 1.0398,
    "anchor_ask": 405.69,
    "anchor_date": "2026-09-28",
-   "ask": 405.69,
-   "sellers": 26,
-   "updated": "2026-09-28",
-   "p25": 214,
-   "med": 260
+   "ask": 421.85,
+   "sellers": 24,
+   "updated": "2026-10-01",
+   "p25": 223,
+   "med": 270,
+   "asks": [
+    [
+     "2026-10-01",
+     421.85
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     223
+    ]
+   ]
   },
   "ddr5|udimm|0|16|1": {
    "name": "DDR5 UDIMM 16 ГБ (одна планка)",
    "p25_tp": 147,
    "med_tp": 180,
-   "ratio": 1.0,
+   "ratio": 0.9871,
    "anchor_ask": 253.22,
    "anchor_date": "2026-09-23",
-   "ask": 253.22,
-   "sellers": 50,
-   "updated": "2026-09-28",
-   "p25": 147,
-   "med": 180
+   "ask": 249.95,
+   "sellers": 41,
+   "updated": "2026-10-01",
+   "p25": 145,
+   "med": 178,
+   "asks": [
+    [
+     "2026-10-01",
+     249.95
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     145
+    ]
+   ]
   },
   "ddr5|sodimm|0|32|2": {
    "name": "DDR5 SO-DIMM 32 ГБ (2×16) кіт",
    "p25_tp": 231,
    "med_tp": 255,
-   "ratio": 1.0,
+   "ratio": 1.0062,
    "anchor_ask": 403.69,
    "anchor_date": "2026-09-28",
-   "ask": 403.69,
-   "sellers": 26,
-   "updated": "2026-09-28",
-   "p25": 231,
-   "med": 255
+   "ask": 406.19,
+   "sellers": 19,
+   "updated": "2026-10-01",
+   "p25": 232,
+   "med": 257,
+   "asks": [
+    [
+     "2026-10-01",
+     406.19
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     232
+    ]
+   ]
   },
   "ddr5|sodimm|0|64|2": {
    "name": "DDR5 SO-DIMM 64 ГБ (2×32) кіт",
@@ -139,36 +259,72 @@
    "anchor_ask": 994.99,
    "anchor_date": "2026-09-28",
    "ask": 994.99,
-   "sellers": 15,
-   "updated": "2026-09-28",
+   "sellers": 17,
+   "updated": "2026-10-01",
    "p25": 421,
-   "med": 567
+   "med": 567,
+   "asks": [
+    [
+     "2026-10-01",
+     994.99
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     421
+    ]
+   ]
   },
   "ddr5|udimm|0|48|2": {
    "name": "DDR5 UDIMM 48 ГБ (2×24) кіт",
    "p25_tp": 409,
    "med_tp": 459,
-   "ratio": 1.0,
+   "ratio": 0.9657,
    "anchor_ask": 745.49,
    "anchor_date": "2026-09-28",
-   "ask": 745.49,
-   "sellers": 28,
-   "updated": "2026-09-28",
-   "p25": 409,
-   "med": 459
+   "ask": 719.94,
+   "sellers": 30,
+   "updated": "2026-10-01",
+   "p25": 395,
+   "med": 443,
+   "asks": [
+    [
+     "2026-10-01",
+     719.94
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     395
+    ]
+   ]
   },
   "ddr5|udimm|0|16|2": {
    "name": "DDR5 UDIMM 16 ГБ (2×8) кіт",
    "p25_tp": 159,
    "med_tp": 185,
-   "ratio": 1.0,
+   "ratio": 0.9933,
    "anchor_ask": 342.29,
    "anchor_date": "2026-09-28",
-   "ask": 342.29,
-   "sellers": 26,
-   "updated": "2026-09-28",
-   "p25": 159,
-   "med": 185
+   "ask": 339.99,
+   "sellers": 25,
+   "updated": "2026-10-01",
+   "p25": 158,
+   "med": 184,
+   "asks": [
+    [
+     "2026-10-01",
+     339.99
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     158
+    ]
+   ]
   },
   "ddr4|sodimm|0|32|2": {
    "name": "DDR4 SO-DIMM 32 ГБ (2×16) кіт",
@@ -178,11 +334,268 @@
    "anchor_ask": 176.19,
    "anchor_date": "2026-09-28",
    "ask": 176.19,
-   "sellers": 63,
-   "updated": "2026-09-28",
+   "sellers": 61,
+   "updated": "2026-10-01",
    "p25": 108,
-   "med": 128
+   "med": 128,
+   "asks": [
+    [
+     "2026-10-01",
+     176.19
+    ]
+   ],
+   "hist": [
+    [
+     "2026-10-01",
+     108
+    ]
+   ]
   }
  },
- "updated": "2026-09-28"
+ "updated": "2026-10-01",
+ "consoles": {
+  "XBOX_SERIES_X": {
+   "name": "Xbox Series X (вживана)",
+   "p25_tp": 545,
+   "med_tp": 571,
+   "ratio": 1.0,
+   "anchor_ask": 610.49,
+   "asks": [
+    [
+     "2026-10-01",
+     610.49
+    ]
+   ],
+   "anchor_date": "2026-10-01",
+   "ask": 610.49,
+   "sellers": 49,
+   "updated": "2026-10-01",
+   "p25": 545,
+   "med": 571,
+   "hist": [
+    [
+     "2026-10-01",
+     545
+    ]
+   ]
+  },
+  "PS5_DISC": {
+   "name": "PS5 з дисководом (вживана)",
+   "p25_tp": 438,
+   "med_tp": 460,
+   "ratio": 1.0,
+   "anchor_ask": 530.49,
+   "asks": [
+    [
+     "2026-10-01",
+     530.49
+    ]
+   ],
+   "anchor_date": "2026-10-01",
+   "ask": 530.49,
+   "sellers": 90,
+   "updated": "2026-10-01",
+   "p25": 438,
+   "med": 460,
+   "hist": [
+    [
+     "2026-10-01",
+     438
+    ]
+   ]
+  },
+  "PS5_DIGITAL": {
+   "name": "PS5 Digital (вживана)",
+   "p25_tp": 399,
+   "med_tp": 419,
+   "ratio": 1.0,
+   "anchor_ask": 460.49,
+   "asks": [
+    [
+     "2026-10-01",
+     460.49
+    ]
+   ],
+   "anchor_date": "2026-10-01",
+   "ask": 460.49,
+   "sellers": 56,
+   "updated": "2026-10-01",
+   "p25": 399,
+   "med": 419,
+   "hist": [
+    [
+     "2026-10-01",
+     399
+    ]
+   ]
+  },
+  "SWITCH2": {
+   "name": "Nintendo Switch 2 (вживана)",
+   "p25_tp": 382,
+   "med_tp": 389,
+   "ratio": 1.0,
+   "anchor_ask": 453.84,
+   "asks": [
+    [
+     "2026-10-01",
+     453.84
+    ]
+   ],
+   "anchor_date": "2026-10-01",
+   "ask": 453.84,
+   "sellers": 28,
+   "updated": "2026-10-01",
+   "p25": 382,
+   "med": 389,
+   "hist": [
+    [
+     "2026-10-01",
+     382
+    ]
+   ]
+  },
+  "SWITCH_OLED": {
+   "name": "Nintendo Switch OLED (вживана)",
+   "p25_tp": 162,
+   "med_tp": 172,
+   "ratio": 1.0,
+   "anchor_ask": 200.0,
+   "asks": [
+    [
+     "2026-10-01",
+     200.0
+    ]
+   ],
+   "anchor_date": "2026-10-01",
+   "ask": 200.0,
+   "sellers": 178,
+   "updated": "2026-10-01",
+   "p25": 162,
+   "med": 172,
+   "hist": [
+    [
+     "2026-10-01",
+     162
+    ]
+   ]
+  },
+  "SWITCH_V2": {
+   "name": "Nintendo Switch V1/V2 (вживана)",
+   "p25_tp": 131,
+   "med_tp": 140,
+   "ratio": 1.0,
+   "anchor_ask": 137.68,
+   "asks": [
+    [
+     "2026-10-01",
+     137.68
+    ]
+   ],
+   "anchor_date": "2026-10-01",
+   "ask": 137.68,
+   "sellers": 126,
+   "updated": "2026-10-01",
+   "p25": 131,
+   "med": 140,
+   "hist": [
+    [
+     "2026-10-01",
+     131
+    ]
+   ]
+  },
+  "SWITCH_LITE": {
+   "name": "Nintendo Switch Lite (вживана)",
+   "p25_tp": 82,
+   "med_tp": 92,
+   "ratio": 1.0,
+   "anchor_ask": 126.19,
+   "asks": [
+    [
+     "2026-10-01",
+     126.19
+    ]
+   ],
+   "anchor_date": "2026-10-01",
+   "ask": 126.19,
+   "sellers": 166,
+   "updated": "2026-10-01",
+   "p25": 82,
+   "med": 92,
+   "hist": [
+    [
+     "2026-10-01",
+     82
+    ]
+   ]
+  }
+ },
+ "scan": {
+  "types": {
+   "ddr4|udimm|0|16|2": {
+    "ask": 95.19,
+    "sellers": 205,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr4|sodimm|0|16|2": {
+    "ask": 79.5,
+    "sellers": 74,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr4|sodimm|0|16|1": {
+    "ask": 78.0,
+    "sellers": 77,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr4|udimm|0|16|1": {
+    "ask": 69.19,
+    "sellers": 45,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr4|udimm|0|64|4": {
+    "ask": 456.19,
+    "sellers": 34,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr5|sodimm|0|16|2": {
+    "ask": 188.69,
+    "sellers": 18,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr5|udimm|0|96|2": {
+    "ask": 1407.68,
+    "sellers": 13,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr5|udimm|0|32|1": {
+    "ask": 453.41,
+    "sellers": 50,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   },
+   "ddr4|server|1|32|1": {
+    "ask": 176.19,
+    "sellers": 19,
+    "date": "2026-10-01",
+    "prev_ask": null,
+    "prev_date": null
+   }
+  },
+  "date": "2026-10-01"
+ }
 }
