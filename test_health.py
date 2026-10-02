@@ -122,6 +122,19 @@ class DailyReportTest(unittest.TestCase):
         runs.append(_run("ram-mail-alert", 2, conclusion="failure", url="https://x/10"))
         self.assertTrue(daily_report.build(self.ebay, self.ka, runs, NOW).startswith("⚠️"))
 
+    def test_buy_now_counters(self):
+        ka = {}
+        health.bump(ka, "ka_mails", 40, NOW)
+        health.bump(ka, "ka_cards", 3, NOW)
+        health.bump(ka, "ka_no_buynow", 9, NOW)
+        health.bump(ka, "ka_pages", 20, NOW)
+        health.bump(ka, "ka_buynow", 4, NOW)
+        t = daily_report.build(self.ebay, ka, self.runs, NOW)
+        self.assertIn("ще 9 вигідних без «Direkt kaufen» відкинуто", t)
+        self.assertTrue(t.startswith("✅"), t)
+        ka["stats"][list(ka["stats"])[0]]["ka_buynow"] = 0   # жодного «Direkt kaufen» на 20 сторінках — зламалось
+        self.assertIn("не знайшов жодного «Direkt kaufen»", daily_report.build(self.ebay, ka, self.runs, NOW))
+
     def test_problems(self):
         runs = [_run("ebay-watch", h + 1, h) for h in range(12)] + [
             _run("ka-share", 3, conclusion="failure", url="https://x/1"), _run("ebay-watch", 20, conclusion="cancelled")]

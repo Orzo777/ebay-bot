@@ -85,6 +85,9 @@ def build(ebay: dict, ka: dict, runs: list[dict], now: datetime) -> str:
             notes.append(f"{NAMES.get(name, name)}: 1 разовий збій з {total} запусків, наступні пройшли")
         else:
             problems.append(f"{NAMES.get(name, name)}: збоїв {bad} ({url})")
+    if k.get("ka_pages", 0) >= 15 and not k.get("ka_buynow"):   # жодного «Direkt kaufen» — мабуть, KA змінив сторінку
+        problems.append(f"на {k['ka_pages']} сторінках KA не знайшов жодного «Direkt kaufen» — схоже, KA змінив сторінку, "
+                        "картки KA зараз не йдуть")
     photo_ok = e.get("photo_ok", 0) + k.get("photo_ok", 0)
     photo_fail = e.get("photo_fail", 0) + k.get("photo_fail", 0)
     if photo_fail > photo_ok and photo_fail >= 3:
@@ -92,7 +95,8 @@ def build(ebay: dict, ka: dict, runs: list[dict], now: datetime) -> str:
     shares = rs["by"].get("ka-share", [0])[0]
     day = now.astimezone(BERLIN).strftime("%d.%m")
     lines = [("⚠️ Є що перевірити" if problems else "✅ Все працює") + f" · звіт за добу до {day}", "",
-             f"🟢 Kleinanzeigen: листів {k.get('ka_mails', 0)} → карток {k.get('ka_cards', 0)}",
+             f"🟢 Kleinanzeigen: листів {k.get('ka_mails', 0)} → карток {k.get('ka_cards', 0)}"
+             + (f" (ще {k['ka_no_buynow']} вигідних без «Direkt kaufen» відкинуто)" if k.get("ka_no_buynow") else ""),
              f"🔵 eBay: перевірок {e.get('ebay_rounds', 0)} (працював {up}% часу) → карток {e.get('ebay_cards', 0)}, "
              f"аукціонів {e.get('ebay_auctions', 0)}",
              f"   запитів API {e.get('ebay_calls', 0)} з 5 000",

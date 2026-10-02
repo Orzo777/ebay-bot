@@ -66,7 +66,7 @@ class ImapTest(unittest.TestCase):
         self._saved = (rmc.imaplib.IMAP4_SSL, rmc.send_telegram_card, rmc.check_listing, rmc.add_to_card)
         rmc.send_telegram_card = lambda *a: (self.cards.append(a), (1, "{}"))[1]
         rmc.add_to_card = lambda *a, **k: False
-        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "page_price": None}
+        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "buy_now": True, "page_price": None}
         os.environ["GMAIL_USER"], os.environ["GMAIL_APP_PASSWORD"] = "u", "p"
         self.state = os.path.join(tempfile.mkdtemp(), "s.json")
 
@@ -95,10 +95,10 @@ class ImapTest(unittest.TestCase):
         self.assertEqual(len(self.cards), first + 1)   # лише третій лист, перші два — не вдруге
 
     def test_page_price_wins_over_mail_price(self):
-        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "page_price": 200.0}
+        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "buy_now": True, "page_price": 200.0}
         self.run_with(FakeIMAP([mail(1)]))
         self.assertEqual(self.cards, [])   # у листі 80 €, на сторінці вже 200 € — не вигідно
-        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "page_price": 70.0}
+        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "buy_now": True, "page_price": 70.0}
         self.run_with(FakeIMAP([mail(1), mail(2)]))
         self.assertEqual(len(self.cards), 1)
         self.assertIn("Продавець змінив ціну: у листі було 80 €, зараз 70 €", self.cards[0][0])

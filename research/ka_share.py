@@ -120,6 +120,9 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
         res["risk_lines"] = risk_lines(risk)
         res["desc"] = risk.get("desc")
         res["buy_now"] = bool(risk.get("buy_now"))
+        if not res["buy_now"] and not info.get("hamburg"):   # у підписках таких не шлемо (02.10) — тут питав сам
+            notes.insert(0, "Без «Direkt kaufen»: з досвіду такі продавці майже завжди шахраї. Купуй лише через «Sicher bezahlen» "
+                            "(запит на оплату від KA) або самовивозом — жодних переказів і PayPal.")
         res["notes"] = res.get("notes", []) + notes
         return format_html(res), res
     head = f"⏭ <b>Не бери</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €" + (" VB" if info["vb"] else "")

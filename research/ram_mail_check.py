@@ -80,6 +80,11 @@ _SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
 # Telegram-бот (секрет PC_BOT_TOKEN, той самий chat_id), без оцінки RAM-логікою.
 IGNORE_SEARCH_RE = re.compile(r"„PCs in ")
 PC_BOT_TOKEN = os.getenv("PC_BOT_TOKEN", "")
+# 02.10 (досвід користувача + замір): з KA шлемо лише оголошення з «Direkt kaufen» (оплата через KA із захистом покупця,
+# шахраям не підходить; ~20% оголошень) або з підписок «самовивіз у Гамбурзі» (готівка після огляду). Решта — майже завжди
+# скам: за тиждень жоден продавець «лише повідомлення» не продав чесно. KA_REQUIRE_BUY_NOW=0 — як раніше.
+REQUIRE_BUY_NOW = os.getenv("KA_REQUIRE_BUY_NOW", "1") == "1"
+STATS: dict = {}   # лічильники за прохід → health (щоденний звіт)
 CARDS: dict = {}   # надіслані картки (номер оголошення → id повідомлення) — для реплаю відповіді продавця (cardmap.py)
 HINT_GAP_MIN = 45   # тиха підказка «глянь пошук» — не частіше разу на 45 хв на одну підписку
 # 27.09: вимкнено за рішенням користувача — у сповіщеннях KA майже завжди одне оголошення (пачок немає),
@@ -542,6 +547,13 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
         print(f"   продавець: {risk['level'] + ' ' + '; '.join(risk['reasons']) if risk else 'не перевірено'}")
         if risk and risk["level"] == "gone":
             continue
+        if risk:
+            STATS["ka_pages"] = STATS.get("ka_pages", 0) + 1
+            STATS["ka_buynow"] = STATS.get("ka_buynow", 0) + bool(risk.get("buy_now"))
+        if REQUIRE_BUY_NOW and not pickup and not (risk or {}).get("buy_now"):
+            print("   без «Direkt kaufen» — не шлю (лише Direkt kaufen або самовивіз)")
+            STATS["ka_no_buynow"] = STATS.get("ka_no_buynow", 0) + 1
+            continue
         now_px = (risk or {}).get("page_price")
         if now_px and abs(now_px - lst["price"]) >= 1:   # продавець змінив ціну після листа — рахуємо за поточною
             print(f"   ціна на сторінці {now_px:.0f} € (у листі {lst['price']:.0f} €)")
@@ -681,6 +693,8 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         print("ПК-бот: надіслано перевірочне повідомлення")
     if not dry_run and not pc_replay:
         health.bump(state, "ka_mails", new_mails)   # для щоденного звіту (research/daily_report.py)
+        for k, v in STATS.items():
+            health.bump(state, k, v)
         health.bump(state, "ka_cards", alerts_sent)
         health.track_photo(state, photo0, PHOTO_STATS)
         state.update({"seen_ids": list(seen), "seen_ads": list(seen_ads), "hint_times": hint_times})

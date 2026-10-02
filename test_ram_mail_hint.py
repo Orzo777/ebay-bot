@@ -69,7 +69,7 @@ class TestProcess(unittest.TestCase):
         rmc.SEND_HINTS = True   # логіку підказок тестуємо, хоча в роботі вона вимкнена
         rmc.send_telegram_hint = lambda text, link: self.hints.append((text, link))
         rmc.send_telegram_card = lambda *a: self.cards.append(a)
-        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "приватний, на KA з 2019"}
+        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "приватний, на KA з 2019", "buy_now": True}
 
     def tearDown(self):
         rmc.send_telegram_hint, rmc.send_telegram_card, rmc.check_listing, rmc.SEND_HINTS = self._h, self._c, self._k, self._sh
@@ -181,6 +181,18 @@ class TestProcess(unittest.TestCase):
         rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="13", age_min=20), 6, False, set(), {})
         self.assertNotIn("Запізніла", self.cards[1][0])
         self.assertFalse(self.cards[1][4])
+
+    def test_without_direkt_kaufen_no_card_unless_pickup(self):
+        # 02.10: «лише повідомлення» на KA — майже завжди скам; шлемо лише Direkt kaufen або самовивіз у Гамбурзі
+        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "buy_now": False}
+        rmc.STATS.clear()
+        rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="21"), 6, False, set(), {})
+        self.assertEqual(len(self.cards), 0)
+        self.assertEqual(rmc.STATS.get("ka_no_buynow"), 1)
+        msg = ka_mail("Xbox Series X 1TB", 200, ad_id="22")
+        msg.replace_header("Subject", "Neue Treffer zu deiner Suche „Konsolen - xbox series x in Hamburg“")
+        rmc._process(msg, 6, False, set(), {})
+        self.assertEqual(len(self.cards), 1)
 
 
 if __name__ == "__main__":

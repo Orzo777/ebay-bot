@@ -74,7 +74,7 @@ class RememberedOnSendTest(unittest.TestCase):
         saved = (rmc.send_telegram_card, rmc.check_listing, rmc.add_to_card, rmc.CARDS)
         rmc.send_telegram_card = lambda *a: (555, "{}")
         rmc.add_to_card = lambda *a, **k: False
-        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x"}
+        rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "buy_now": True}
         rmc.CARDS = {}
         try:
             rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="3523290701"), 6, False, set(), {})
