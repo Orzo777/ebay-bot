@@ -24,6 +24,7 @@ except Exception:   # Windows без tzdata
     BERLIN = timezone(timedelta(hours=2))
 
 BAD = ("failure", "timed_out", "startup_failure")
+FLAKY = ("ram-mail-alert",)
 NAMES = {"ebay-watch": "eBay-сторож", "ram-mail-alert": "KA-пошта", "ka-share": "«поділитися»", "tests": "тести",
          "daily-report": "звіт", "sell": "«продати»", "weekly-report": "тижневий звіт", "price-refresh": "сторож цін"}
 
@@ -75,8 +76,14 @@ def build(ebay: dict, ka: dict, runs: list[dict], now: datetime) -> str:
     young = first > (now - timedelta(hours=20)).strftime("%Y-%m-%dT%H")   # лічильники ведуться менше доби
     if not k.get("ka_mails") and not young:
         problems.append("жодного листа від Kleinanzeigen за добу")
-    for name, (_, bad, url) in rs["by"].items():
-        if bad:
+    notes = []
+    for name, (total, bad, url) in rs["by"].items():
+        if not bad:
+            continue
+        # KA-пошта: разовий збій Gmail IMAP («System Error») наступний запуск підбирає сам — не тривога (як у сторожі)
+        if name in FLAKY and bad == 1 and total > 3:
+            notes.append(f"{NAMES.get(name, name)}: 1 разовий збій з {total} запусків, наступні пройшли")
+        else:
             problems.append(f"{NAMES.get(name, name)}: збоїв {bad} ({url})")
     photo_ok = e.get("photo_ok", 0) + k.get("photo_ok", 0)
     photo_fail = e.get("photo_fail", 0) + k.get("photo_fail", 0)
@@ -96,6 +103,8 @@ def build(ebay: dict, ka: dict, runs: list[dict], now: datetime) -> str:
         lines.append(f"🔗 Оцінено посилань («поділитися»): {shares}")
     if problems:
         lines += ["", *("• " + p for p in problems)]
+    if notes:
+        lines += [*("ℹ️ " + n for n in notes)]
     return "\n".join(lines)
 
 

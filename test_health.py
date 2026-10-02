@@ -114,6 +114,14 @@ class DailyReportTest(unittest.TestCase):
         self.assertIn("перевірок 451 (працював 100% часу) → карток 2", t)
         self.assertIn("посилань («поділитися»): 1", t)
 
+    def test_single_flaky_ka_failure_is_not_a_problem(self):
+        runs = self.runs + [_run("ram-mail-alert", 3, conclusion="failure", url="https://x/9")] +             [_run("ram-mail-alert", h + 0.5) for h in range(5)]
+        t = daily_report.build(self.ebay, self.ka, runs, NOW)
+        self.assertTrue(t.startswith("✅"), t)
+        self.assertIn("1 разовий збій", t)
+        runs.append(_run("ram-mail-alert", 2, conclusion="failure", url="https://x/10"))
+        self.assertTrue(daily_report.build(self.ebay, self.ka, runs, NOW).startswith("⚠️"))
+
     def test_problems(self):
         runs = [_run("ebay-watch", h + 1, h) for h in range(12)] + [
             _run("ka-share", 3, conclusion="failure", url="https://x/1"), _run("ebay-watch", 20, conclusion="cancelled")]
