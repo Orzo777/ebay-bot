@@ -50,5 +50,26 @@ if (trashed.join() !== 'a,a' || tg.length !== 1 || !/Ще є/.test(tg[0].text) |
   bad++; console.log('!! flow', trashed, tg.length, tg[0] && tg[0].text);
 }
 
+// 02.10: «акаунт зламали» і реплай через GitHub
+for (const [t, want] of [['Ich habe diese Anzeige nicht erstellt, mein Account wurde gehackt!', 'hacked'],
+                         ['Das ist nicht von mir, Betrüger haben mein Konto übernommen', 'hacked']]) {
+  const got = ctx.kaIntent_(t); if (got !== want) { bad++; console.log('!! intent', t, got); }
+}
+const ids = ctx.kaAdIds_('x https://www.kleinanzeigen.de/s-anzeige/ram-ddr4/3528457610-225-1 y kleinanzeigen.de/s-anzeige/3528457610 z');
+if (JSON.stringify(ids) !== '["3528457610"]') { bad++; console.log('!! ids', ids); }
+const gh = [];
+ctxRun(`seal_ = function (d, k, n) { return { blob: 'B:' + JSON.stringify(d).length, mac: 'M', nonce: n }; };
+  officeToken_ = function () { return 'O'; }; REPO = 'o/r'; GITHUB_TOKEN = '';
+  Utilities = { getUuid: () => 'u-1' };
+  UrlFetchApp = { fetch: (u, o) => { if (/github/.test(u)) { __gh.push([u, JSON.parse(o.payload)]); return { getResponseCode: () => 204 }; }
+                                     __tg.push(o.payload); return { getResponseCode: () => 200 }; } };`, { __gh: gh });
+store.GITHUB_TOKEN = 'g';
+const before = tg.length;
+ctxRun(`__threads = [__mk('c', 'Ja, 70 passt. https://www.kleinanzeigen.de/s-anzeige/3528457610')]`, { __mk: mk });
+ctx.kaFilter();
+if (gh.length !== 1 || !/ka_reply\.yml\/dispatches$/.test(gh[0][0]) || tg.length !== before || /70 passt/.test(JSON.stringify(gh[0][1]))) {
+  bad++; console.log('!! via github', gh.length, tg.length - before, JSON.stringify(gh[0] && gh[0][1]));
+}
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

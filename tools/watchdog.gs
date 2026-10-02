@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-02b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-02c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -22,7 +22,7 @@ const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
 const WD_TRIGGERS = { check: 'пошта KA → бот', kaFilter: 'фільтр скаму', processLedger: 'облік' };
 const WD_FLAKY = ['ram-mail-alert'];   // разовий збій Gmail IMAP («System Error») — лише якщо двічі поспіль
 const WD_NAMES = { 'ebay-watch': 'eBay-сторож', 'ram-mail-alert': 'KA-пошта', 'ka-share': '«поділитися»',
-  'tests': 'тести', 'daily-report': 'щоденний звіт', 'sell': '«продати»', 'weekly-report': 'тижневий звіт', 'price-refresh': 'сторож цін' };
+  'tests': 'тести', 'daily-report': 'щоденний звіт', 'sell': '«продати»', 'weekly-report': 'тижневий звіт', 'price-refresh': 'сторож цін', 'ka-reply': 'відповідь продавця' };
 
 function wdBerlinHour_(now) { return Number(Utilities.formatDate(now, 'Europe/Berlin', 'H')); }
 

@@ -18,7 +18,7 @@
 
 // Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
 // разом із check() вичерпав денний Gmail-ліміт Google 01.10.
-const VER_KAFILTER = '2026-10-02a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_KAFILTER = '2026-10-02b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
@@ -93,7 +93,7 @@ function installKaFilter() {
 
 
 // ------------------------------------------------------------------ чесні відповіді → бот (01.10)
-const KA_INTENTS = { agree: '✅ Згоден', counter: '💬 Пропонує іншу ціну', sold: '⛔ Уже продано / зарезервовано',
+const KA_INTENTS = { hacked: '🚨 Пише, що НЕ викладав це оголошення (акаунт зламали) — фейк, не купуй', agree: '✅ Згоден', counter: '💬 Пропонує іншу ціну', sold: '⛔ Уже продано / зарезервовано',
   available: '🟢 Ще є', question: '❓ Питає', other: '✉️ Відповідь' };
 
 function digestOnce_(props, m) {
@@ -111,6 +111,8 @@ function digestOnce_(props, m) {
 // Суть без Gemini — за ключовими словами (німецька)
 function kaIntent_(text) {
   const t = String(text || '').toLowerCase();
+  // 02.10: «я не викладав це оголошення, акаунт зламали» — шахраї публікують фейки зі старих чужих акаунтів
+  if (/gehackt|nicht von mir|nicht ich|(?:habe|hab)\s+(?:diese|die|keine)\s+anzeige|(?:konto|account|profil)\s+(?:wurde\s+)?(?:gehackt|übernommen|missbraucht)|fake-?anzeige|betrüger\s+(?:haben|hat)/.test(t)) return 'hacked';
   if (/verkauft|schon weg|nicht mehr (?:da|verfügbar|zu haben)|reserviert|vergeben/.test(t)) return 'sold';
   if (/(?:letzte[rn]?|mindest|unter|für)\s+(?:preis\s*:?\s*)?\d+\s*(?:€|euro)|preis\s*:?\s*\d+\s*(?:€|euro)|\d+\s*(?:€|euro)\s+(?:wäre|ist|würde|geht|kann)/.test(t)) return 'counter';
   if (/\b(?:einverstanden|deal|abgemacht|geht klar|können wir so machen)\b|\d+\s*(?:€|euro)?\s*(?:ist\s+)?(?:ok|passt)\b/.test(t)) return 'agree';
@@ -124,7 +126,7 @@ function kaGemini_(text, subject, key) {
   const prompt = 'Це повідомлення продавця з Kleinanzeigen у відповідь покупцю (лист-сповіщення, тема: "' + subject + '").\n' +
     'Поверни JSON: {"seller": ім\'я продавця або "", "listing": назва оголошення або "", "message": лише текст повідомлення ' +
     'продавця мовою оригіналу (без шаблону листа), "uk": переклад повідомлення українською, коротко й точно, "intent": одне з ' +
-    'agree|counter|sold|available|question|other (agree — згоден на запропоновану ціну/купівлю; counter — називає іншу ціну; ' +
+    'hacked|agree|counter|sold|available|question|other (hacked — пише, що не викладав оголошення / акаунт зламано; agree — згоден на запропоновану ціну/купівлю; counter — називає іншу ціну; ' +
     'sold — продано/зарезервовано; available — лише каже, що ще є; question — питає), "price": число в євро, якщо продавець ' +
     'називає ціну, інакше null}.\n\nЛист:\n' + text;
   const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
@@ -165,10 +167,40 @@ function kaDigest_(m, props) {
   const g = key ? kaGemini_(body.slice(0, 3000), m.getSubject(), key) : null;
   const link = (String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/m-nachrichten[^"'\s<>]*/) ||
                 String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/s-anzeige\/[^"'\s<>]*/) || [])[0];
-  const payload = { chat_id: chat, text: kaDigestText_(m.getSubject(), body, g), parse_mode: 'HTML', disable_web_page_preview: 'true' };
-  payload.reply_markup = JSON.stringify({ inline_keyboard: [[{ text: '💬 Відкрити чат на Kleinanzeigen',
+  const text = kaDigestText_(m.getSubject(), body, g);
+  const markup = JSON.stringify({ inline_keyboard: [[{ text: '💬 Відкрити чат на Kleinanzeigen',
     url: link || 'https://www.kleinanzeigen.de/m-nachrichten.html' }]] });
-  UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'post', payload: payload, muteHttpExceptions: true });
+  // 02.10: реплаєм на картку, з якої писав продавцю — карта карток живе в GitHub (research/ka_reply.py).
+  // Текст шифруємо (репозиторій публічний); не вийшло запустити — надсилаємо окремим повідомленням, як раніше.
+  if (kaReplyViaGitHub_(props, text, markup, kaListing_(m.getSubject(), g), kaAdIds_(String(m.getBody() || '') + ' ' + body))) return;
+  UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'post', muteHttpExceptions: true,
+    payload: { chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: 'true', reply_markup: markup } });
+}
+
+function kaListing_(subject, g) {
+  return (g && g.listing) || ((String(subject).match(/[„"“]([^“"]+)[“"]/) || [])[1]) || '';
+}
+
+function kaAdIds_(s) {
+  const out = [];
+  String(s).replace(/kleinanzeigen\.de\/s-anzeige\/(?:[^\/?#\s"'<>]+\/)?(\d{6,})/g, function (_, id) {
+    if (out.indexOf(id) < 0) out.push(id);
+    return _;
+  });
+  return out;
+}
+
+function kaReplyViaGitHub_(props, text, markup, listing, ids) {
+  if (typeof seal_ !== 'function' || typeof officeToken_ !== 'function') return false;
+  const token = props.getProperty('GITHUB_TOKEN') || (typeof GITHUB_TOKEN === 'undefined' ? '' : GITHUB_TOKEN);
+  if (!token) return false;
+  const sealed = seal_({ text: text, markup: markup, listing: listing, ids: ids }, officeToken_(props),
+                       Utilities.getUuid().replace(/-/g, ''));
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_reply.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: 'main', inputs: sealed }) });
+  return r.getResponseCode() === 204;
 }
 
 // Ручна перевірка: 2 останні чесні відповіді → бот (навіть якщо вже надсилались)

@@ -32,6 +32,7 @@ sys.path.insert(0, "research")
 import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
+import cardmap
 import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import add_to_card
@@ -79,6 +80,7 @@ _SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
 # Telegram-бот (секрет PC_BOT_TOKEN, той самий chat_id), без оцінки RAM-логікою.
 IGNORE_SEARCH_RE = re.compile(r"„PCs in ")
 PC_BOT_TOKEN = os.getenv("PC_BOT_TOKEN", "")
+CARDS: dict = {}   # надіслані картки (номер оголошення → id повідомлення) — для реплаю відповіді продавця (cardmap.py)
 HINT_GAP_MIN = 45   # тиха підказка «глянь пошук» — не частіше разу на 45 хв на одну підписку
 # 27.09: вимкнено за рішенням користувача — у сповіщеннях KA майже завжди одне оголошення (пачок немає),
 # а підказки показували шум (контролери в підписці ps5). Код лишається; увімкнути — True.
@@ -580,6 +582,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             if late:
                 card = f"⏰ <b>Запізніла картка</b>: лист прийшов {age * 60:.0f} хв тому — могли вже купити\n\n" + card
             mid, kb = send_telegram_card(card, lst["link"], seller_template(res), slink, late, offer_template(res)) or (None, None)
+            cardmap.remember(CARDS, lst["link"], mid, lst["title"])
             add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [])   # фото → рядок «📷 …» (29.09)
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
@@ -599,6 +602,8 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
         pc_replay: bool = False):
     """pc_replay: разово перевідправити в ПК-бот свіжі листи підписки «PCs in …» (перевірка ПК-бота)."""
     state = load_state(state_path)
+    global CARDS
+    CARDS = state.setdefault("cards", {})
     seen = set() if dry_run else set(state["seen_ids"])   # діагностика бачить усе, навіть уже оброблене
     seen_ads = set() if dry_run else set(state.get("seen_ads", []))
     hint_times = {} if dry_run else dict(state.get("hint_times", {}))

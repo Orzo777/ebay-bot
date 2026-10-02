@@ -1,0 +1,59 @@
+name: ka-reply
+
+# Відповідь продавця Kleinanzeigen → реплаєм на картку, з якої писав користувач (02.10). Запускає Apps Script
+# (tools/kafilter.gs) з уже готовим зашифрованим текстом; тут лише пошук картки в карті карток і надсилання.
+
+on:
+  workflow_dispatch:
+    inputs:
+      blob:
+        description: "Зашифрований текст (з Apps Script)"
+        required: true
+      mac:
+        description: "Підпис"
+        required: true
+      nonce:
+        description: "Nonce"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore KA card map (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ram_mail_state.json
+          key: rammailstate-reply-${{ github.run_id }}
+          restore-keys: rammailstate-
+
+      - name: Restore share card map (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ka_share_state.json
+          key: kashare-reply-${{ github.run_id }}
+          restore-keys: kashare-
+
+      - name: Send reply
+        env:
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BLOB: ${{ inputs.blob }}
+          MAC: ${{ inputs.mac }}
+          NONCE: ${{ inputs.nonce }}
+          PYTHONIOENCODING: utf-8
+        run: python research/ka_reply.py --blob "$BLOB" --mac "$MAC" --nonce "$NONCE" --ka ram_mail_state.json --share ka_share_state.json

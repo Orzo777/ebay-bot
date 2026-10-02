@@ -26,7 +26,7 @@ except Exception:   # Windows без tzdata
 BAD = ("failure", "timed_out", "startup_failure")
 FLAKY = ("ram-mail-alert",)
 NAMES = {"ebay-watch": "eBay-сторож", "ram-mail-alert": "KA-пошта", "ka-share": "«поділитися»", "tests": "тести",
-         "daily-report": "звіт", "sell": "«продати»", "weekly-report": "тижневий звіт", "price-refresh": "сторож цін"}
+         "daily-report": "звіт", "sell": "«продати»", "weekly-report": "тижневий звіт", "price-refresh": "сторож цін", "ka-reply": "відповідь продавця"}
 
 
 def _load(path: str | None) -> dict:

@@ -8,6 +8,7 @@ robots.txt Kleinanzeigen), як Telegram для попереднього пер�
 Запуск вручну: python research/ka_share.py "https://www.kleinanzeigen.de/s-anzeige/…/3523539635-279-3950"
 """
 import html
+import os
 import re
 import sys
 
@@ -183,6 +184,24 @@ def _is_no(msg: str) -> bool:
     return msg.lstrip().startswith(("⛔", "⏭", "⚫"))
 
 
+def _remember(url: str, mid, title: str):
+    """Картка «поділитися» → карта карток (для реплаю відповіді продавця). Стан — KA_SHARE_STATE (кеш GitHub)."""
+    import json
+
+    import cardmap
+    path = os.getenv("KA_SHARE_STATE")
+    if not path:
+        return
+    try:
+        with open(path, encoding="utf-8") as fh:
+            st = json.load(fh)
+    except (OSError, ValueError):
+        st = {}
+    cardmap.remember(st.setdefault("cards", {}), url, mid, title)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(st, fh, ensure_ascii=False)
+
+
 def main(text: str):
     import requests
 
@@ -215,6 +234,7 @@ def main(text: str):
     msg, res = evaluate_listing(r.text, url)
     if res and res.get("verdict") in SEND_VERDICTS and not _is_no(msg):
         mid, kb = send_telegram_card(msg, url, seller_template(res), None, False, offer_template(res)) or (None, None)
+        _remember(url, mid, res.get("title") or "")
         add_to_card(mid, msg, kb, res, res.get("title") or "", ka_images(r.text))
     else:   # «не бери» (шахрай, дефект, дорого, опис) — лише причина, без кнопок
         send_telegram_text(msg)

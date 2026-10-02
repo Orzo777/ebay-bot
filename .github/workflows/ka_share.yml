@@ -40,6 +40,13 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Restore card map
+        uses: actions/cache/restore@v4
+        with:
+          path: ka_share_state.json
+          key: kashare-${{ github.run_id }}
+          restore-keys: kashare-
+
       - name: Evaluate shared listing
         env:
           EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
@@ -49,9 +56,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SHARE_TEXT: ${{ inputs.text }}
           SHARE_CHAT: ${{ inputs.chat_id }}
+          KA_SHARE_STATE: ka_share_state.json
           PYTHONIOENCODING: utf-8
         # вхідні дані — лише через змінні оточення (не підставляються в команду)
         run: |
           # "owner" — ручний запуск власником репозиторію (gh workflow run); з вебхука приходить лише числовий chat.id
           if [ "$SHARE_CHAT" != "$TELEGRAM_CHAT_ID" ] && [ "$SHARE_CHAT" != "owner" ]; then echo "чужий чат — ігнорую"; exit 0; fi
           python research/ka_share.py "$SHARE_TEXT"
+
+      - name: Save card map
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ka_share_state.json
+          key: kashare-${{ github.run_id }}

@@ -8,11 +8,11 @@
   "sha": "bcd95bd8ddedd11f"
  },
  "kafilter.gs": {
-  "ver": "2026-10-02a",
-  "sha": "1e6e062f9df06887"
+  "ver": "2026-10-02b",
+  "sha": "b7efb32bcec11b11"
  },
  "watchdog.gs": {
-  "ver": "2026-10-02b",
-  "sha": "842e40453b70002a"
+  "ver": "2026-10-02c",
+  "sha": "97870268f77961a4"
  }
 }
