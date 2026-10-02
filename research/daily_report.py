@@ -109,6 +109,8 @@ def main():
     runs = _load(a.runs)
     runs = runs.get("workflow_runs", []) if isinstance(runs, dict) else runs
     text = build(_load(a.ebay), _load(a.ka), runs or [], datetime.now(timezone.utc))
+    # коли востаннє йшли службові сповіщення (лише назва й час — для розбору хибних тривог)
+    print("службові сповіщення:", json.dumps({"ebay": _load(a.ebay).get("alerts"), "ka": _load(a.ka).get("alerts")}))
     print(text)
     if not a.dry_run:
         health.office_send(text)
