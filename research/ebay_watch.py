@@ -589,13 +589,17 @@ def _last_ka_dispatch() -> datetime | None:
     """Коли Apps Script востаннє запускав KA-пошту (workflow_dispatch ram_mail_alert.yml)."""
     import requests
     tok = os.getenv("GH_API_TOKEN")
+    # БЕЗ фільтра event=…: відфільтровані запити GitHub бере з пошукового індексу, що відстає на години
+    # (02.10: о 12:22 повернув запуск 5-годинної давнини, хоча останній був хвилину тому → хибна тривога)
     r = requests.get(f"https://api.github.com/repos/{os.getenv('GITHUB_REPOSITORY', 'Orzo777/ebay-bot')}"
-                     "/actions/workflows/ram_mail_alert.yml/runs", params={"event": "workflow_dispatch", "per_page": 1},
+                     "/actions/workflows/ram_mail_alert.yml/runs", params={"per_page": 50},
                      headers={"Authorization": f"Bearer {tok}"} if tok else {}, timeout=15)
-    runs = r.json().get("workflow_runs") or [] if r.status_code == 200 else None
-    if runs is None:
+    if r.status_code != 200:
         return None
-    return datetime.fromisoformat(runs[0]["created_at"].replace("Z", "+00:00")) if runs else datetime(2000, 1, 1, tzinfo=timezone.utc)
+    runs = [x for x in r.json().get("workflow_runs") or [] if x.get("event") == "workflow_dispatch"]
+    if not runs:
+        return None   # 50 запусків поспіль за розкладом — не знаємо; краще промовчати, ніж збрехати
+    return max(datetime.fromisoformat(x["created_at"].replace("Z", "+00:00")) for x in runs)
 
 
 def _prices_updated() -> str:
@@ -640,7 +644,9 @@ def ka_dispatch_check(state: dict, now: datetime, send=health.office_send, last_
     if last is None or not 9 <= now.astimezone(_BERLIN).hour < 23:
         return
     hours = (now - last).total_seconds() / 3600
-    if hours > 3:
+    seen = state.get("ka_gap_seen", 0) + 1 if hours > 3 else 0
+    state["ka_gap_seen"] = seen
+    if seen >= 2:   # підтверджено дві перевірки поспіль (~2 год), а не один дивний відповідь API
         health.alert(state, "ka_dispatch", f"⛔ Apps Script уже {hours:.0f} год не запускав обробку листів Kleinanzeigen. "
                      "Картки з KA приходитимуть пачками із запізненням (запасний запуск GitHub — раз на кілька годин). "
                      "Apps Script → «Виконання»: чи працює check і чи немає помилок.", 6, now, send)

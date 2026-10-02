@@ -75,8 +75,13 @@ class EbayWatchHealthTest(unittest.TestCase):
         ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(hours=1))
         self.assertEqual(sent, [])
         ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(hours=5))
-        self.assertEqual(len(sent), 1)
-        self.assertIn("5 год", sent[0])
+        self.assertEqual(sent, [])                       # один раз — ще не тривога (02.10: хибна від застарілого API)
+        ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(minutes=2))
+        ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(hours=5))
+        self.assertEqual(sent, [])                       # між ними був свіжий запуск — лічильник скинувся
+        ebay_watch.ka_dispatch_check(st, day + timedelta(hours=1), sent.append, lambda: day - timedelta(hours=5))
+        self.assertEqual(len(sent), 1)                   # дві перевірки поспіль — тривога
+        self.assertIn("6 год", sent[0])
         st2, sent2 = {}, []
         night = datetime(2026, 10, 1, 2, 0, tzinfo=timezone.utc)
         ebay_watch.ka_dispatch_check(st2, night, sent2.append, lambda: night - timedelta(hours=8))
@@ -135,3 +140,25 @@ class DailyReportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LastDispatchQueryTest(unittest.TestCase):
+    def test_no_event_filter_and_newest_dispatch(self):
+        import requests
+        seen = {}
+
+        class R:
+            status_code = 200
+
+            def json(self):
+                return {"workflow_runs": [{"event": "schedule", "created_at": "2026-10-02T10:30:00Z"},
+                                          {"event": "workflow_dispatch", "created_at": "2026-10-02T10:21:27Z"},
+                                          {"event": "workflow_dispatch", "created_at": "2026-10-02T05:23:27Z"}]}
+        old = requests.get
+        requests.get = lambda url, params=None, **k: (seen.update(params=params), R())[1]
+        try:
+            last = ebay_watch._last_ka_dispatch()
+        finally:
+            requests.get = old
+        self.assertNotIn("event", seen["params"])
+        self.assertEqual(last.isoformat(), "2026-10-02T10:21:27+00:00")

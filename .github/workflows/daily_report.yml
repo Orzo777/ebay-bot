@@ -48,8 +48,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # без фільтра created=…: відфільтровані запити GitHub бере з пошукового індексу, що відстає на години (02.10)
           since=$(date -u -d '25 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          gh api --paginate "repos/${{ github.repository }}/actions/runs?per_page=100&created=%3E$since"             --jq '.workflow_runs[]' | jq -s . > runs.json
+          echo '[]' > runs.json
+          for p in 1 2 3 4 5 6 7 8; do
+            gh api "repos/${{ github.repository }}/actions/runs?per_page=100&page=$p" --jq '.workflow_runs' > page.json
+            jq -s '.[0] + .[1]' runs.json page.json > all.json && mv all.json runs.json
+            oldest=$(jq -r 'last.created_at // ""' page.json)
+            if [ -z "$oldest" ] || [[ "$oldest" < "$since" ]]; then break; fi
+          done
+          jq --arg s "$since" '[.[] | select(.created_at > $s)]' runs.json > r.json && mv r.json runs.json
           echo "запусків: $(jq length runs.json)"
 
       - name: Send report
