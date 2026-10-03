@@ -7,7 +7,9 @@ import unittest
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 from console_alert import evaluate_console
-from photo_check import compare, expectation, ka_images
+from html import escape
+
+from photo_check import SERVER_MSG, add_to_card, compare, expectation, ka_images
 from ram_alert import evaluate
 
 
@@ -39,6 +41,49 @@ class TestPhotoCheck(unittest.TestCase):
         self.assertTrue(compare(exp, {"console_model": None, "only_box_or_accessory": True, "confidence": "high"})[0])
         exp = expectation(evaluate_console("PS5 Digital Edition Slim", 250))
         self.assertEqual(exp["model"], "ps5 digital")
+
+    def test_server_ram_on_photo(self):
+        # 03.10: KA «SK Hynix 2x 16GB DDR4 RAM PC4-2666V» за 85 € — на наклейці HMA82GR7AFR8N, PC4-2666V-RE1-11 (RDIMM)
+        exp = expectation(evaluate("SK Hynix 2x 16GB DDR4 RAM PC4-2666V Arbeitsspeicher", 85))
+        ok = {"ram_gb_per_module": 16, "ram_modules_visible": 2, "ram_form": "desktop", "ram_gen": "DDR4", "confidence": "high"}
+        self.assertEqual(compare(exp, dict(ok, ram_server=False, label_text="16GB 2Rx8 PC4-2666V-UA2-11"))[0], [])
+        self.assertIn(SERVER_MSG, compare(exp, dict(ok, ram_server=True))[0][0])
+        self.assertIn(SERVER_MSG, compare(exp, dict(ok, label_text="16GB 2Rx8 PC4 - 2666V - RE1 - 11"))[0][0])   # модель сказала «ні»
+        self.assertIn(SERVER_MSG, compare(exp, dict(ok, label_text="HMA82GR7AFR8N-VK TF AC"))[0][0])
+
+    def test_server_card_folded_only_for_subscriptions(self):
+        import requests
+
+        import photo_check
+        sent = []
+        saved = (photo_check.photo_line, requests.post)
+        photo_check.photo_line = lambda *a: ("📷 <b>⛔ ФОТО НЕ ЗБІГАЄТЬСЯ З НАЗВОЮ:</b> " + escape(SERVER_MSG) + " — …", True)
+        requests.post = lambda url, data=None, **k: (sent.append(data), type("R", (), {"status_code": 200})())[1]
+        try:
+            res = {"price": 85}
+            add_to_card(7, "КАРТКА", '{"inline_keyboard": []}', res, "SK Hynix 2x 16GB DDR4", ["u"], collapse_server=True)
+            add_to_card(8, "КАРТКА", '{"inline_keyboard": []}', res, "SK Hynix 2x 16GB DDR4", ["u"])   # «поділитися»
+        finally:
+            photo_check.photo_line, requests.post = saved
+        self.assertTrue(sent[0]["text"].startswith("🗑 <b>Відсіяно"))
+        self.assertNotIn("КАРТКА", sent[0]["text"])
+        self.assertNotIn("reply_markup", sent[0])   # кнопки зникають
+        self.assertIn("КАРТКА", sent[1]["text"])
+        self.assertIn("reply_markup", sent[1])
+
+    def test_server_ram_by_title_and_description(self):
+        from ram_alert import refine_by_desc
+        self.assertEqual(evaluate("SK Hynix 2x 16GB DDR4 PC4-2666V-RE1 Arbeitsspeicher", 85)["verdict"], "SKIP")
+        self.assertEqual(evaluate("Micron 2x16GB 2RX8 PC4-2666V-RE2-12 MTA18ASF2G72PDZ", 85)["verdict"], "SKIP")
+        self.assertNotEqual(evaluate("Samsung 2x16GB DDR4 M378A2K43EB1-CWE PC4-3200AA-UA2-11", 85)["verdict"], "SKIP")
+        t = "SK Hynix 2x 16GB DDR4 RAM PC4-2666V Arbeitsspeicher"
+        r = evaluate(t, 85)
+        self.assertNotEqual(r["verdict"], "SKIP")
+        desc = ("Modellbezeichnung: HMA82GR7AFR8N-VK TF AC - Bauform: 288-pin DIMM. Er eignet sich hervorragend, "
+                "um den Arbeitsspeicher deines PCs aufzurüsten. Preis pro Stück.")
+        self.assertIn("серверна", refine_by_desc(r, t, 85, False, desc, evaluate)["reason"])
+        self.assertNotEqual(refine_by_desc(r, t, 85, False, "Non-ECC, unbuffered, kein Server RAM. Läuft im Gaming-PC.",
+                                           evaluate)["verdict"], "SKIP")
 
     def test_ka_images(self):
         page = ('x https://img.kleinanzeigen.de/api/v1/prod-ads/images/35/35a26f80-95c0-4f6c-b0e1-53177f8aa286?rule=$_59.AUTO '

@@ -31,8 +31,18 @@ DEFECT = re.compile(r"\b(defekt|bastler|ersatzteil|kaputt|nicht funktionsf|for p
 LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|diverse|paket|bundle)\b|(?<![a-z] )(?<![a-z])\b\d{2,3}\s?x\b|"
                   r"\b(?:[5-9]|\d{2,})\s?(?:stk|stueck|st[uü]ck)\b", re.I)
 
+# Серверні (Registered ECC) модулі за номером або кодом на наклейці: Samsung M393/M391/M321R, SK Hynix HMA…R7, Kingston KSM…R,
+# Micron MTA…72P, Crucial CT…G4R, JEDEC «PC4-2666V-RE1» / «PC4-2133P-RA0» / «PC3-10600R», ранги x4. 03.10: KA «SK Hynix 2x 16GB
+# DDR4 PC4-2666V» за 85 € — RDIMM (HMA82GR7AFR8N, «RE1» лише в описі й на фото), у звичайний ПК не піде.
+SERVER_PART = (r"\bm39[13][ab]|\bm321r|\b\d\s?rx4\b|\d{4}[a-z]{0,2}\s?-\s?r[a-e]\d|\bpc[34]l?-\d{5}r\b|\bhmaa?\w{2,4}r7|"
+               r"\bksm\d{2,3}r|\bmta\d{1,2}as[fq]\w*72p|\bct\d{1,3}g4r")
 SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b|"
-                    r"\bm39[13][ab]|\b\d\s?rx4\b|-rb\d\b|\bhmaa?\w{2,4}r7|\bksm\d{2,3}r|\bm321r", re.I)
+                    + SERVER_PART, re.I)
+# Опис: лише однозначні ознаки — слова «Server», «Xeon» там бувають і про сумісність; «non-ECC», «unbuffered» — звичайна
+SERVER_DESC = re.compile(r"(?<!non[- ])(?<!non)\b(?:rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg(?:istered)?)\b|"
+                         + SERVER_PART, re.I)
+NOT_SERVER = re.compile(r"unbuffered|ungepuffert|\budimm\b|non[- ]?(?:reg|ecc)|kein\w*\s+(?:server|reg|ecc)|"
+                        r"nicht\s+(?:registered|reg\b|für\s+server)", re.I)
 SODIMM = re.compile(r"so-?\s?dimm|\bs[o0]-?ram\b|\bso[\s-]ram\b(?!\s+(?:ist|war|läuft|laeuft))|\bkcp\d{3}s[sd]\d|\b(zephyrus|legion\s*(?:\d|pro|slim)|ideapad|zenbook|vivobook|thinkbook|xps\s?1[3-7]|omen\s?1[5-7]|helios|nitro\s?5|(?:aero|aorus)\s?1[5-7]x?(?!\s?gb)|tuf\s+(?:gaming\s+)?[af]1[5-7]|galaxy\s?book|laptop\w*|notebook\w*|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
                     # номери ноутбучних модулів: Samsung M425R/M471A/M474A, Crucial …S5/…SFRA, Kingston KF…S…/KVR…S…
                     r"\bm4(?:25|71|74)[a-z]|\bct\d+g\d+c\d+s5\b|\bct\d+g4sf|\bkf\d{3}s\d{2}|\bkvr\d{2}s\d{2}|"

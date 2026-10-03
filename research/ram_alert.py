@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, ".")
-from ram_parse import parse_title
+from ram_parse import NOT_SERVER, SERVER_DESC, parse_title
 
 # (gen, form, ecc, total, modules) -> реальні продажі (Terapeak). Період у полі `period`:
 #   30 днів (23.09.2026) — для типів із великою вибіркою: ціна DDR5 росте ~12%/міс, 90-денна медіана
@@ -335,6 +335,10 @@ def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | No
         return res
     if _D_WANTED.search(d[:120]):
         return dict(verdict="SKIP", reason="це оголошення «шукаю», а не продаж", title=title, price=price)
+    srv = SERVER_DESC.search(d) if "total" in res else None
+    if srv and not NOT_SERVER.search(d):   # 03.10: у назві «PC4-2666V», в описі HMA82GR7… — серверна, хоч і «für PC»
+        return dict(verdict="SKIP", reason=f"за описом — серверна пам'ять (Registered ECC, «{srv.group(0).strip()}»): "
+                                           "у звичайний ПК не піде, продається дешево", title=title, price=price, wrong_type=True)
     # Switch лише планшетом: «Lieferung ohne Joycons, Dock und Ladekabel», «kommt ohne Zubehör» (eBay 29.09); Lite — завжди без дока
     if "Switch" in res.get("type", "") and "Lite" not in res.get("type", "") and _D_SWITCH_INCOMPLETE.search(d):
         return dict(verdict="SKIP", reason="за описом — лише планшет, без дока / Joy-Con / зарядки", title=title, price=price)

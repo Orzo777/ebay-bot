@@ -595,7 +595,8 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
                 card = f"⏰ <b>Запізніла картка</b>: лист прийшов {age * 60:.0f} хв тому — могли вже купити\n\n" + card
             mid, kb = send_telegram_card(card, lst["link"], seller_template(res), slink, late, offer_template(res)) or (None, None)
             cardmap.remember(CARDS, lst["link"], mid, lst["title"])
-            add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [])   # фото → рядок «📷 …» (29.09)
+            add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [],   # фото → рядок «📷 …» (29.09)
+                        collapse_server=True)
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
     # кандидат ймовірно схований у тій самій пачці. Правильний товар, просто дорожчий, — не привід.

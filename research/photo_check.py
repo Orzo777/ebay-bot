@@ -62,6 +62,10 @@ Look ONLY at the photos (not the title) and answer with JSON:
       is printed on every stick of the kit and means per-stick = the number inside the parentheses (4 or 16),
   "ram_form": "desktop" (long DIMM, 288/240 pins) or "laptop" (short SO-DIMM) or null,
   "ram_gen": "DDR3" | "DDR4" | "DDR5" | null,
+  "ram_server": true if the sticks are server Registered/ECC modules: sticker codes like "PC4-2666V-RE1", "PC4-2133P-RA0",
+      "PC3-10600R", "2Rx4", "ECC", "REG", part numbers like HMA82GR7…, M393A…, MTA18ASF…72PDZ, KSM…R…, or a small register
+      chip (marked e.g. IDT / Renesas / Montage "4RCD…") in the MIDDLE of the stick between the memory chips;
+      false for normal desktop/laptop RAM (codes like "-UA2", "-SA1", "-U", "-S"); null if you cannot tell,
   "console_model": one of "xbox series x", "xbox series s", "xbox one", "ps5 disc", "ps5 digital", "ps5 pro", "ps4",
       "switch 2", "switch oled", "switch v1/v2", "switch lite", "other", or null if no console is visible.
       PS5 disc = has a disc slot/drive bulge; Series X = tall black tower, Series S = small white box,
@@ -154,6 +158,9 @@ def compare(exp: dict, ph: dict) -> tuple[list[str], list[str]]:
     if ph.get("visible_damage"):
         warn.append("на фото видно пошкодження")
     if exp["kind"] == "ram":
+        from ram_parse import SERVER_PART
+        if ph.get("ram_server") is True or re.search(SERVER_PART, ph.get("label_text") or "", re.I):
+            bad.append(SERVER_MSG + " — у звичайний ПК не піде, продається дешево")
         per, vis = ph.get("ram_gb_per_module"), ph.get("ram_modules_visible")
         if isinstance(per, int) and per and per != exp["per"]:
             n = vis if isinstance(vis, int) and vis > 1 else None
@@ -178,6 +185,7 @@ def compare(exp: dict, ph: dict) -> tuple[list[str], list[str]]:
 
 
 STATS = {"ok": 0, "fail": 0}
+SERVER_MSG = "на фото серверна пам'ять (Registered ECC)"
 
 
 def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool] | None:
@@ -208,8 +216,9 @@ def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool]
 
 
 def add_to_card(message_id: int | None, html_text: str, reply_markup: str | None, res: dict, title: str,
-                image_urls: list[str]) -> bool:
-    """Дописує рядок «📷 …» у вже надіслану картку. Розбіжність — угору картки, «✓» — вниз."""
+                image_urls: list[str], collapse_server: bool = False) -> bool:
+    """Дописує рядок «📷 …» у вже надіслану картку. Розбіжність — угору картки, «✓» — вниз.
+    collapse_server (картки з підписок KA): серверна пам'ять на фото — картку згортаємо в один рядок без кнопок."""
     if not message_id:
         return False
     got = photo_line(res, title, image_urls)
@@ -219,10 +228,15 @@ def add_to_card(message_id: int | None, html_text: str, reply_markup: str | None
     import requests
 
     import config
+    from html import escape
     text = (line + "\n\n" + html_text) if bad else (html_text + "\n\n" + line)
+    folded = collapse_server and bad and escape(SERVER_MSG) in line
+    if folded:   # 03.10: користувач хоче, щоб такі картки відсіювались, а не висіли з ⛔
+        text = (f"🗑 <b>Відсіяно: {escape(SERVER_MSG)}</b> — у звичайний ПК не піде\n"
+                f"<i>{escape(title[:90])}</i> · {res.get('price', 0):.0f} €")
     data = {"chat_id": config.TELEGRAM_CHAT_ID, "message_id": message_id, "text": text[:4096], "parse_mode": "HTML",
             "disable_web_page_preview": "true"}
-    if reply_markup:
+    if reply_markup and not folded:   # без reply_markup Telegram прибирає кнопки
         data["reply_markup"] = reply_markup
     try:
         r = requests.post(f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/editMessageText", data=data, timeout=15)
