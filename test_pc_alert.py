@@ -11,7 +11,7 @@ from pc_alert import evaluate_pc, parse_pc, pc_card_lines
 
 class TestParse(unittest.TestCase):
     def test_cpu_gpu_ram(self):
-        self.assertEqual(parse_pc("Dell Optiplex 7060 i5-8500 16GB 256GB SSD"), dict(cpu=("i5", 8), gpu=None, ram=16))
+        self.assertEqual(parse_pc("Dell Optiplex 7060 i5-8500 16GB 256GB SSD"), dict(cpu=("i5", 8), gpu=None, ram=16, ssd=256))
         self.assertEqual(parse_pc("Gaming PC Ryzen 5 3600 RTX 3060 16GB")["cpu"], ("r5", 3))
         self.assertEqual(parse_pc("Gaming PC Ryzen 5 3600 RTX 3060 16GB")["gpu"], "rtx 3060")
         self.assertEqual(parse_pc("PC i7-10700 32GB")["cpu"], ("i7", 10))
@@ -30,6 +30,21 @@ class TestEvaluate(unittest.TestCase):
         r = evaluate_pc("PC + Monitor i7,16GB,500W 85+,GPU", 25)
         self.assertEqual(r["verdict"], "UNKNOWN")
         self.assertIn("Оцінити не вдалося", pc_card_lines(r)[0])
+
+    def test_part_out_all_components(self):
+        # 03.10: розбір з усіх деталей; пам'ять відеокарти («RTX 3060 Ti (8 GB)») — не RAM
+        p = parse_pc("i7-11700F * NVIDIA GeForce RTX 3060 Ti (8 GB) * 64 GB DDR4 3200 MHz RAM (2x 32 GB Patriot) * 1 TB SSD")
+        self.assertEqual((p["cpu"], p["gpu"], p["ram"], p["ssd"]), (("i7", 11), "rtx 3060 ti", 64, 1000))
+        self.assertEqual(parse_pc("Gaming PC | RAM: 32GB DDR4 | GPU: RX 6700 XT 12GB | i5-12400F")["ram"], 32)
+        self.assertEqual(parse_pc("PC Ryzen 7 5800X, 2x16GB DDR4, RTX 3080 10 GB")["ram"], 32)
+        self.assertEqual(parse_pc("Gaming PC GTX 1660 Super 6GB i5-9400F 16GB")["gpu"], "gtx 1660 super")
+        self.assertIn(evaluate_pc("PC Ryzen 7 5800X, 2x16GB DDR4, RTX 3080 10 GB, 2TB SSD", 400)["verdict"], ("BUY", "BUY-GOOD"))
+        r = evaluate_pc("Office PC i7-10700 64GB RAM 512GB SSD", 150)   # без відеокарти, але 64 ГБ — розбирати
+        self.assertIn("RAM 64", r["how"])
+        r = evaluate_pc("Gaming PC i7-11700F RTX 3060 Ti 64GB DDR4 1TB SSD", 549)
+        self.assertEqual(r["verdict"], "NEGOTIATE")
+        self.assertIn("ТОРГУЙСЯ", pc_card_lines(r)[0])
+        self.assertEqual(evaluate_pc("Gaming PC i7-11700F RTX 3060 Ti 64GB DDR4 1TB SSD", 900)["verdict"], "SKIP")   # торг не врятує
 
     def test_card_shows_profit_and_route(self):
         lines = pc_card_lines(evaluate_pc("Gaming PC Ryzen 5 3600 RTX 3060 16GB", 60))

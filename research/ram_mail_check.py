@@ -36,7 +36,7 @@ import cardmap
 import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import add_to_card
-from pc_alert import evaluate_pc, pc_card_lines
+from pc_alert import NEGOTIATE_FROM, evaluate_pc, pc_card_lines
 from ram_alert import (CONSOLE_NO_MODEL, SEND_VERDICTS, apply_pickup, broken_reason, evaluate, format_html, model_from_desc,
                        offer_template, refine_by_desc, seller_template)
 
@@ -78,7 +78,8 @@ _GEWERBLICH_RE = re.compile(r"Von Gewerblich")
 _SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
 # «Мухи окремо, котлети окремо»: дешеві ПК на розбірку (підписка «PCs in Hamburg») йдуть в ОКРЕМИЙ
 # Telegram-бот (секрет PC_BOT_TOKEN, той самий chat_id), без оцінки RAM-логікою.
-IGNORE_SEARCH_RE = re.compile(r"„PCs in ")
+# Підписки ПК-бота: «PCs in Hamburg (+20 km)», з ключовим словом — «PCs - gaming in Hamburg (+20 km)» (03.10)
+IGNORE_SEARCH_RE = re.compile(r"„PCs(?: - [^“”]{1,60})? in ")
 PC_BOT_TOKEN = os.getenv("PC_BOT_TOKEN", "")
 # 02.10 (досвід користувача + замір): з KA шлемо лише оголошення з «Direkt kaufen» (оплата через KA із захистом покупця,
 # шахраям не підходить; ~20% оголошень) або з підписок «самовивіз у Гамбурзі» (готівка після огляду). Решта — майже завжди
@@ -457,7 +458,8 @@ def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: s
             print("   пропускаю: ціна-заглушка")
             continue
         ev = evaluate_pc(lst["title"], lst["price"])   # ціле / на запчастини, самовивіз; невигідне — не шлемо
-        if ev["verdict"] == "SKIP":
+        # Дорожчі ПК: головне (64 ГБ RAM, відеокарта) часто лише в описі (03.10, HP за 549 €) — назві «SKIP» не віримо
+        if ev["verdict"] == "SKIP" and not (lst["price"] >= NEGOTIATE_FROM and ev.get("reason") is None):
             print(f"   оцінка: SKIP ({ev.get('reason') or 'невигідно'})")
             continue
         # та сама перевірка продавця, що й в основному боті: без «Sicher bezahlen» / PayPal Freunde — не показуємо
@@ -469,11 +471,15 @@ def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: s
         if _PC_BROKEN.search(desc) and broken_reason(desc):
             print(f"   пропускаю: в описі дефект «{broken_reason(desc)}»")
             continue
-        if ev["verdict"] == "UNKNOWN" and desc:   # процесор/відеокарта часто лише в описі (28.09: 209 з 260 «невідомо»)
+        if desc and (ev["verdict"] in ("UNKNOWN", "SKIP") or lst["price"] >= NEGOTIATE_FROM):   # процесор/відеокарта часто
+            # лише в описі (28.09: 209 з 260 «невідомо»; 03.10: 64 ГБ RAM у HP — лише в описі)
             ev = evaluate_pc(lst["title"] + " | " + desc, lst["price"])
             if ev["verdict"] == "SKIP":
                 print(f"   за описом: SKIP ({ev.get('reason') or 'невигідно'})")
                 continue
+        if ev["verdict"] == "SKIP":   # опису не прочитали — лишається оцінка за назвою
+            print("   оцінка: SKIP (невигідно; опис не прочитано)")
+            continue
         if ev["verdict"] == "UNKNOWN" and not (_PC_WORD.search(lst["title"]) and lst["price"] <= 40):
             print("   невідомо, і не схоже на дешевий цілий ПК — не шлю")
             continue
