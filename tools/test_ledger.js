@@ -21,6 +21,16 @@ let p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Bestellbestätigung für: RA
 check('ebay purchase kind', p.kind, 'purchase');
 check('ebay purchase fields', [p.src, p.title, p.id, p.price, p.ship, p.total], ['eBay', 'RAM ddr4 32GB für iMac', '317456789012', 45, 4.99, 49.99]);
 
+// 03.10: новий формат листа eBay — мітки й суми на різних рядках, «Zwischensumme» перед «Versand»; було 58,25 замість 64,44
+p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Bestellbestätigung für: Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200',
+  'Einzelheiten zu Ihrem Kauf\nWir benachrichtigen Sie, wenn Ihre Bestellung verschickt wird.\n' +
+  'Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200 PC4-25600 DIMM 288-Pin XMP\nPreis:\nEUR 64,44\nArtikelnr.:\n860004357101\n' +
+  'Bestellnummer:\n02-15262-92402\nVerkäufer:\nbrhi-3585\neBay-Käuferschutz\nEinzelheiten zum Kauf ansehen\n' +
+  'Gesamtbetrag:\nZwischensumme\nEUR 64,44\nVersand\nEUR 6,19\nGesamtbetrag wird abgebucht von\nEUR 70,63'));
+check('ebay purchase 03.10 format', [p.kind, p.id, p.price, p.ship, p.fee, p.total], ['purchase', '860004357101', 64.44, 6.19, null, 70.63]);
+p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Bestellbestätigung für: RAM', 'Zwischensumme EUR 40,00\nVersand EUR 5,00\nSumme EUR 45,00'));
+check('Summe is not Zwischensumme', [p.price, p.ship, p.total], [40, 5, 45]);
+
 p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Ihre Bestellung ist bestätigt: Sony PS5 Slim Disc', 'Gesamtbetrag 1.234,56 €\nVersand 0,00 €'));
 check('total only', [p.kind, p.price, p.total], ['purchase', 1234.56, 1234.56]);
 

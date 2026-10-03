@@ -13,3 +13,4 @@ discovery_report.md
 report_console.txt
 feed_state.json
 feed_log.jsonl
+docs/*.pdf

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-02a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-03a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -250,8 +250,12 @@ function money_(s) {
   return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null;
 }
 
+// Мітка — цілим словом («Summe» не в «Zwischensumme», «Versand» не в «Versandt»); сума — на тому ж або наступному рядку
+// («Preis:\nEUR 64,44» у листі eBay 03.10), але не через іншу мітку («Gesamtbetrag:\nZwischensumme EUR 64,44» — це не разом).
+// 03.10: «Summe» спіймало Zwischensumme 64,44 як «разом», ціна вийшла 64,44 − 6,19 = 58,25 замість 64,44.
 function amountAfter_(body, labels) {
-  const re = new RegExp('(?:' + labels + ')[^\\n\\d]{0,40}?(?:EUR\\s*)?([\\d.]{1,7},\\d{2})', 'i');
+  const re = new RegExp('(?:^|[^a-zäöüß])(?:' + labels + ')(?![a-zäöüß])' +
+                        '(?:(?!zwischensumme|versand|preis|summe|gebühr|gesamt)[^\\d]){0,40}?(?:EUR\\s*)?([\\d.]{1,7},\\d{2})', 'i');
   const m = body.match(re);
   return m ? money_(m[1]) : null;
 }
