@@ -18,7 +18,8 @@ from console_alert import SHIP_IN as SHIP_IN_CONSOLE
 from console_alert import evaluate_console
 from ka_listing_check import UA, parse_listing, risk_lines
 from ram_mail_check import _NO_PICKUP
-from ram_alert import (SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, evaluate, format_html, item_for_cost, offer_template,
+from ram_alert import (SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, card_seller_text, evaluate, format_html,
+                       item_for_cost, offer_template,
                        model_from_desc, refine_by_desc, seller_template)
 
 _ID_RE = re.compile(r"kleinanzeigen\.de/s-anzeige/(?:[^/\s]+/)?(\d{8,})")
@@ -236,7 +237,7 @@ def main(text: str):
         return
     msg, res = evaluate_listing(r.text, url)
     if res and res.get("verdict") in SEND_VERDICTS and not _is_no(msg):
-        mid, kb = send_telegram_card(msg, url, seller_template(res), None, False, offer_template(res)) or (None, None)
+        mid, kb = send_telegram_card(msg, url, card_seller_text(res), None, False, offer_template(res)) or (None, None)
         _remember(url, mid, res.get("title") or "")
         add_to_card(mid, msg, kb, res, res.get("title") or "", ka_images(r.text))
     else:   # «не бери» (шахрай, дефект, дорого, опис) — лише причина, без кнопок

@@ -37,8 +37,8 @@ import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import add_to_card
 from pc_alert import NEGOTIATE_FROM, evaluate_pc, pc_card_lines
-from ram_alert import (CONSOLE_NO_MODEL, SEND_VERDICTS, apply_pickup, broken_reason, evaluate, format_html, model_from_desc,
-                       offer_template, refine_by_desc, seller_template)
+from ram_alert import (CONSOLE_NO_MODEL, SEND_VERDICTS, apply_pickup, broken_reason, card_seller_text, evaluate, format_html,
+                       model_from_desc, offer_template, refine_by_desc, seller_template)
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
 
@@ -129,15 +129,16 @@ def extract_listings(subject: str, body: str) -> list[dict]:
     return out
 
 
-def build_keyboard(link: str | None, seller_text: str, search: str | None = None, offer_text: str | None = None) -> dict:
+def build_keyboard(link: str | None, seller_text: str | None, search: str | None = None, offer_text: str | None = None) -> dict:
     """Кнопки під карткою: відкрити оголошення + скопіювати ЛИШЕ текст продавцю
     (copy_text, Bot API 7.11+, ліміт 256 символів) + уся підписка (у листі лише одне з кількох нових)."""
     rows = []
     if link:
         rows.append([{"text": "🔗 Відкрити оголошення", "url": link}])
-    own = re.search(r"für (\d+) €", seller_text)   # «ТОРГУЙСЯ»: єдиний текст уже з пропозицією
-    rows.append([{"text": f"📋 Текст із пропозицією {own.group(1)} €" if own else "📋 Скопіювати текст продавцю",
-                  "copy_text": {"text": seller_text[:256]}}])
+    if seller_text:   # з «Direkt kaufen» звичайного тексту немає (04.10)
+        own = re.search(r"für (\d+) €", seller_text)   # «ТОРГУЙСЯ»: єдиний текст уже з пропозицією
+        rows.append([{"text": f"📋 Текст із пропозицією {own.group(1)} €" if own else "📋 Скопіювати текст продавцю",
+                      "copy_text": {"text": seller_text[:256]}}])
     if offer_text:
         price = re.search(r"für (\d+) €", offer_text)
         label = f"📋 Текст із пропозицією {price.group(1)} €" if price else "📋 Текст із пропозицією ціни"
@@ -147,7 +148,7 @@ def build_keyboard(link: str | None, seller_text: str, search: str | None = None
     return {"inline_keyboard": rows}
 
 
-def send_telegram_card(html_text: str, link: str | None, seller_text: str, search: str | None = None,
+def send_telegram_card(html_text: str, link: str | None, seller_text: str | None, search: str | None = None,
                        silent: bool = False, offer_text: str | None = None):
     import requests
 
@@ -599,7 +600,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             card = format_html(res)
             if late:
                 card = f"⏰ <b>Запізніла картка</b>: лист прийшов {age * 60:.0f} хв тому — могли вже купити\n\n" + card
-            mid, kb = send_telegram_card(card, lst["link"], seller_template(res), slink, late, offer_template(res)) or (None, None)
+            mid, kb = send_telegram_card(card, lst["link"], card_seller_text(res), slink, late, offer_template(res)) or (None, None)
             cardmap.remember(CARDS, lst["link"], mid, lst["title"])
             add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [],   # фото → рядок «📷 …» (29.09)
                         collapse_server=True)

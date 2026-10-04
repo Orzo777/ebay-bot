@@ -442,6 +442,17 @@ def seller_template(r: dict) -> str:
     return buyer_message(r, o)
 
 
+def plain_text_needed(r: dict) -> bool:
+    """04.10 (прохання користувача): з «Direkt kaufen» купуєш кнопкою «Kaufen» — звичайний текст продавцю і його кнопка
+    зайві; лишається лише текст зі знижкою («МОЖНА» / «ТОРГУЙСЯ»)."""
+    return not (r.get("buy_now") and r.get("verdict") != "NEGOTIATE")
+
+
+def card_seller_text(r: dict) -> str | None:
+    """Текст для кнопки «скопіювати» під карткою: None — кнопки немає."""
+    return seller_template(r) if plain_text_needed(r) else None
+
+
 def desc_line(r: dict) -> str | None:
     """Рядок на картку: що продавець сам написав в описі."""
     if r.get("desc") is None:
@@ -518,12 +529,16 @@ def format_html(r: dict) -> str:
                       f"4×{r['total'] // 4} ГБ коштує набагато менше."]
     for note in r.get("notes", []):
         lines += ["", f"⚠️ {escape(note)}"]
-    lines += ["", f"<i>{escape(r['title'][:90])}</i>", "",
-              (f"✉️ Текст продавцю з пропозицією {offer} € (натисни — скопіюється):"
-               if offer is not None and r["verdict"] == "NEGOTIATE" else "✉️ Текст продавцю (натисни — скопіюється):"),
-              f"<code>{escape(seller_template(r))}</code>"]
-    if offer is not None and r["verdict"] != "NEGOTIATE":
-        lines += ["", f"✉️ З пропозицією {offer} €:", f"<code>{escape(offer_template(r))}</code>"]
+    lines += ["", f"<i>{escape(r['title'][:90])}</i>"]
+    if plain_text_needed(r):
+        lines += ["", (f"✉️ Текст продавцю з пропозицією {offer} € (натисни — скопіюється):"
+                       if offer is not None and r["verdict"] == "NEGOTIATE" else "✉️ Текст продавцю (натисни — скопіюється):"),
+                  f"<code>{escape(seller_template(r))}</code>"]
+        if offer is not None and r["verdict"] != "NEGOTIATE":
+            lines += ["", f"✉️ З пропозицією {offer} €:", f"<code>{escape(offer_template(r))}</code>"]
+    elif offer is not None:   # «Direkt kaufen» + «МОЖНА»: купити кнопкою або спершу запропонувати ціну
+        lines += ["", f"✉️ Хочеш дешевше — текст продавцю з пропозицією {offer} € (натисни — скопіюється):",
+                  f"<code>{escape(offer_template(r))}</code>"]
     return "\n".join(lines)
 
 

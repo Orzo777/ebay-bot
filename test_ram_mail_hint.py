@@ -221,3 +221,40 @@ class TestProcess(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCompactCards0410(unittest.TestCase):
+    """04.10 (прохання користувача): з «Direkt kaufen» без звичайного тексту продавцю; аукціон — коротше."""
+
+    def test_buy_now_card_has_only_offer_text(self):
+        from ram_alert import card_seller_text, evaluate, format_html, offer_template
+        seen = {}
+        for price in range(55, 110, 3):
+            r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", price)
+            if r["verdict"] == "SKIP":
+                continue
+            r["buy_now"], r["risk_lines"] = True, []
+            seen[r["verdict"]] = (format_html(r), [b[0]["text"] for b in rmc.build_keyboard("u", card_seller_text(r), None,
+                                                                                             offer_template(r))["inline_keyboard"]])
+        good_txt, good_kb = seen["BUY-GOOD"]
+        self.assertNotIn("Текст продавцю", good_txt)
+        self.assertEqual(good_kb, ["🔗 Відкрити оголошення"])
+        buy_txt, buy_kb = seen["BUY"]
+        self.assertEqual(buy_txt.count("<code>"), 1)
+        self.assertIn("з пропозицією", buy_txt)
+        self.assertEqual(len(buy_kb), 2)
+        self.assertTrue(buy_kb[1].startswith("📋 Текст із пропозицією"))
+        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 67)
+        r["buy_now"], r["risk_lines"] = False, []   # самовивіз без «Direkt kaufen» — тексти як раніше
+        self.assertEqual(format_html(r).count("<code>"), 2)
+
+    def test_auction_lines_compact(self):
+        from ebay_watch import auction_lines
+        from ram_alert import evaluate
+        now = datetime(2026, 10, 4, 13, 0, tzinfo=timezone.utc)
+        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 40)
+        lines = auction_lines(r, {"bidCount": 9, "itemEndDate": "2026-10-04T13:19:00Z"}, now)
+        text = "\n".join(lines)
+        self.assertNotIn("нічого не означає", text)
+        self.assertNotIn("конкуренти не встигнуть", text)
+        self.assertTrue(lines[-1].startswith("Виграєш за"))

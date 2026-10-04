@@ -363,19 +363,17 @@ def auction_lines(r: dict, it: dict, now: datetime) -> list[str]:
         left, left_txt = None, "?"
     max_bid = int((r["cap"] - r["ship_in"]) // 1)
     good_bid = int((r["good"] - r["ship_in"]) // 1)
-    lines = [f"🔨 <b>Аукціон</b>: зараз {r['price']:.0f} € ({bids} ставок), до кінця {left_txt}.",
-             "Кінцева ціна зазвичай доростає до ринкової — поточна ставка нічого не означає."]
+    lines = [f"🔨 <b>Аукціон</b>: зараз {r['price']:.0f} € ({bids} ставок), до кінця {left_txt}."]
     if r["price"] >= max_bid:
         lines.append(f"⛔ Уже дорожче вигідного: максимум для нас {max_bid} € (з пересилкою {r['cap']:.0f} €).")
     else:
         if left is not None and left <= timedelta(hours=1):
-            lines.append(f"👉 За 1–2 хв до кінця постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €): "
-                         f"eBay підніме лише до потрібної, а конкуренти не встигнуть перебити. "
-                         f"Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €.")
+            lines += [f"👉 За 1–2 хв до кінця постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €).",
+                      f"Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €."]
         else:
-            lines.append(f"👉 Постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €) — eBay підніматиме "
-                         f"її сам лише до потрібної. Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €. "
-                         f"Краще ставити в останні хвилини — бот нагадає за ~20 хв до кінця.")
+            lines += [f"👉 Постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €) в останні хвилини — "
+                      f"бот нагадає за ~20 хв до кінця.",
+                      f"Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €."]
     return lines
 
 
