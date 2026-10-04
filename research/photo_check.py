@@ -26,8 +26,12 @@ _KA_IMG = re.compile(r"img\.kleinanzeigen\.de/api/v1/prod-ads/images/([0-9a-f]{2
 
 
 def ka_images(page: str) -> list[str]:
-    """Фото з HTML сторінки оголошення KA, у порядку галереї (перше — головне), великий розмір."""
-    ids = list(dict.fromkeys(_KA_IMG.findall(page or "")))
+    """Фото з HTML сторінки оголошення KA, у порядку галереї (перше — головне), великий розмір.
+    Лише до блоку «схожі оголошення» (srpimagebox): 04.10 у G.Skill з одним фото бот узяв ще два чужі (Timetec,
+    Corsair Dominator) — перевірка фото порівнювала б назву з чужими планками."""
+    page = page or ""
+    cuts = [i for i in (page.find('id="vap-smlrads"'), page.find('class="ad-listitem'), page.find("srpimagebox")) if i > 0]
+    ids = list(dict.fromkeys(_KA_IMG.findall(page[:min(cuts)] if cuts else page)))
     return [f"https://img.kleinanzeigen.de/api/v1/prod-ads/images/{i}?rule=$_57.JPG" for i in ids[:MAX_IMAGES]]
 
 

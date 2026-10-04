@@ -126,6 +126,14 @@ class TestPhotoCheck(unittest.TestCase):
                 'https://img.kleinanzeigen.de/api/v1/prod-ads/images/b9/b9d94559-d038-4be6-9bc3-6a6f43e3ee59?rule=$_59.JPG')
         self.assertEqual(len(ka_images(page)), 2)
         self.assertTrue(ka_images(page)[0].endswith("?rule=$_57.JPG"))
+        # 04.10: фото зі «схожих оголошень» нижче галереї — не наші
+        similar = ('<div class="imagebox srpimagebox"><img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/'
+                   '3c/3c03bd83-7486-420a-b94a-f56abfdbc55a?rule=$_2.AUTO"></div>')
+        self.assertEqual(len(ka_images(page + similar)), 2)
+        similar_ld = ('<section id="vap-smlrads" class="j-search-results"><li class="ad-listitem"><script type="application/ld+json">'
+                      '{"contentUrl":"https://img.kleinanzeigen.de/api/v1/prod-ads/images/09/09eee61e-f212-4ca9-bd3b-21776a89c265'
+                      '?rule=$_59.AUTO"}</script>')
+        self.assertEqual(len(ka_images(page + similar_ld)), 2)
 
 
 if __name__ == "__main__":
