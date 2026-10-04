@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-04a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-04b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -326,14 +326,20 @@ function processLedger() {
           what = 'купівля записана';
           notify_('📒 Записав покупку №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.price != null ? ' — ' + p.price + ' €' : '') +
                   '\nКоли отримаєш і перевіриш — «продати ' + (row - LEDGER_FIRST + 1) + '»' +
-                  (p.price == null ? '\n⚠️ Суму не знайшов у листі — впиши в таблиці.' : ''));
+                  (p.price == null ? '\n⚠️ Суму не знайшов у листі — впиши в таблиці.' : '') +
+                  (/ps\s?5|playstation\s?5/i.test(p.title) ? '\n💡 Цю PS5 можна спробувати продати на Amazon (вживане, тариф Einzelanbieter) — ' +
+                   'тест з 03.10: там може бути +40–60 €. Напиши Claude «перевір PS5 на Amazon».' : ''));
         }
       } else if (p.kind === 'shipped' || p.kind === 'delivered' || p.kind === 'cancel') {
         row = findRow_(p.id, p.title, true);
         const st = p.kind === 'shipped' ? 'В дорозі' : p.kind === 'delivered' ? 'Отримано' : 'Скасовано';
         if (row) {
           const cur = deals.getRange(row, COL.status).getValue();
-          if (cur !== 'Продано' && !(p.kind === 'shipped' && cur === 'Отримано')) deals.getRange(row, COL.status).setValue(st);
+          if (cur !== 'Продано' && !(p.kind === 'shipped' && cur === 'Отримано')) {
+            deals.getRange(row, COL.status).setValue(st);
+            if (p.kind !== 'cancel') markEvent_(row - LEDGER_FIRST + 1, p.kind === 'shipped' ? 'shipped' : 'got', iso_(p.date));
+            if (p.kind === 'delivered' && cur !== 'Отримано') gotNotice_(row);
+          }
           what = 'статус → ' + st;
         } else { what = 'не знайшов рядок для «' + st + '»'; }
       } else if (p.kind === 'sale') {
@@ -345,7 +351,8 @@ function processLedger() {
           deals.getRange(row, COL.status).setValue('Продано');
           what = 'продаж записано';
           notify_('💰 Продано: ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
-                  '\nПрибуток дорахує таблиця.');
+                  '\nПрибуток дорахує таблиця.\n📮 Відправ у строк з лота (зазвичай 1–3 робочі дні) і завантаж трек-номер в eBay. ' +
+                  'Відправив — «відправив ' + (row - LEDGER_FIRST + 1) + '».');
         } else { what = 'продаж: не знайшов, що це за товар — впиши вручну'; }
       }
     }
@@ -353,6 +360,7 @@ function processLedger() {
   });
   if (full) props.setProperty('LEDGER_SCANNED', '1');
   weeklyIfDue_(props, new Date());
+  remindersIfDue_(props, new Date());
 }
 
 // Щопонеділка з 9:00 за Берліном — один раз на тиждень (ключ — дата понеділка)
@@ -377,7 +385,11 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '(3 — номер у таблиці; «продати» без номера — список того, що на руках)\n' +
   '• виставив 3 [124] — товар №3 уже на eBay (статус «Виставлено», ціну — в нотатки), щоб звіт не нагадував\n' +
   '• звіт — тижневий звіт: прибуток, точність прогнозів, залежаний товар, що дають підписки (сам приходить щопонеділка)\n' +
-  'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення.';
+  '• отримав 3 / перевірив 3 / проблема 3 — посилка №3 прийшла / протестована / щось не так (покажу, як заявити)\n' +
+  '• відправив 3 — проданий №3 відправлено покупцю\n' +
+  '• нагадай 20.10 текст — нагадаю того дня; нагадування — що заплановано\n' +
+  'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення. Щодня о 10:00 — що треба зробити ' +
+  '(посилка не йде, не перевірено, не відправлено, заплановане).';
 
 function officeToken_(props) {
   return props.getProperty('OFFICE_BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
@@ -397,7 +409,7 @@ function notify_(text, markup) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
-  if (sellCommand_(msg) || listedCommand_(msg) || ledgerCommand(msg)) return;
+  if (sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
@@ -594,5 +606,219 @@ function listedCommand_(msg) {
   }
   notify_('🏷 №' + m[1] + ' «' + title + '» — виставлено' + (m[2] ? ' за ' + m[2] + ' €' : '') + '. Коли продаси — «продав ' +
           (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '» (або лист eBay запише сам).');
+  return true;
+}
+
+
+// ------------------------------------------------------------------ захист покупок і нагадування (04.10)
+// Посилка не йде → вчасно відкрити запит; прийшла → протестувати ДО підтвердження отримання (KA) і відгуку; продано →
+// відправити; плюс заплановані справи. Строки: KA «Sicher bezahlen» — проблему можна заявити лише 10 днів від відправки,
+// через 14 днів гроші самі йдуть продавцю; eBay — запит «Artikel nicht erhalten» / «nicht wie beschrieben» до 30 днів
+// після останньої очікуваної дати доставки. Дати подій і що вже нагадано — у властивості LEDGER_EVENTS (рядок → {...}).
+const LEDGER_TODO = [   // [дата, текст, повторювати кожні N днів]
+  ['2026-10-15', 'HDD: повторний замір цін (8 ТБ росли +15–18% за тиждень на 03.10). Напиши Claude: «заміряй HDD».'],
+  ['2026-10-17', 'ПК-бот: два тижні з 03.10 — перевірити живі картки (розбір, ціни деталей). Напиши Claude: «перевір ПК-бот».'],
+  ['2026-10-25', 'Звірити базові ціни з реальними продажами (замір Terapeak 23–26.09 старіє, сторож бачить лише оголошення). ' +
+    'Увійди в eBay у вбудованому браузері й напиши Claude: «звір ціни з продажами».', 30],
+  ['2026-11-15', 'Thule-кріплення: сезонний замір (листопад–грудень). Напиши Claude: «заміряй Thule».']];
+const SALES_UP = 8;   // продажів за 30 днів → час для варіанта А (бот публікує оголошення) і податкових порогів
+
+function days_(from, to) { return Math.round((Date.parse(to) - Date.parse(from)) / 86400000); }
+function addDays_(iso, n) {
+  const d = new Date(Date.parse(iso) + n * 86400000);
+  return ('0' + d.getUTCDate()).slice(-2) + '.' + ('0' + (d.getUTCMonth() + 1)).slice(-2);
+}
+function events_() { return JSON.parse(PropertiesService.getScriptProperties().getProperty('LEDGER_EVENTS') || '{}'); }
+function saveEvents_(ev) { PropertiesService.getScriptProperties().setProperty('LEDGER_EVENTS', JSON.stringify(ev)); }
+function markEvent_(n, key, val) {
+  const ev = events_();
+  ev[n] = ev[n] || {};
+  if (key === 'rem') { ev[n].rem = ev[n].rem || {}; ev[n].rem[val] = 1; } else ev[n][key] = val;
+  saveEvents_(ev);
+}
+
+function testTip_(cat) {
+  return {
+    'RAM': 'MemTest86 з флешки або TestMem5/OCCT у Windows — хоча б 1 повний прохід; наклейки = назва (обсяг, DDR, U/S, ' +
+      'без R/E); у BIOS або CPU-Z — повний обсяг і частота',
+    'Консоль': 'увімкни, онови систему, перевір диск (якщо є), контролер, вентилятор і шум; серійник на коробці = на консолі; ' +
+      'акаунт продавця видалено',
+    'ПК': 'стрес-тест 15 хв (OCCT або FurMark), температури, усі порти; збіг деталей з описом (CPU-Z, GPU-Z)'
+  }[cat] || 'перевір, що все працює і відповідає опису (фото, модель, комплект)';
+}
+
+// Строк, до якого ще можна заявити проблему: KA — 10 днів від відправки (дата відправки невідома — від покупки, обережніше)
+function claimLine_(r, e) {
+  if (r.src === 'Kleinanzeigen') {
+    return 'Проблему в «Sicher bezahlen» можна заявити лише до ' + addDays_(e.shipped || r.date, 10) +
+      ' (10 днів від ' + (e.shipped ? 'відправки' : 'покупки') + '). Не підтверджуй отримання, поки не перевірив — після ' +
+      'підтвердження гроші одразу йдуть продавцю.';
+  }
+  return 'Якщо не так — запит «nicht wie beschrieben» у Mein eBay → Käufe (до 30 днів після доставки). Відгук — лише після перевірки.';
+}
+
+function rowByN_(n) { return ledgerRows_().filter(function (r) { return r.n === n; })[0] || null; }
+
+function gotNotice_(row) {
+  const r = rowByN_(row - LEDGER_FIRST + 1);
+  if (!r || r.src === 'Самовивіз Гамбург') return;
+  const e = events_()[r.n] || {};
+  notify_('📦 №' + r.n + ' «' + r.title + '» отримано. Протестуй протягом 1–2 днів: ' + testTip_(r.cat) + '.\n' + claimLine_(r, e) +
+          '\nПеревірив — «перевірив ' + r.n + '», щось не так — «проблема ' + r.n + '».');
+  markEvent_(r.n, 'rem', 'test0');
+}
+
+/** Чисті правила: рядки обліку + події → {lines, marks: [[n, ключ]], got: [n, ...] (без дати отримання — ставимо сьогодні)}. */
+function dueReminders_(rows, ev, today) {
+  const lines = [], marks = [], got = [];
+  const once = function (n, key, text) {
+    if (((ev[n] || {}).rem || {})[key]) return false;
+    lines.push(text); marks.push([n, key]); return true;
+  };
+  rows.forEach(function (r) {
+    const e = ev[r.n] || {}, rem = e.rem || {}, name = '№' + r.n + ' «' + String(r.title).slice(0, 60) + '»';
+    if (!r.date || r.src === 'Самовивіз Гамбург') return;
+    if (r.status === 'Оплачено' || r.status === 'В дорозі') {
+      const base = e.shipped || r.date, d = days_(base, today), from = e.shipped ? 'від відправки' : 'від покупки';
+      const tail = ' Уже отримав — «отримав ' + r.n + '».';
+      if (r.src === 'Kleinanzeigen') {
+        if (d >= 8) once(r.n, 'ka8', '⚠️ ' + name + ' — досі не отримано (' + d + ' дн. ' + from + '). Проблему в «Sicher bezahlen» ' +
+          'можна заявити лише до ' + addDays_(base, 10) + ', а на 14-й день гроші самі підуть продавцю. Посилки немає — «Problem melden» ' +
+          'у KA зараз.' + tail);
+        else if (d >= 5 && !rem.ka8) once(r.n, 'ka5', '📦 ' + name + ' — ' + d + ' дн. ' + from + ', посилки ще немає. Глянь трек; ' +
+          'якщо не відправлено або трек стоїть — напиши продавцю (строк для проблеми — до ' + addDays_(base, 10) + ').' + tail);
+      } else {
+        if (d >= 20) once(r.n, 'eb20', '⚠️ ' + name + ' — ' + d + ' дн. без доставки. Відкрий «Artikel nicht erhalten» у Mein eBay → ' +
+          'Käufe (строк — 30 днів після останньої очікуваної дати доставки, далі захист пропадає).' + tail);
+        else if (d >= 10 && !rem.eb20) once(r.n, 'eb10', '📦 ' + name + ' — ' + d + ' дн. ' + from + ', не доставлено. Глянь трек; ' +
+          'стоїть — напиши продавцю, після очікуваної дати доставки можна відкрити «Artikel nicht erhalten».' + tail);
+      }
+    } else if (r.status === 'Отримано') {
+      if (!e.got) got.push(r.n);
+      const d = e.got ? days_(e.got, today) : 0, act = ' Перевірив — «перевірив ' + r.n + '», не так — «проблема ' + r.n + '».';
+      if (!rem.test0) once(r.n, 'test0', '🧪 ' + name + ' отримано — протестуй: ' + testTip_(r.cat) + '. ' + claimLine_(r, e) + act);
+      else if (d >= 2) once(r.n, 'test2', '🧪 ' + name + ' отримано ' + d + ' дн. тому, ще не перевірено. ' + claimLine_(r, e) + act);
+    } else if (r.status === 'Продано' && r.sdate && !e.sent) {
+      const d = days_(r.sdate, today), act = ' Відправив — «відправив ' + r.n + '».';
+      if (d < 1 || d > 7) return;
+      if (d >= 2 && rem.ship1) once(r.n, 'ship2', '📮 ' + name + ' продано ' + d + ' дн. тому — досі не відправлено? Запізнення = погана ' +
+        'оцінка і ризик скасування.' + act);
+      else if (!rem.ship1) once(r.n, 'ship1', '📮 ' + name + ' продано — відправ і завантаж трек-номер в eBay.' + act);
+    }
+  });
+  const sold30 = rows.filter(function (r) { return r.status === 'Продано' && r.sdate && days_(r.sdate, today) <= 30; }).length;
+  if (sold30 >= SALES_UP) once('_', 'salesup', '📈 Продажі пішли: ' + sold30 + ' за 30 днів. Час для двох відкладених речей — бот сам ' +
+    'публікує оголошення eBay (варіант А) і податкові пороги (DAC7: 30 продажів або 2 000 € на рік). Напиши Claude.');
+  return { lines: lines, marks: marks, got: got };
+}
+
+/** Заплановані справи (LEDGER_TODO + «нагадай») на сьогодні → {lines, marks}. Повторювані — раз на кожен період. */
+function dueTodos_(todos, ev, today) {
+  const lines = [], marks = [], done = (ev._ || {}).rem || {};
+  todos.forEach(function (t) {
+    const d = days_(t[0], today);
+    if (d < 0 || (!t[2] && d > 14)) return;   // давнє одноразове (напр., після перерви) — не засипаємо
+    const key = 'todo:' + t[0] + ':' + String(t[1]).slice(0, 24) + (t[2] ? ':' + Math.floor(d / t[2]) : '');
+    if (!done[key]) { lines.push('📅 ' + t[1]); marks.push(['_', key]); }
+  });
+  return { lines: lines, marks: marks };
+}
+
+function userTodos_() { return JSON.parse(PropertiesService.getScriptProperties().getProperty('USER_TODO') || '[]'); }
+
+// Щодня з 10:00 за Берліном — одне повідомлення «На сьогодні», лише якщо є що робити
+function remindersIfDue_(props, now) {
+  const key = Utilities.formatDate(now, 'Europe/Berlin', 'yyyy-MM-dd');
+  if (Number(Utilities.formatDate(now, 'Europe/Berlin', 'H')) < 10 || props.getProperty('REMIND_SENT') === key) return false;
+  props.setProperty('REMIND_SENT', key);   // спершу ставимо — помилка нижче не засипле повторами кожні 15 хв
+  const rows = ledgerRows_(), ev = events_();
+  const a = dueReminders_(rows, ev, key), b = dueTodos_(LEDGER_TODO.concat(userTodos_()), ev, key);
+  a.got.forEach(function (n) { ev[n] = ev[n] || {}; ev[n].got = key; });
+  a.marks.concat(b.marks).forEach(function (m) {
+    ev[m[0]] = ev[m[0]] || {}; ev[m[0]].rem = ev[m[0]].rem || {}; ev[m[0]].rem[m[1]] = 1;
+  });
+  // закриті рядки більше не потрібні (ліміт властивості 9 КБ)
+  rows.forEach(function (r) {
+    if (ev[r.n] && (['Повернено', 'Скасовано'].indexOf(r.status) >= 0 ||
+        (r.status === 'Продано' && (ev[r.n].sent || (r.sdate && days_(r.sdate, key) > 7))))) delete ev[r.n];
+  });
+  saveEvents_(ev);
+  const lines = a.lines.concat(b.lines);
+  if (lines.length) notify_('📋 На сьогодні:\n\n' + lines.join('\n\n'));
+  return lines.length > 0;
+}
+
+// «отримав 3» / «перевірив 3» / «проблема 3» / «відправив 3»
+function statusCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?(отримав|отримала|перевірив|перевірила|проблема|відправив|відправила)(?=\s|$)\s*(\d{1,4})?/i);
+  if (!m) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID')) || !props.getProperty('LEDGER_ID')) return true;
+  const cmd = m[1].toLowerCase().replace(/ла$/, 'в');
+  if (!m[2]) { notify_('Напиши з номером у таблиці: «' + cmd + ' 3».'); return true; }
+  const n = Number(m[2]), r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
+  const sh = ledger_().getSheetByName('Угоди'), row = n + LEDGER_FIRST - 1, today = iso_(new Date());
+  const e = events_()[n] || {}, name = '№' + n + ' «' + r.title + '»';
+  if (cmd === 'відправив') {
+    if (r.status !== 'Продано') { notify_(name + ' — статус «' + r.status + '», а «відправив» — для проданого.'); return true; }
+    markEvent_(n, 'sent', today);
+    notify_('📮 ' + name + ' — відправлено, більше не нагадую.');
+    return true;
+  }
+  if (['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) >= 0) { notify_(name + ' — статус «' + r.status + '», не змінюю.'); return true; }
+  if (cmd === 'отримав') {
+    sh.getRange(row, COL.status).setValue('Отримано');
+    markEvent_(n, 'got', today);
+    if (r.src === 'Самовивіз Гамбург') notify_('📦 ' + name + ' — отримано.');
+    else { gotNotice_(row); }
+  } else if (cmd === 'перевірив') {
+    sh.getRange(row, COL.status).setValue('Перевірено');
+    markEvent_(n, 'tested', today);
+    notify_('✅ ' + name + ' перевірено. ' + (r.src === 'Kleinanzeigen' ? 'Тепер можна підтвердити отримання в KA. ' : 'Можна залишити відгук. ') +
+            'Продати — «продати ' + n + '».');
+  } else {
+    sh.getRange(row, COL.status).setValue('Проблема');
+    notify_('🚩 ' + name + ' — статус «Проблема». Що робити:\n' + (r.src === 'Kleinanzeigen'
+      ? '• Не підтверджуй отримання. У KA → «Sicher bezahlen» → замовлення → «Problem melden» — до ' + addDays_(e.shipped || r.date, 10) +
+        ' (10 днів від ' + (e.shipped ? 'відправки' : 'покупки') + '); фото/відео дефекту, номер треку.\n• Паралельно напиши продавцю — ' +
+        'часто погоджуються на повернення.'
+      : '• Mein eBay → Käufe → цей товар → «Artikel zurückgeben» / «Problem melden» → «nicht wie beschrieben» (до 30 днів ' +
+        'після доставки); фото/відео дефекту. Продавець має 3 робочі дні, далі можна попросити eBay втрутитися.\n' +
+        '• Відгук — лише після вирішення.') + '\nЦе не юридична порада — лише як працює захист покупця.');
+  }
+  return true;
+}
+
+// «нагадай 20.10 текст» → нагадування того дня о 10:00; «нагадування» — список запланованого
+function todoCommand_(msg) {
+  const text = String(msg.text || '').trim();
+  const list = /^\/?нагадування(?=\s|$)/i.test(text);
+  const m = text.match(/^\/?нагадай(?=\s|$)\s*(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\s+([\s\S]{2,300})$/i);
+  if (!list && !/^\/?нагадай(?=\s|$)/i.test(text)) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID'))) return true;
+  const today = iso_(new Date());
+  if (list) {
+    const ev = events_(), done = (ev._ || {}).rem || {};
+    const items = LEDGER_TODO.concat(userTodos_()).filter(function (t) { return t[2] || days_(t[0], today) <= 0; })
+      .map(function (t) {
+        const next = t[2] && days_(t[0], today) > 0 ? iso_(new Date(Date.parse(t[0]) + Math.ceil(days_(t[0], today) / t[2]) * t[2] * 86400000)) : t[0];
+        return [next, t[1] + (t[2] ? ' (кожні ' + t[2] + ' дн.)' : '')];
+      })
+      .sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
+    notify_(items.length ? '📅 Заплановано:\n' + items.map(function (t) { return '• ' + addDays_(t[0], 0) + ' — ' + t[1]; }).join('\n')
+      : 'Нічого не заплановано. Додай: «нагадай 20.10 текст».');
+    return true;
+  }
+  if (!m) { notify_('Напиши так: «нагадай 20.10 забрати посилку» — дата і текст.'); return true; }
+  let y = m[3] ? Number(m[3].length === 2 ? '20' + m[3] : m[3]) : Number(today.slice(0, 4));
+  let iso = y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  if (isNaN(Date.parse(iso)) || Number(m[2]) > 12 || Number(m[1]) > 31) { notify_('Не зрозумів дату «' + m[1] + '.' + m[2] + '».'); return true; }
+  if (!m[3] && iso < today) iso = (y + 1) + iso.slice(4);
+  const todos = userTodos_().filter(function (t) { return days_(t[0], today) > -15; });   // давні прибираємо
+  todos.push([iso, m[4].trim()]);
+  props.setProperty('USER_TODO', JSON.stringify(todos.slice(-40)));
+  notify_('📅 Нагадаю ' + addDays_(iso, 0) + (iso.slice(0, 4) !== today.slice(0, 4) ? '.' + iso.slice(0, 4) : '') + ' о 10:00: ' + m[4].trim());
   return true;
 }
