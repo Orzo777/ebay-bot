@@ -10,8 +10,11 @@ from console_alert import evaluate_console
 from ram_alert import evaluate, refine_by_desc
 from ram_parse import parse_title
 
+import console_alert
+
 EV = lambda t, p, vb=False: evaluate_console(t, p, vb=vb) or evaluate(t, p, vb=vb)
 bad = 0
+_switch1_saved, console_alert.SWITCH1_ON = console_alert.SWITCH1_ON, True   # кейси першої Switch (вимкнена 04.10)
 
 
 def chk(t, p, want_send, d=None):
@@ -119,6 +122,9 @@ for t, p in [("Sony PlayStation 5 Slim Disc 1TB", 300), ("PS5 Konsole weiß", 28
 chk("PlayStation 5 mit 2 Controllern", 300, True, "Konsole läuft einwandfrei, zwei Controller dabei")
 chk("PlayStation 5 mit 2 Controllern", 300, False, "Spiel für die PS5 Konsole")
 chk("Verkaufe meine PS5", 300, True, "Die PS5 mit Controller und Kabel")
+
+
+console_alert.SWITCH1_ON = _switch1_saved
 
 
 class TestAuditCases(unittest.TestCase):

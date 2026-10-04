@@ -9,6 +9,16 @@ sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 from ka_share import evaluate_listing, listing_url, parse_page
 
+# Перша Switch вимкнена 04.10 (console_alert.SWITCH1_ON); ці тести стережуть логіку її розпізнавання — на час модуля вмикаємо
+def setUpModule():
+    import console_alert
+    console_alert._switch1_saved, console_alert.SWITCH1_ON = console_alert.SWITCH1_ON, True
+
+
+def tearDownModule():
+    import console_alert
+    console_alert.SWITCH1_ON = console_alert._switch1_saved
+
 
 def page(title, price="350 €", shipping='<span class="boxedarticle--details--shipping"> + Versand ab 2,99 €</span>',
          seller="Privater Nutzer", since="16.07.2019",

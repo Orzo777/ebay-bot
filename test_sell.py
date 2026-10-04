@@ -9,6 +9,16 @@ sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 import sell
 
+# Перша Switch вимкнена 04.10 (console_alert.SWITCH1_ON); ці тести стережуть логіку її розпізнавання — на час модуля вмикаємо
+def setUpModule():
+    import console_alert
+    console_alert._switch1_saved, console_alert.SWITCH1_ON = console_alert.SWITCH1_ON, True
+
+
+def tearDownModule():
+    import console_alert
+    console_alert.SWITCH1_ON = console_alert._switch1_saved
+
 # Той самий вектор, що в tools/test_sell.js (зашифрував Apps Script-код ledger.gs) — сумісність JS ↔ Python
 VECTOR = ("ckNGkBdsfkbzaDMDdkUQy2CAcFUVcmcL47hP7XagKCLHDNhFMfmX+ODbR4DI3gCFZpjESsJhH5H5",
           "61231ce607032562185d2078ff7a8ccd", "123:ABC", "n0nce")

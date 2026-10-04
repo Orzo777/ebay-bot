@@ -141,7 +141,7 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
                  f"в оголошенні (продається за {res['quick_sale']}–{res['median_sale']} €).")
         head += bargain_line(res, info["price"], cap_item)
     elif res["verdict"] == "UNKNOWN" and not re.search(r"ddr|\bram\b|arbeitsspeicher|so-?dimm|speicher", info["title"], re.I):
-        head += ("\nЦей товар бот не оцінює. Оцінює: оперативку, Xbox Series X, PS5, Nintendo Switch / Switch 2 "
+        head += ("\nЦей товар бот не оцінює. Оцінює: оперативку, Xbox Series X, PS5, Nintendo Switch 2 "
                  "(і цілі ПК у ПК-боті). Інше ми досліджували — маржі на Kleinanzeigen немає.")
     elif res.get("reason"):
         head += f"\n{escape(res['reason'])}"

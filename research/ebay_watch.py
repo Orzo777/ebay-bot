@@ -429,9 +429,9 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
 # 29.09 (прохання користувача): сповіщення в ОСТАННІ хвилини — ставка вже майже кінцева, а пізня ставка не провокує
 # торг (конкуренти не встигають перебити). Вікно 20 хв > інтервал аукціонних запитів (~6 хв, через коло) + пауза між запусками Actions (1–3 хв):
 # гарантовано встигаємо хоча б раз. Раніше 2 хв — уже пізно (Telegram + відкрити eBay + поставити ставку).
-# Усі наші категорії: RAM DDR4/DDR5, Xbox Series X, PS5, Switch 2 і перша Switch (OLED / V1-V2 / Lite).
+# Усі наші категорії: RAM DDR4/DDR5, Xbox Series X, PS5, Switch 2 (першу Switch не купуємо з 04.10).
 AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 480),
-                   ("(xbox series x, ps5, playstation 5, switch 2, nintendo switch, switch oled, switch lite)", CONSOLE_CAT, 1, 420)]
+                   ("(xbox series x, ps5, playstation 5, switch 2)", CONSOLE_CAT, 1, 420)]
 AUCTION_MINUTES = (2, 20)
 
 

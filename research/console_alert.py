@@ -10,6 +10,7 @@ evaluate_console() повертає None, якщо назва — не Xbox Seri
 Ручна перевірка:
     python research/console_alert.py "Xbox Series X 1TB mit Controller" 290
 """
+import os
 import re
 
 from ram_alert import buy_cost, tier
@@ -317,6 +318,7 @@ SWITCH_OLED = dict(p25=150, med=170, st=37, name="Nintendo Switch OLED (вжив
 SWITCH_V2 = dict(p25=107, med=125, st=31, name="Nintendo Switch V1/V2 (вживана)", ship=7.69, ship_in=7.0, min=50)
 SWITCH_LITE = dict(p25=85, med=98, st=35, name="Nintendo Switch Lite (вживана)", ship=6.19, ship_in=5.5, min=30)
 SHIP_SWITCH, SHIP_IN_SWITCH = SWITCH2["ship"], SWITCH2["ship_in"]
+SWITCH1_ON = os.getenv("SWITCH1_ON", "0") == "1"   # перша Switch вимкнена 04.10; «1» — повернути оцінку
 _SWITCH2 = re.compile(r"switch\s?-?\s?2(?!\d|[.,]\d)", re.I)   # «Switch 2Schwarz», «Switch-2» (eBay 29.09)
 # «Nitendo Switch», «Nintedo Switch», «Switch 1» (eBay 28.09)
 _SWITCH1 = re.compile(r"\bni\w{3,6}do\s*switch|switch\s*(?:oled|lite|v\s?[12]\b|[1]\b|konsole|console)", re.I)
@@ -363,6 +365,10 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
         # «Nintendo Switch Mario Kart 8 Deluxe» — гра з назвою платформи; консоль видно лише з моделі чи комплекту
         if not _SWITCH1_EVIDENCE.search(title):
             return _skip(title, price, "з назви не видно, що це консоль (схоже на гру для Switch)")
+        # 04.10 (рішення користувача): першу Switch не купуємо — заробіток 15–30 €, ціна падає, на аукціонах іде за ринковою
+        # (V1/V2 за ~80 €), а V1/V2 плутають зі Switch 2. Розпізнаємо лише, щоб не прийняти за Switch 2 / RAM.
+        if not SWITCH1_ON:
+            return _skip(title, price, "перша Switch (V1/V2, OLED, Lite) — не купуємо: маржа мінімальна (04.10)")
         weak = not _SWITCH1_STRONG.search(title)
         inc = _SWITCH1_INCOMPLETE.search(title)
         if inc and inc.group(0).lower().startswith("nur"):
@@ -409,8 +415,9 @@ evaluate_switch2 = evaluate_switch   # стара назва (тести, ka_sha
 # research/price_refresh.py щодня зсуває p25/медіану разом з цінами вживаних консолей на eBay (як для RAM). Словники типів
 # оновлюються НА МІСЦІ (на них посилаються за тотожністю: «real is SWITCH2»). Знімок Terapeak у коді змінився —
 # поправку з файлу ігноруємо, доки сторож не перерахує. RAM_PRICES_OFF=1 — лише цифри Terapeak (тести).
-CONSOLE_TYPES = {"XBOX_SERIES_X": XBOX_SERIES_X, "PS5_DISC": PS5_DISC, "PS5_DIGITAL": PS5_DIGITAL, "SWITCH2": SWITCH2,
-                 "SWITCH_OLED": SWITCH_OLED, "SWITCH_V2": SWITCH_V2, "SWITCH_LITE": SWITCH_LITE}
+CONSOLE_TYPES = {"XBOX_SERIES_X": XBOX_SERIES_X, "PS5_DISC": PS5_DISC, "PS5_DIGITAL": PS5_DIGITAL, "SWITCH2": SWITCH2}
+if SWITCH1_ON:
+    CONSOLE_TYPES.update(SWITCH_OLED=SWITCH_OLED, SWITCH_V2=SWITCH_V2, SWITCH_LITE=SWITCH_LITE)
 CONSOLE_BASE = {k: (v["p25"], v["med"]) for k, v in CONSOLE_TYPES.items()}
 
 

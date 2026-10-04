@@ -58,6 +58,9 @@ CONSOLE_QUERIES = {   # ключ як у console_alert.CONSOLE_TYPES → зап�
     "SWITCH2": "nintendo switch 2 konsole", "SWITCH_OLED": "nintendo switch oled konsole",
     "SWITCH_V2": "nintendo switch konsole", "SWITCH_LITE": "nintendo switch lite",
 }
+# перша Switch не купується з 04.10 — її ціни не оновлюємо (SWITCH1_ON=1 у console_alert поверне і цей рядок)
+if os.getenv("SWITCH1_ON", "0") != "1":
+    CONSOLE_QUERIES = {k: v for k, v in CONSOLE_QUERIES.items() if not k.startswith("SWITCH_")}
 # Типи, яких ми НЕ купуємо (на 21–26.09 продавались дешево/рідко) — раз на місяць дивимось, чи не подорожчали
 CANDIDATES = {
     ("ddr4", "udimm", False, 16, 2): "DDR4 16GB 2x8GB",

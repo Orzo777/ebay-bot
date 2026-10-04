@@ -105,6 +105,21 @@ class TestPhotoCheck(unittest.TestCase):
                                            label_text="16GB 2Rx8 PC4-2666V-EE1-11 HMA82GU7CJR8N-VK"))[0], [])
         self.assertEqual(compare(exp, dict(ok, ram_server=True, label_text="16GB 2Rx8 PC4-2666V-EE1-11"))[0], [])
 
+    def test_first_switch_not_bought(self):
+        # 04.10 (рішення користувача): перша Switch — маржа 15–30 €, на аукціонах за ринковою ціною, плутанина з V1/V2 і Switch 2
+        import console_alert
+        import ebay_watch
+        import price_refresh
+        self.assertFalse(console_alert.SWITCH1_ON)
+        for t, p in [("Nintendo Switch V2 Konsole mit Dock", 50), ("Nintendo Switch OLED weiß", 70), ("Nintendo Switch Lite grau", 35)]:
+            r = evaluate_console(t, p)
+            self.assertEqual(r["verdict"], "SKIP", t)
+            self.assertIn("перша Switch", r["reason"], t)
+        self.assertIn("Switch 2", evaluate_console("Nintendo Switch 2 Konsole mit Mario Kart", 250)["type"])
+        self.assertIn("з назви не видно", evaluate_console("Mario Kart 8 Deluxe Nintendo Switch", 30)["reason"])   # гра — як гра
+        self.assertNotIn("switch oled", ebay_watch.AUCTION_QUERIES[1][0])
+        self.assertEqual(sorted(price_refresh.CONSOLE_QUERIES), ["PS5_DIGITAL", "PS5_DISC", "SWITCH2", "XBOX_SERIES_X"])
+
     def test_ka_images(self):
         page = ('x https://img.kleinanzeigen.de/api/v1/prod-ads/images/35/35a26f80-95c0-4f6c-b0e1-53177f8aa286?rule=$_59.AUTO '
                 'https://img.kleinanzeigen.de/api/v1/prod-ads/images/35/35a26f80-95c0-4f6c-b0e1-53177f8aa286?rule=$_57.AUTO '

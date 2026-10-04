@@ -9,6 +9,16 @@ sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 from ebay_watch import decide, evaluate_ebay, format_card, listing_of, offer_ebay, prune, risk_of
 
+# Перша Switch вимкнена 04.10 (console_alert.SWITCH1_ON); ці тести стережуть логіку її розпізнавання — на час модуля вмикаємо
+def setUpModule():
+    import console_alert
+    console_alert._switch1_saved, console_alert.SWITCH1_ON = console_alert.SWITCH1_ON, True
+
+
+def tearDownModule():
+    import console_alert
+    console_alert.SWITCH1_ON = console_alert._switch1_saved
+
 NOW = datetime(2026, 9, 27, 14, 0, tzinfo=timezone.utc)
 
 

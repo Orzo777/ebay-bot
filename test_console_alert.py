@@ -10,6 +10,16 @@ sys.path.insert(0, "research")
 from console_alert import SUSPICIOUS_BELOW, evaluate_console
 from ram_alert import buy_cost, desc_facts, evaluate, format_html, offer_price, offer_template, seller_template
 
+# Перша Switch вимкнена 04.10 (console_alert.SWITCH1_ON); ці тести стережуть логіку її розпізнавання — на час модуля вмикаємо
+def setUpModule():
+    import console_alert
+    console_alert._switch1_saved, console_alert.SWITCH1_ON = console_alert.SWITCH1_ON, True
+
+
+def tearDownModule():
+    import console_alert
+    console_alert.SWITCH1_ON = console_alert._switch1_saved
+
 
 def verdict(title, price):
     r = evaluate_console(title, price)
