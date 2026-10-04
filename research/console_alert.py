@@ -308,10 +308,14 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
 # але «нова в плівці» за пів ціни (роздріб ~€500) — типовий шаблон шахраїв. Перша Switch дешевшає (OLED −17%,
 # Lite −23% за рік) і на KA зазвичай дорожча за стелю — оцінюємо, щоб дати пораду «вигідно лише до …»,
 # картки йдуть лише при реальній маржі. Легші за Xbox/PS5: DHL Paket до 5 кг €7.69 (Lite — до 2 кг €6.19).
-SWITCH2 = dict(p25=382, med=389, st=25, name="Nintendo Switch 2 (вживана)", ship=7.69, ship_in=7.0, min=150)
-SWITCH_OLED = dict(p25=162, med=172, st=25, name="Nintendo Switch OLED (вживана)", ship=7.69, ship_in=7.0, min=60)
-SWITCH_V2 = dict(p25=131, med=140, st=20, name="Nintendo Switch V1/V2 (вживана)", ship=7.69, ship_in=7.0, min=50)
-SWITCH_LITE = dict(p25=82, med=92, st=25, name="Nintendo Switch Lite (вживана)", ship=6.19, ship_in=5.5, min=30)
+# 04.10: продані вживані на eBay.de за 30 днів (сторінка «Verkaufte Artikel», 7 166 продажів за 90 днів, класифіковано за
+# моделлю): Switch 2 — 363 шт. (p25 370, медіана 390, ціна росте; активних лише ~60 — розкуповують за дні);
+# OLED — 386 (150/170, −4% за 3 міс.), V1/V2 — 716 (107/125), Lite — 239 (85/98). st — % проданих від (продані + активні):
+# Switch 2 85%, решта 31–37% — продається, якщо ціна на рівні продажів (активні оголошення — на 30–50% дорожчі і висять).
+SWITCH2 = dict(p25=370, med=390, st=85, name="Nintendo Switch 2 (вживана)", ship=7.69, ship_in=7.0, min=150)
+SWITCH_OLED = dict(p25=150, med=170, st=37, name="Nintendo Switch OLED (вживана)", ship=7.69, ship_in=7.0, min=60)
+SWITCH_V2 = dict(p25=107, med=125, st=31, name="Nintendo Switch V1/V2 (вживана)", ship=7.69, ship_in=7.0, min=50)
+SWITCH_LITE = dict(p25=85, med=98, st=35, name="Nintendo Switch Lite (вживана)", ship=6.19, ship_in=5.5, min=30)
 SHIP_SWITCH, SHIP_IN_SWITCH = SWITCH2["ship"], SWITCH2["ship_in"]
 _SWITCH2 = re.compile(r"switch\s?-?\s?2(?!\d|[.,]\d)", re.I)   # «Switch 2Schwarz», «Switch-2» (eBay 29.09)
 # «Nitendo Switch», «Nintedo Switch», «Switch 1» (eBay 28.09)

@@ -30,14 +30,14 @@ for d in ["Verkauft wird nur das Tablet, ohne Dock und ohne Joy-Con 2", "ohne Do
 for t, p in [("Nintendo Switch OLED nur Konsole, keine Joy-Cons", 90), ("Nintendo Switch V2 nur Konsole keine Joy-Con kein Dock", 70),
              ("Nintendo Switch nur Konsole mit Ladekabel", 70), ("Nintendo Switch OLED nur Konsole + Hülle", 90)]:
     chk(t, p, False)
-for t, p in [("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 90), ("Nintendo Switch V2 nur Konsole, keine Spiele", 70)]:
+for t, p in [("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 80), ("Nintendo Switch V2 nur Konsole, keine Spiele", 55)]:
     chk(t, p, True)
 for t, p in [("Xbox Series X Videospiele", 150), ("PS5 Videospiele Paket 8 Stück", 150), ("Nintendo Switch 2 Videospiele Bundle 3 Stück", 200),
              ("CRKD Nitro Deck Switch OLED", 70), ("Nitro Deck Nintendo Switch & Switch OLED Handheld Controller", 65),
              ("Ring Fit Adventure Nintendo Switch OLED kompatibel", 65), ("Nintendo Switch 2 Displayriss", 250), ("Xbox Series X Displaybruch", 250)]:
     chk(t, p, False)
-for t, p in [("PS5 Slim Disc + 2 Controller + 3 Videospiele", 250), ("Nintendo Switch OLED + Ring Fit Adventure + 2 Spiele", 100),
-             ("PS5 Slim Disc 1TB Risse: keine", 300), ("Nintendo Switch OLED keine Kratzer, Dellen oder Risse", 100),
+for t, p in [("PS5 Slim Disc + 2 Controller + 3 Videospiele", 250), ("Nintendo Switch OLED + Ring Fit Adventure + 2 Spiele", 80),
+             ("PS5 Slim Disc 1TB Risse: keine", 300), ("Nintendo Switch OLED keine Kratzer, Dellen oder Risse", 80),
              ("Xbox Series X 1TB + 3 Konsolenspiele", 250), ("Microsoft Xbox Series X 1TB Videospielkonsole - Schwarz", 250)]:
     chk(t, p, True)
 chk("Konsolen Spiele Konvolut / Xbox360, Ps4 und Nintendo Switch - gebraucht", 60, False)
@@ -50,8 +50,8 @@ for t, p, d in [("Mario Kart 8 Deluxe Nintendo Switch Zustand gut", 55, "Spiel i
     chk(t, p, False, d)
 for t, p, d in [("Nintendo Switch - Pikachu & Evoli Edition Spielepacket+ 2 Controller u. Pokeball", 50,
                  "Nintendo Switch Konsole mit Dockingstation. Das Spiel Renzo Racing (nur Modul) ist dabei."),
-                ("Nintendo Switch In Topzustand", 70, "Mit Ladestation, Netzkabel und zusätzlichen Controllern"),
-                ("Nintendo Switch mit Schutztasche", 80, "Die Konsole funktioniert einwandfrei")]:
+                ("Nintendo Switch In Topzustand", 55, "Mit Ladestation, Netzkabel und zusätzlichen Controllern"),
+                ("Nintendo Switch mit Schutztasche", 55, "Die Konsole funktioniert einwandfrei")]:
     chk(t, p, True, d)
 (lambda *a, **k: None)("RAM:")
 cases = {"Kingston Fury DDR5 32GB (2x16GB) – keine Einzelriegel": (32, 2), "Kingston Fury DDR5 32GB (2x16GB), Einzelriegel auch möglich": (32, 2),
@@ -87,14 +87,14 @@ for t, p in [("Nintendo Switch OLED Reparatur", 100), ("PS5 Reparatur HDMI", 150
              ("CRKD Nitro Deck für Nintendo Switch OLED Konsole", 60), ("Ring Fit Adventure für Nintendo Switch Konsole", 55),
              ("Switch OLED Display Haarriss", 100), ("PS5 Slim Display zersprungen", 250)]:
     chk(t, p, False)
-for t, p in [("Xbox Series X 1TB + 3 Konsolenspiele", 250), ("Nintendo Switch OLED ohne Kratzer, Dellen, Brüche oder Risse", 100),
-             ("Nintendo Switch, 3 Controller, RingFit, Tasche und Dock", 70), ("Nintendo Switch OLED weiß, CRKD Nitro Deck", 100),
-             ("Nintendo Switch nur Konsole & Dock", 70), ("Nintendo Switch nur Konsole, Joy-Cons und Dock", 70),
+for t, p in [("Xbox Series X 1TB + 3 Konsolenspiele", 250), ("Nintendo Switch OLED ohne Kratzer, Dellen, Brüche oder Risse", 80),
+             ("Nintendo Switch, 3 Controller, RingFit, Tasche und Dock", 55), ("Nintendo Switch OLED weiß, CRKD Nitro Deck", 80),
+             ("Nintendo Switch nur Konsole & Dock", 55), ("Nintendo Switch nur Konsole, Joy-Cons und Dock", 55),
              ("PS5 Slim Disc 1TB, Preis pro Stück", 280), ("PS5 Konsole unbeschädigt", 280),
              ("Xbox Series X Verkauf geht aus gesundheitlichen Gründen", 280)]:
     chk(t, p, True)
-for t, p, d in [("Nintendo Switch mit Schutztasche", 80, "Konsole keine Kratzer und im Top-Zustand, TV- und Handheld-Modus"),
-                ("Nintendo Switch mit Schutztasche", 80, "Die Konsole ist nicht im Originalkarton, Dock und Joy-Cons dabei")]:
+for t, p, d in [("Nintendo Switch mit Schutztasche", 55, "Konsole keine Kratzer und im Top-Zustand, TV- und Handheld-Modus"),
+                ("Nintendo Switch mit Schutztasche", 55, "Die Konsole ist nicht im Originalkarton, Dock und Joy-Cons dabei")]:
     chk(t, p, True, d)
 cases14 = {"DDR5 32GB Einzelriegel (aus 2x32GB Kit) Corsair": (32, 1), "Kingston Fury DDR5 16GB Einzelmodul aus 2x16GB Kit": (16, 1),
            "G.Skill DDR5 16GB Einzelriegel (1x16GB aus 2x16GB)": (16, 1), "G.Skill DDR4 32GB aus Set 2x16GB": (32, 2)}

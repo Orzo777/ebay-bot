@@ -319,23 +319,23 @@ class TestPass12Regressions(unittest.TestCase):
         return r["verdict"]
 
     def test_weak_switch_confirmed_by_description(self):
-        self.assertNotEqual(self._ev("Nintendo Switch mit Schutztasche", 80, "Die Konsole funktioniert, mit Dock und Joy-Cons"), "SKIP")
-        self.assertNotEqual(self._ev("Nintendo Switch Grau sehr guter Zustand", 60, "Nintendo Switch Konsole mit Ladekabel"), "SKIP")
+        self.assertNotEqual(self._ev("Nintendo Switch mit Schutztasche", 55, "Die Konsole funktioniert, mit Dock und Joy-Cons"), "SKIP")
+        self.assertNotEqual(self._ev("Nintendo Switch Grau sehr guter Zustand", 55, "Nintendo Switch Konsole mit Ladekabel"), "SKIP")
 
     def test_not_rejected(self):
         for t, p in [("Microsoft Xbox Series X 1TB Videospielkonsole - Schwarz", 250), ("PS5 Slim Disc + 2 Controller + 3 Videospiele", 250),
-                     ("Nintendo Switch OLED Konvolut mit 5 Spielen", 100), ("Xbox Series X 1TB – kein Riss, keine Kratzer", 250),
+                     ("Nintendo Switch OLED Konvolut mit 5 Spielen", 80), ("Xbox Series X 1TB – kein Riss, keine Kratzer", 250),
                      ("Nintendo Switch 2 NEU OVP Siegel nicht gebrochen", 250), ("PS5 Disc Edition Siegel ungebrochen NEU OVP", 250),
-                     ("Nintendo Switch OLED + Ring Fit Adventure + 2 Spiele", 100), ("Xbox Series X Konvolut mit 2 Controllern", 250),
-                     ("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 90), ("Nintendo Switch V2 nur Konsole, keine Spiele", 70),
+                     ("Nintendo Switch OLED + Ring Fit Adventure + 2 Spiele", 80), ("Xbox Series X Konvolut mit 2 Controllern", 250),
+                     ("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 80), ("Nintendo Switch V2 nur Konsole, keine Spiele", 55),
                      ("Nintendo Switch Lite nur Konsole", 40), ("Nintendo Switch Lite grau ohne Zubehör", 40)]:
             self.assertNotEqual(self._ev(t, p), "SKIP", t)
 
     def test_description_not_incomplete(self):
         for d in ["Funktioniert einwandfrei ohne Probleme im Dock", "laufen ohne Joy-Con Drift", "Switch wie neu, ohne Kratzer am Dock",
                   "Versand ohne Dock möglich", "Verkauft wird nur die Konsole, Dock, Joy-Cons und Netzteil"]:
-            self.assertNotEqual(self._ev("Nintendo Switch Konsole V2 32GB", 70, d), "SKIP", d)
-        self.assertEqual(self._ev("Nintendo Switch Konsole V2 32GB", 70, "Lieferung ohne Joycons, Dock und Ladekabel"), "SKIP")
+            self.assertNotEqual(self._ev("Nintendo Switch Konsole V2 32GB", 55, d), "SKIP", d)
+        self.assertEqual(self._ev("Nintendo Switch Konsole V2 32GB", 55, "Lieferung ohne Joycons, Dock und Ladekabel"), "SKIP")
 
 
 class TestSwitch2Games0110(unittest.TestCase):
