@@ -1,7 +1,9 @@
-"""docs/PROJECT.md → docs/ebay-bot-overview.pdf (reportlab, шрифт DejaVu з кирилицею).
+"""docs/*.md → PDF (reportlab, шрифт DejaVu з кирилицею).
 
-Підтримує те, що є в PROJECT.md: заголовки #/##/###, абзаци, списки «- » (з вкладеністю), таблиці «| … |», блоки ```.
-    python tools/make_overview_pdf.py
+Підтримує заголовки #/##/###, абзаци, списки «- » (з вкладеністю), таблиці «| … |», блоки ```.
+    python tools/make_overview_pdf.py                 # docs/PROJECT.md → docs/ebay-bot-overview.pdf
+    python tools/make_overview_pdf.py --all           # плюс шпаргалки docs/guide-*.md → docs/guide-*.pdf
+    python tools/make_overview_pdf.py docs/guide-ram.md docs/guide-ram.pdf
 """
 import os
 import re
@@ -77,8 +79,8 @@ def table(rows):
     return t
 
 
-def build():
-    lines = open(SRC, encoding="utf-8").read().split("\n")
+def build(src: str = SRC, out: str = OUT):
+    lines = open(src, encoding="utf-8").read().split("\n")
     story, i, para = [], 0, []
     title = lines[0].lstrip("# ").strip()
     updated = next((ln for ln in lines if ln.startswith("Останнє оновлення")), "")
@@ -143,15 +145,22 @@ def build():
         c.saveState()
         c.setFont("DV", 7.5)
         c.setFillColor(colors.grey)
-        c.drawString(18 * mm, 10 * mm, "ebay-bot — опис проєкту")
+        c.drawString(18 * mm, 10 * mm, "ebay-bot — " + title[:70])
         c.drawRightString(A4[0] - 18 * mm, 10 * mm, str(d.page))
         c.restoreState()
 
-    doc = SimpleDocTemplate(OUT, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm,
+    doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm,
                             bottomMargin=16 * mm, title=title, author="ebay-bot")
     doc.build(story, onFirstPage=lambda c, d: None, onLaterPages=page)
-    print(OUT)
+    print(out)
 
 
 if __name__ == "__main__":
-    build()
+    import glob
+    if len(sys.argv) == 3:
+        build(sys.argv[1], sys.argv[2])
+    else:
+        build()
+        if "--all" in sys.argv:
+            for md in sorted(glob.glob(os.path.join(ROOT, "docs", "guide-*.md"))):
+                build(md, md[:-3] + ".pdf")
