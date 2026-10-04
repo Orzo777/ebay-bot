@@ -1,0 +1,51 @@
+name: deploy_apps_script
+
+# Автооновлення Apps Script (04.10): зміна tools/*.gs у main → тести Apps Script → tools/deploy_apps_script.py заливає
+# код у проєкт, створює версію і переводить на неї вебзастосунок (адреса вебхука та сама). Результат — у бот «Облік і
+# продаж». Секрети: CLASPRC_JSON (вміст ~/.clasprc.json після clasp login з вузькими правами), APPS_SCRIPT_ID.
+# Репозиторій публічний — у лог лише назви файлів і номер версії.
+
+on:
+  push:
+    branches: [main]
+    paths: ["tools/*.gs"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Лише показати, що змінилось би"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy_apps_script
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Self-check (Apps Script tests)
+        run: |
+          for t in tools/test_*.js; do node "$t" || exit 1; done
+          python -m unittest test_deploy_apps_script
+
+      - name: Deploy
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
+        run: python tools/deploy_apps_script.py ${{ inputs.dry_run && '--dry-run' || '' }}
