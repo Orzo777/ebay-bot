@@ -28,6 +28,13 @@ p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Bestellbestätigung für: Corsai
   'Bestellnummer:\n02-15262-92402\nVerkäufer:\nbrhi-3585\neBay-Käuferschutz\nEinzelheiten zum Kauf ansehen\n' +
   'Gesamtbetrag:\nZwischensumme\nEUR 64,44\nVersand\nEUR 6,19\nGesamtbetrag wird abgebucht von\nEUR 70,63'));
 check('ebay purchase 03.10 format', [p.kind, p.id, p.price, p.ship, p.fee, p.total], ['purchase', '860004357101', 64.44, 6.19, null, 70.63]);
+// тема обрізана eBay («…LP...») — повна назва з тексту листа, інакше категорія «Інше» (03.10)
+p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Bestellbestätigung für: Corsair Vengeance LP...',
+  'Einzelheiten zu Ihrem Kauf\nCorsair Vengeance LPX 32GB (2x16GB) DDR4-3200 PC4-25600 DIMM 288-Pin XMP\nPreis:\nEUR 64,44'));
+check('truncated subject title', [p.title, ctx.category_(p.title)],
+  ['Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200 PC4-25600 DIMM 288-Pin XMP', 'RAM']);
+p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Bestellbestätigung für: Corsair Vengeance LP...', 'Preis: EUR 64,44'));
+check('truncated, no body line', p.title, 'Corsair Vengeance LP...');
 p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Bestellbestätigung für: RAM', 'Zwischensumme EUR 40,00\nVersand EUR 5,00\nSumme EUR 45,00'));
 check('Summe is not Zwischensumme', [p.price, p.ship, p.total], [40, 5, 45]);
 

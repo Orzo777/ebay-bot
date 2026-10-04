@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-03a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-04a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -276,6 +276,14 @@ function parseMail_(msg) {
               (subject.indexOf(':') >= 0 ? subject.slice(subject.indexOf(':') + 1)
                : subject.replace(/^.*?(?:bestätigung|bestätigt|verkauft|gekauft|versandt|versendet|zugestellt|storniert)\s+(?:für\s+)?/i, ''));
   title = title.replace(/\s+/g, ' ').trim().slice(0, 150);
+  // eBay обрізає назву в темі («Corsair Vengeance LP...», 03.10 — без «DDR4» категорія вийшла «Інше», а «продати N» не
+  // впізнав би товар): повна назва — рядок тексту листа, що починається так само
+  const cut = title.match(/^(.{8,}?)\s*(?:\.\.\.|…)$/);
+  if (cut) {
+    const full = body.split('\n').map(function (s) { return s.replace(/\s+/g, ' ').trim(); })
+      .filter(function (s) { return s.length > cut[1].length && s.indexOf(cut[1]) === 0; })[0];
+    if (full) title = full.slice(0, 150);
+  }
   const total = amountAfter_(body, 'Gesamtbetrag|Gesamtsumme|Bestellsumme|Gesamt|Summe|Total');
   const ship = amountAfter_(body, 'Verpackung und Versand|Versandkosten|Versand');
   let price = amountAfter_(body, 'Artikelpreis|Kaufpreis|Verkaufspreis|Sofort-Kaufen-Preis|Preis');
