@@ -108,7 +108,7 @@ def nice(p: float) -> int:
 def competitor_query(r: dict) -> tuple[str, str]:
     if r["kind"] == "ram":
         s = r["spec"]
-        form = "so-dimm" if s["form"] == "sodimm" else ""
+        form = "so-dimm" if s["form"] == "sodimm" else "ecc udimm" if s.get("ecc_udimm") else ""   # ECC — свої конкуренти
         return f"{s['gen']} {s['total']}gb {form}".strip(), RAM_CAT
     t = r["type"]
     q = ("xbox series x" if "Xbox" in t else "ps5 digital" if "Digital" in t else "ps5" if "PS5" in t else
@@ -221,7 +221,8 @@ def ram_texts(title: str, r: dict) -> dict:
     brand = s.get("brand") if s.get("brand") not in (None, "other") else ""
     head = _brand_series(title, brand)
     dev = _for_device(title)
-    form = "SO-DIMM Laptop RAM" if lap else "DIMM Desktop RAM"
+    ecc = bool(s.get("ecc_udimm"))   # 04.10: ECC без буфера — пишемо в назві, шукають за «ECC UDIMM» (сервери, NAS)
+    form = "SO-DIMM Laptop RAM" if lap else "ECC Unbuffered DIMM" if ecc else "DIMM Desktop RAM"
     parts = [head, cap, gen + (f"-{speed}" if speed else ""), form]
     t = re.sub(r"\s+", " ", " ".join(p for p in parts if p)).strip()
     if dev and len(t) + len(dev) + 5 <= 80:
@@ -235,7 +236,9 @@ def ram_texts(title: str, r: dict) -> dict:
     pn = _part_number(title)
     lines = [f"Verkauft wird {'ein Kit' if mods > 1 else 'ein Modul'}: {head + ' ' if head else ''}{cap} {gen} {form}.", "",
              f"• Kapazität: {total} GB" + (f" ({mods} × {per} GB)" if mods > 1 else ""),
-             f"• Typ: {gen} {'SO-DIMM (Laptop' + (', ' + dev if dev else '') + ')' if lap else 'DIMM (Desktop-PC)'}",
+             f"• Typ: {gen} {'SO-DIMM (Laptop' + (', ' + dev if dev else '') + ')' if lap else 'ECC UDIMM (unbuffered, ungepuffert)' if ecc else 'DIMM (Desktop-PC)'}",
+             *(["• ECC ohne Buffer: für Server, NAS und Workstations; läuft in den meisten Desktop-PCs (Intel ohne ECC-Funktion)"]
+               if ecc else []),
              *([f"• Geschwindigkeit: {speed} MHz ({pc})"] if speed else []),
              *([f"• Teilenummer: {pn}"] if pn else []),
              "• Zustand: gebraucht, voll funktionsfähig, getestet", "",

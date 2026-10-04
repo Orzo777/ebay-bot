@@ -34,13 +34,23 @@ LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|
 # Серверні (Registered ECC) модулі за номером або кодом на наклейці: Samsung M393/M391/M321R, SK Hynix HMA…R7, Kingston KSM…R,
 # Micron MTA…72P, Crucial CT…G4R, JEDEC «PC4-2666V-RE1» / «PC4-2133P-RA0» / «PC3-10600R», ранги x4. 03.10: KA «SK Hynix 2x 16GB
 # DDR4 PC4-2666V» за 85 € — RDIMM (HMA82GR7AFR8N, «RE1» лише в описі й на фото), у звичайний ПК не піде.
-SERVER_PART = (r"\bm39[13][ab]|\bm321r|\b\d\s?rx4\b|\d{4}[a-z]{0,2}\s?-\s?r[a-e]\d|\bpc[34]l?-\d{5}r\b|\bhmaa?\w{2,4}r7|"
+SERVER_PART = (r"\bm393[ab]|\bm321r|\b\d\s?rx4\b|\d{4}[a-z]{0,2}\s?-\s?r[a-e]\d|\bpc[34]l?-\d{5}r\b|\bhmaa?\w{2,4}r7|"
                r"\bksm\d{2,3}r|\bmta\d{1,2}as[fq]\w*72p|\bct\d{1,3}g4r")
 SERVER = re.compile(r"\b(rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm|proliant|poweredge|supermicro|xeon|server)\b|"
                     + SERVER_PART, re.I)
 # Опис: лише однозначні ознаки — слова «Server», «Xeon» там бувають і про сумісність; «non-ECC», «unbuffered» — звичайна
 SERVER_DESC = re.compile(r"(?<!non[- ])(?<!non)\b(?:rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg(?:istered)?)\b|"
                          + SERVER_PART, re.I)
+# ECC без буфера (ECC UDIMM): той самий роз'єм, що й звичайна, працює в більшості ПК (AMD — з ECC, Intel — як звичайна);
+# купують і під домашні сервери / NAS / робочі станції. 04.10: eBay «2x16GB SK Hynix DDR4 2666 (HMA82GU7CJR8N)» — «U7» і наклейка
+# «PC4-2666V-EE1» = ECC UDIMM, хоч продавець писав «Non-ECC». Номери: SK Hynix HMA…U7, Samsung M391A / M324R (DDR5),
+# Micron MTA…72AZ, Kingston KSM…E, Crucial CT…G4WF; наклейка JEDEC PC4-xxxxV-Ex1.
+_ECC = r"(?<!non-)(?<!non )(?<!non)\becc\b"
+ECC_UDIMM = re.compile(r"\bhmaa?\w{2,4}u7|\bm391a|\bm324r|\bmta\d{1,2}as[fq]\w*72az|\bksm\d{2,3}e|\bct\d{1,3}g4wf|"
+                       r"\d{4}[a-z]{0,2}\s?-\s?e[a-e]\d|" + _ECC + r"[^|;]{0,25}\b(?:udimm|unbuffered|ungepuffert)|"
+                       r"\b(?:udimm|unbuffered|ungepuffert)\b[^|;]{0,25}" + _ECC, re.I)
+# Однозначно Registered (на відміну від слова «Server», яке пишуть і під ECC UDIMM: «ECC UDIMM … Server RAM»)
+RDIMM_STRICT = re.compile(r"\b(?:rdimm|lrdimm|r-dimm|registered|reg\.?\s?ecc|ecc\s?reg\.?|fb-?dimm)\b|" + SERVER_PART, re.I)
 NOT_SERVER = re.compile(r"unbuffered|ungepuffert|\budimm\b|non[- ]?(?:reg|ecc)|kein\w*\s+(?:server|reg|ecc)|"
                         r"nicht\s+(?:registered|reg\b|für\s+server)", re.I)
 SODIMM = re.compile(r"so-?\s?dimm|\bs[o0]-?ram\b|\bso[\s-]ram\b(?!\s+(?:ist|war|läuft|laeuft))|\bkcp\d{3}s[sd]\d|\b(zephyrus|legion\s*(?:\d|pro|slim)|ideapad|zenbook|vivobook|thinkbook|xps\s?1[3-7]|omen\s?1[5-7]|helios|nitro\s?5|(?:aero|aorus)\s?1[5-7]x?(?!\s?gb)|tuf\s+(?:gaming\s+)?[af]1[5-7]|galaxy\s?book|laptop\w*|notebook\w*|imac|macbook|mac ?mini|thinkpad|elitebook|latitude|probook|nuc|mini[- ]?pc)\b|"
@@ -298,7 +308,9 @@ def parse_title(title: str):
     if total is None:
         return None, why
     ecc = bool(re.search(r"(?<!non[- ])(?<!non)\becc\b", t))
-    if SERVER.search(t):
+    ecc_udimm = bool(ECC_UDIMM.search(t)) and not RDIMM_STRICT.search(t)
+    ecc = ecc or ecc_udimm
+    if SERVER.search(t) and not ecc_udimm:
         form = "server"
     elif SODIMM.search(t) and not _not_laptop(t):
         form = "sodimm"   # «Desktop – nicht für Laptop», «kein Notebook RAM» — настільна (pass 11)
@@ -320,5 +332,5 @@ def parse_title(title: str):
     explicit_single = mods == 1 and bool(re.search(r"(?<![\d.])1\s*x\s*\d{1,3}\s?gb|\bein(?:e|en|zelne[rn]?)?\s+(?:riegel|modul)|einzel(?:modul|riegel)|"
                                                    r"^\W*1\s*x\s+(?!\d)|\b1\s?(?:stk|stueck|st[uü]ck)\b", t)
                                          or part_capacity(t) == (1, total))
-    return dict(gen=gen, form=form, ecc=ecc, total=total, modules=mods, kit=mods > 1, speed=parse_speed(t, gen),
+    return dict(gen=gen, form=form, ecc=ecc, ecc_udimm=ecc_udimm, total=total, modules=mods, kit=mods > 1, speed=parse_speed(t, gen),
                 brand=brand, oem=brand in CHIP_OEM, mixed=mixed, kit_word=kit_word, explicit_single=explicit_single), None

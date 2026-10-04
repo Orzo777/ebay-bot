@@ -135,13 +135,14 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     p, reason = parse_title(title)
     if not p:
         return dict(verdict="UNKNOWN", reason=f"парсер не розпізнав назву: {reason}", title=title, price=total_price)
-    if p["ecc"]:
+    ecc_udimm = bool(p.get("ecc_udimm"))
+    if p["ecc"] and not ecc_udimm:
         return dict(verdict="SKIP", reason="ECC/серверна пам'ять — поза нашими прибутковими типами", title=title,
                     price=total_price, wrong_type=True)
     if p.get("mixed"):
         return dict(verdict="SKIP", reason="дві різні планки (різні бренди) — не заводський кіт, продається дешевше",
                     title=title, price=total_price, wrong_type=True)
-    key = (p["gen"], p["form"], p["ecc"], p["total"], p["modules"])
+    key = (p["gen"], p["form"], False if ecc_udimm else p["ecc"], p["total"], p["modules"])
     real = REAL.get(key)
     kit_unknown = False
     # Кількість планок не вказана: «32GB DDR5 Corsair» / «64GB Kit» майже завжди 2 планки (28.09: 7 з ~60 оголошень DDR5
@@ -157,6 +158,9 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
                            f"{p['total']} ГБ ({p['modules']} план.) — цей тип не купуємо: на eBay продається дешево "
                            f"або рідко (заміри 21–26.09)",
                     title=title, price=total_price, wrong_type=True)
+    if ecc_udimm:   # ціни звичайної того ж об'єму × ECC_UDIMM_FACTOR: покупців менше (без Terapeak — обережно)
+        real = dict(real, p25=round(real["p25"] * ECC_UDIMM_FACTOR), med=round(real["med"] * ECC_UDIMM_FACTOR),
+                    name=real["name"].replace("UDIMM", "ECC UDIMM", 1))
     if price < max(PLACEHOLDER_MIN, PLACEHOLDER_SHARE * real["p25"]):
         return dict(verdict="SKIP", reason=f"ціна {price:.0f} € — заглушка («1 €», «VB»), а не справжня ціна",
                     title=title, price=total_price, wrong_type=False)
@@ -174,7 +178,15 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     return dict(verdict=verdict, type=real["name"], price=total_price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
                 net_q=net_q, brand=brand_flag, title=title, single_module_warning=single_module_warning,
-                total=p["total"], kit_unknown=kit_unknown, buy_cost=cost, ship_in=ship_in, vb=vb)
+                total=p["total"], kit_unknown=kit_unknown, buy_cost=cost, ship_in=ship_in, vb=vb,
+                **({"ecc_udimm": True, "notes": [ECC_UDIMM_NOTE]} if ecc_udimm else {}))
+
+
+# ECC без буфера: оголошення eBay 04.10 — набори 2×16 DDR4-2666 ECC UDIMM від ~140 €, планки 60–130 € (ціни оголошень, не
+# продажів); звичайна 2×16 продається за 141–161 €. Беремо звичайну −15%: покупців менше, продається повільніше.
+ECC_UDIMM_FACTOR = 0.85
+ECC_UDIMM_NOTE = ("ECC без буфера (UDIMM): у звичайних ПК зазвичай працює (AMD — з ECC, Intel — як звичайна), "
+                  "купують і під сервери/NAS. Продавай з «ECC Unbuffered» у назві; оцінка — звичайна −15%.")
 
 
 # Вердикти, на які йде картка. NEGOTIATE — трохи понад стелю: після торгу стає вигідним.

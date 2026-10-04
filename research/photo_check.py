@@ -62,10 +62,13 @@ Look ONLY at the photos (not the title) and answer with JSON:
       is printed on every stick of the kit and means per-stick = the number inside the parentheses (4 or 16),
   "ram_form": "desktop" (long DIMM, 288/240 pins) or "laptop" (short SO-DIMM) or null,
   "ram_gen": "DDR3" | "DDR4" | "DDR5" | null,
-  "ram_server": true if the sticks are server Registered/ECC modules: sticker codes like "PC4-2666V-RE1", "PC4-2133P-RA0",
-      "PC3-10600R", "2Rx4", "ECC", "REG", part numbers like HMA82GR7…, M393A…, MTA18ASF…72PDZ, KSM…R…, or a small register
+  "ram_server": true ONLY for server Registered modules (RDIMM/LRDIMM): sticker codes like "PC4-2666V-RE1", "PC4-2133P-RA0",
+      "PC3-10600R", "2Rx4", "REG", part numbers like HMA82GR7…, M393A…, MTA18ASF…72PDZ, KSM…R…, or a small register
       chip (marked e.g. IDT / Renesas / Montage "4RCD…") in the MIDDLE of the stick between the memory chips;
-      false for normal desktop/laptop RAM (codes like "-UA2", "-SA1", "-U", "-S"); null if you cannot tell,
+      false for normal desktop/laptop RAM (codes like "-UA2", "-SA1", "-U", "-S") and false for UNBUFFERED ECC sticks
+      (codes "-EE1", "-EB2", part numbers HMA…U7…, M391A…, MTA…72AZ — they have a 9th memory chip but no register chip);
+      null if you cannot tell,
+  "ram_ecc_unbuffered": true if the stickers show unbuffered ECC (codes "-E…" like "PC4-2666V-EE1", HMA…U7…, M391A…), else false,
   "console_model": one of "xbox series x", "xbox series s", "xbox one", "ps5 disc", "ps5 digital", "ps5 pro", "ps4",
       "switch 2", "switch oled", "switch v1/v2", "switch lite", "other", or null if no console is visible.
       PS5 disc = has a disc slot/drive bulge; Series X = tall black tower, Series S = small white box,
@@ -158,8 +161,10 @@ def compare(exp: dict, ph: dict) -> tuple[list[str], list[str]]:
     if ph.get("visible_damage"):
         warn.append("на фото видно пошкодження")
     if exp["kind"] == "ram":
-        from ram_parse import SERVER_PART
-        if ph.get("ram_server") is True or re.search(SERVER_PART, ph.get("label_text") or "", re.I):
+        from ram_parse import ECC_UDIMM, SERVER_PART
+        label = ph.get("label_text") or ""
+        ecc_u = ph.get("ram_ecc_unbuffered") is True or bool(ECC_UDIMM.search(label))
+        if re.search(SERVER_PART, label, re.I) or (ph.get("ram_server") is True and not ecc_u):
             bad.append(SERVER_MSG + " — у звичайний ПК не піде, продається дешево")
         per, vis = ph.get("ram_gb_per_module"), ph.get("ram_modules_visible")
         if isinstance(per, int) and per and per != exp["per"]:

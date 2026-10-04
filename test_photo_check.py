@@ -85,6 +85,26 @@ class TestPhotoCheck(unittest.TestCase):
         self.assertNotEqual(refine_by_desc(r, t, 85, False, "Non-ECC, unbuffered, kein Server RAM. Läuft im Gaming-PC.",
                                            evaluate)["verdict"], "SKIP")
 
+    def test_ecc_unbuffered_is_separate_type(self):
+        # 04.10: eBay «2x16GB SK Hynix DDR4 2666 (HMA82GU7CJR8N)» — ECC UDIMM (U7, наклейка PC4-2666V-EE1), не серверна
+        r = evaluate("2x16GB SK Hynix DDR4 RAM 2666 MHz PC4-2666V Arbeitsspeicher (HMA82GU7CJR8N)", 65.69)
+        plain = evaluate("SK Hynix 2x16GB DDR4 RAM 2666 MHz PC4-2666V Arbeitsspeicher", 65.69)
+        self.assertIn("ECC UDIMM", r["type"])
+        self.assertTrue(r.get("ecc_udimm") and r["notes"])
+        self.assertLess(r["quick_sale"], plain["quick_sale"])   # обережніше за звичайну
+        for t in ["Kingston 32GB 2x16 GB DDR4-2400 DIMM, ungepuffert, MIT ECC", "2x16GB DDR4 ECC UDIMM 2666",
+                  "32GB Kit (2x16GB) Samsung DDR4-2666 ECC UDIMM M391A2K43BB1-CTD", "16GB SK hynix ECC UDIMM Server RAM 2x16GB DDR4"]:
+            self.assertIn("ECC UDIMM", evaluate(t, 40).get("type", ""), t)
+        for t in ["DDR4 32GB 2x16 Unbuffered, Non-ECC Corsair", "DDR4 32GB 2x16 unbuffered non ECC"]:
+            self.assertNotIn("ECC", evaluate(t, 40).get("type", ""), t)
+        for t in ["Samsung 32GB 2x16 DDR4 ECC Registered RDIMM", "2x16GB 2Rx8 PC4-2666V-RE1-11 DDR4", "2x16GB DDR4 2666 ECC RAM"]:
+            self.assertEqual(evaluate(t, 40)["verdict"], "SKIP", t)   # Registered і «просто ECC» — як раніше
+        exp = expectation(r)
+        ok = {"ram_gb_per_module": 16, "ram_modules_visible": 2, "ram_form": "desktop", "ram_gen": "DDR4", "confidence": "high"}
+        self.assertEqual(compare(exp, dict(ok, ram_server=True, ram_ecc_unbuffered=True,
+                                           label_text="16GB 2Rx8 PC4-2666V-EE1-11 HMA82GU7CJR8N-VK"))[0], [])
+        self.assertEqual(compare(exp, dict(ok, ram_server=True, label_text="16GB 2Rx8 PC4-2666V-EE1-11"))[0], [])
+
     def test_ka_images(self):
         page = ('x https://img.kleinanzeigen.de/api/v1/prod-ads/images/35/35a26f80-95c0-4f6c-b0e1-53177f8aa286?rule=$_59.AUTO '
                 'https://img.kleinanzeigen.de/api/v1/prod-ads/images/35/35a26f80-95c0-4f6c-b0e1-53177f8aa286?rule=$_57.AUTO '
