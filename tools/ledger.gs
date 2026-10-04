@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-04b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-04c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -49,6 +49,7 @@ function setupLedger() {
     if (t.getHandlerFunction() === 'processLedger') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('processLedger').timeBased().everyMinutes(15).create();
+  expensesSheet_(ss);
   processLedger();
   console.log('Облік готовий: ' + ss.getUrl());
 }
@@ -359,6 +360,7 @@ function processLedger() {
     log.appendRow([m.getId(), m.getDate(), p.from || m.getFrom(), m.getSubject(), what, row || '', p.snippet || '']);
   });
   if (full) props.setProperty('LEDGER_SCANNED', '1');
+  if (!props.getProperty('EXPENSES_V1')) { expensesSheet_(ss); props.setProperty('EXPENSES_V1', '1'); }   // аркуш одразу видно
   weeklyIfDue_(props, new Date());
   remindersIfDue_(props, new Date());
 }
@@ -381,6 +383,8 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '• купив 45 OWC 2x16 DDR4 — записати покупку (додай ebay / самовивіз, якщо не KA)\n' +
   '• продав 110 OWC — записати продаж\n' +
   '• облік — підсумок і посилання на таблицю\n' +
+  '• витрата 50 стенд для тесту RAM — витрата не на товар (обладнання, пакування, пересилка); прибуток після витрат — ' +
+  'у «Підсумку»\n' +
   '• продати 3 — готове оголошення для eBay: ціна, пороги Preisvorschlag, назва й опис німецькою ' +
   '(3 — номер у таблиці; «продати» без номера — список того, що на руках)\n' +
   '• виставив 3 [124] — товар №3 уже на eBay (статус «Виставлено», ціну — в нотатки), щоб звіт не нагадував\n' +
@@ -448,15 +452,18 @@ function ledgerCommand(msg) {
   const chat = props.getProperty('TELEGRAM_CHAT_ID');
   const text = String(msg.text || '').trim();
   // \b у JS не працює з кирилицею — межа слова через (?=\s|$)
-  const m = text.match(/^\/?(купив|купила|продав|продала|облік)(?=\s|$)\s*([\s\S]*)$/i);
+  const m = text.match(/^\/?(купив|купила|продав|продала|облік|витрата|витратив|витратила)(?=\s|$)\s*([\s\S]*)$/i);
   if (!m) return false;
   if (!chat || String(msg.chat.id) !== String(chat) || !props.getProperty('LEDGER_ID')) return true;   // чужий чат — мовчки
   const cmd = m[1].toLowerCase(), rest = m[2] || '';
   if (cmd === 'облік') {
     const s = ledger_().getSheetByName('Підсумок');
     const v = s.getRange('B3:B11').getValues().map(function (r) { return r[0]; });
+    const exp = expenseTotal_();
     notify_('📒 Облік: угод ' + v[0] + ', продано ' + v[1] + ', на руках ' + v[2] + '\nУ товарі: ' + Number(v[4]).toFixed(2) +
-            ' €\nПрибуток з проданого: ' + Number(v[6]).toFixed(2) + ' €\n' + ledger_().getUrl());
+            ' €\nПрибуток з проданого: ' + Number(v[6]).toFixed(2) + ' €' +
+            (exp ? '\nВитрати (обладнання, пакування…): ' + exp.toFixed(2) + ' € → прибуток після витрат: ' +
+             (Number(v[6]) - exp).toFixed(2) + ' €' : '') + '\n' + ledger_().getUrl());
     return true;
   }
   // сума — першим словом («купив 45 OWC 2x16») або після «за» («купив OWC 2x16 за 45»), а не «2» з «2x16»
@@ -467,6 +474,14 @@ function ledgerCommand(msg) {
   let title = (rest.slice(0, pm.index) + ' ' + rest.slice(pm.index + pm[0].length)).replace(/\s+/g, ' ').trim();
   const src = /\bebay\b/i.test(title) ? 'eBay' : /самовивіз|abhol/i.test(title) ? 'Самовивіз Гамбург' : 'Kleinanzeigen';
   title = title.replace(/(^|\s)(ebay|ka|kleinanzeigen|самовивіз)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
+  if (cmd.indexOf('витрат') === 0) {
+    const what = (rest.slice(0, pm.index) + ' ' + rest.slice(pm.index + pm[0].length)).replace(/\s+/g, ' ').trim() || '(без назви)';
+    const cat = expenseCategory_(what);
+    addExpense_({ title: what, amount: amount, cat: cat });
+    notify_('🧾 Записав витрату: ' + what + ' — ' + amount + ' € (' + cat + ').\nУсього витрат: ' + expenseTotal_().toFixed(2) +
+            ' € — у «Підсумку» прибуток після витрат.');
+    return true;
+  }
   if (cmd.indexOf('купи') === 0) {
     const r = addPurchase_({ title: title || '(без назви)', src: src, price: amount, fee: src === 'Kleinanzeigen' ? '' : 0,
                              status: src === 'Самовивіз Гамбург' ? 'Отримано' : 'Оплачено', note: 'з Telegram' });
@@ -821,4 +836,59 @@ function todoCommand_(msg) {
   props.setProperty('USER_TODO', JSON.stringify(todos.slice(-40)));
   notify_('📅 Нагадаю ' + addDays_(iso, 0) + (iso.slice(0, 4) !== today.slice(0, 4) ? '.' + iso.slice(0, 4) : '') + ' о 10:00: ' + m[4].trim());
   return true;
+}
+
+
+// ------------------------------------------------------------------ витрати (04.10)
+// Обладнання (стенд для тесту пам'яті), пакування, пересилка — не товар: окремий аркуш «Витрати», а в «Підсумку» —
+// «Витрати» і «Прибуток після витрат». Команда в будь-якому з ботів: «витрата 50 стенд MSI для тесту RAM».
+const EXP_SHEET = 'Витрати', EXP_FIRST = 3, EXP_LABEL = 'Витрати (обладнання, пакування, пересилка), €';
+
+function expenseCategory_(t) {
+  t = String(t || '');
+  if (/пакуван|коробк|плівк|скотч|пупир|karton|luftpolster|verpack/i.test(t)) return 'Пакування';
+  if (/пошт|пересил|dhl|hermes|dpd|gls|porto|марк/i.test(t)) return 'Пересилка';
+  return 'Обладнання';
+}
+
+/** Аркуш «Витрати» (створює, якщо немає) + два рядки в «Підсумку» під основними цифрами. */
+function expensesSheet_(ss) {
+  let sh = ss.getSheetByName(EXP_SHEET);
+  if (sh) return sh;
+  sh = ss.insertSheet(EXP_SHEET);
+  sh.getRange('A1').setValue('Витрати — обладнання, пакування, пересилка (не товар)').setFontSize(14).setFontWeight('bold');
+  sh.getRange(2, 1, 1, 5).setValues([['Дата', 'Що', 'Сума, €', 'Категорія', 'Нотатки']]).setFontWeight('bold')
+    .setFontColor('#FFFFFF').setBackground('#1F3864');
+  [90, 320, 90, 110, 260].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  sh.setFrozenRows(2);
+  sh.getRange('A3:A1000').setNumberFormat('dd.mm.yyyy');
+  sh.getRange('C3:C1000').setNumberFormat(EUR_FMT);
+  const sum = ss.getSheetByName('Підсумок');
+  if (sum) {
+    // одразу під «Середньо днів до продажу» (рядок 11); зайнято (таблицю правили вручну) — нижче за все
+    const r = sum.getRange(12, 1).getValue() === '' && sum.getRange(13, 1).getValue() === '' ? 12 : sum.getLastRow() + 2;
+    sum.getRange(r, 1).setValue(EXP_LABEL);
+    sum.getRange(r, 2).setFormula("=SUM('" + EXP_SHEET + "'!C" + EXP_FIRST + ':C)').setNumberFormat(EUR_FMT)
+      .setFontWeight('bold').setBackground('#F2F2F2');
+    sum.getRange(r + 1, 1).setValue('Прибуток після витрат, €');
+    sum.getRange(r + 1, 2).setFormula('=B9-B' + r).setNumberFormat(EUR_FMT).setFontWeight('bold').setBackground('#F2F2F2');
+  }
+  return sh;
+}
+
+function addExpense_(d) {
+  const sh = expensesSheet_(ledger_());
+  const n = Math.max(sh.getLastRow() - EXP_FIRST + 1, 1);
+  const vals = sh.getRange(EXP_FIRST, 2, n, 1).getValues();
+  let r = EXP_FIRST;
+  for (let i = vals.length - 1; i >= 0; i--) if (vals[i][0] !== '') { r = EXP_FIRST + i + 1; break; }
+  sh.getRange(r, 1, 1, 5).setValues([[d.date || new Date(), d.title, d.amount, d.cat || expenseCategory_(d.title), d.note || '']]);
+  return r;
+}
+
+function expenseTotal_() {
+  const sh = ledger_().getSheetByName(EXP_SHEET);
+  if (!sh || sh.getLastRow() < EXP_FIRST) return 0;
+  return Math.round(sh.getRange(EXP_FIRST, 3, sh.getLastRow() - EXP_FIRST + 1, 1).getValues()
+    .reduce(function (a, r) { return a + (Number(r[0]) || 0); }, 0) * 100) / 100;
 }
