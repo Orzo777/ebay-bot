@@ -7,6 +7,7 @@ Apps Script, без Диска й Google Cloud); вміст ~/.clasprc.json ле
 Безпечно для живого бота:
   • файли проєкту зіставляються з репозиторієм за константою VER_* (code.gs у проєкті = gmail_trigger.gs тут);
     файли без VER_* і HTML лишаються як є — нічого не видаляємо;
+  • заповнені в проєкті «запасні» значення (`const GITHUB_TOKEN = '…'`, у GitHub — порожні) переносяться;
   • маніфест (appsscript.json: часовий пояс, права, налаштування вебзастосунку) не чіпаємо;
   • без змін у коді — нічого не робимо; якщо вебзастосунок не знайдено однозначно — код не заливаємо;
   • репозиторій публічний — у лог лише назви файлів і номер версії, без коду, токенів і ID.
@@ -25,6 +26,7 @@ import requests
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 API = "https://script.googleapis.com/v1/projects/"
 VER_RE = re.compile(r"^const (VER_\w+) = '([^']+)'", re.M)
+EMPTY_RE = re.compile(r"^const (\w+) = '';", re.M)   # «запасне» значення, яке користувач заповнює в Apps Script сам
 
 
 class DeployError(Exception):
@@ -74,6 +76,8 @@ def plan(live: list, repo: dict):
             raise DeployError(f"{m.group(1)} у двох файлах проєкту ({f['name']}) — прибери копію вручну")
         seen.add(m.group(1))
         _, ver, src = repo[m.group(1)]
+        src, local = keep_local(f["source"], src)
+        kept += [f"{f['name']}: {n}" for n in local]
         if src != f["source"]:
             changed.append((f["name"], m.group(2), ver))
         files.append({"name": f["name"], "type": "SERVER_JS", "source": src})
@@ -82,6 +86,17 @@ def plan(live: list, repo: dict):
             files.append({"name": name, "type": "SERVER_JS", "source": src})
             changed.append((name, "", ver))
     return files, changed, kept
+
+
+def keep_local(live: str, src: str):
+    """Порожнє в GitHub `const GITHUB_TOKEN = '';`, а в проєкті заповнене — лишаємо значення з проєкту (у лог лише назву)."""
+    names = []
+    for name in EMPTY_RE.findall(src):
+        m = re.search(r"^const " + name + r" = ('[^'\n]+');", live, re.M)
+        if m:
+            src = re.sub(r"^const " + name + r" = '';", lambda _: f"const {name} = {m.group(1)};", src, count=1, flags=re.M)
+            names.append(name)
+    return src, names
 
 
 def web_deployment(deployments: list, manifest: dict) -> dict:
@@ -127,7 +142,7 @@ def deploy(api, repo: dict, dry_run: bool = False, log=print) -> list:
     live = api.call("GET", "/content").get("files") or []
     files, changed, kept = plan(live, repo)
     if kept:
-        log("лишаю як є (не з репозиторію): " + ", ".join(kept))
+        log("лишаю як є (з проєкту, не з GitHub): " + ", ".join(kept))
     if not changed:
         log("код у проєкті вже такий самий, як у GitHub — нічого не роблю")
         return []

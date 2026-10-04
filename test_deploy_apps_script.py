@@ -96,6 +96,22 @@ class TestDeployAppsScript(unittest.TestCase):
         self.assertIn(("newfile", "", "1"), changed)
         self.assertEqual(files[-1]["name"], "newfile")
 
+    def test_local_values_filled_in_apps_script_survive(self):
+        # 04.10: у живому code.gs запасний GITHUB_TOKEN заповнений, у GitHub — порожній; затерти = зупинити картки KA
+        repo = {"VER_CODE": ("gmail_trigger", "2", gs("VER_CODE", "2", "const GITHUB_TOKEN = '';   // запасний\nf()"))}
+        live = [MANIFEST, {"name": "code", "type": "SERVER_JS",
+                           "source": gs("VER_CODE", "1", "const GITHUB_TOKEN = 'secret_x';   // запасний\ng()")}]
+        files, changed, kept = plan(live, repo)
+        self.assertIn("const GITHUB_TOKEN = 'secret_x';   // запасний\nf()", files[1]["source"])
+        self.assertEqual(kept, ["code: GITHUB_TOKEN"])
+        self.assertEqual(changed, [("code", "1", "2")])
+        live[1]["source"] = gs("VER_CODE", "1", "const GITHUB_TOKEN = '';   // запасний\ng()")
+        self.assertIn("const GITHUB_TOKEN = '';", plan(live, repo)[0][1]["source"])   # порожнє лишається порожнім
+        log = []
+        deploy(FakeApi([MANIFEST, dict(live[1], source=gs("VER_CODE", "1", "const GITHUB_TOKEN = 'secret_x';"))]), repo,
+               log=log.append)
+        self.assertNotIn("secret_x", " ".join(log))
+
     def test_real_repo_files_and_credentials(self):
         repo = repo_files()
         self.assertEqual({v[0] for v in repo.values()}, {"gmail_trigger", "ledger", "kafilter", "watchdog"})
