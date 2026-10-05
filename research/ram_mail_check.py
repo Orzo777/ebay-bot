@@ -85,6 +85,10 @@ PC_BOT_TOKEN = os.getenv("PC_BOT_TOKEN", "")
 # шахраям не підходить; ~20% оголошень) або з підписок «самовивіз у Гамбурзі» (готівка після огляду). Решта — майже завжди
 # скам: за тиждень жоден продавець «лише повідомлення» не продав чесно. KA_REQUIRE_BUY_NOW=0 — як раніше.
 REQUIRE_BUY_NOW = os.getenv("KA_REQUIRE_BUY_NOW", "1") == "1"
+# 05.10 (прохання користувача): консолі — лише з «Direkt kaufen», і в підписках «… in Hamburg» теж. Шахраї ставлять
+# Гамбург і ціну на половину ринку, а потім просять переказ або пересилку (за добу 3 картки PS5, одна — 185 €).
+# Самовивіз без «Direkt kaufen» лишається лише для пам'яті.
+CONSOLE_PICKUP_OK = os.getenv("KA_CONSOLE_PICKUP", "0") == "1"
 STATS: dict = {}   # лічильники за прохід → health (щоденний звіт)
 CARDS: dict = {}   # надіслані картки (номер оголошення → id повідомлення) — для реплаю відповіді продавця (cardmap.py)
 HINT_GAP_MIN = 45   # тиха підказка «глянь пошук» — не частіше разу на 45 хв на одну підписку
@@ -525,8 +529,10 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             print(" - (gewerblich, пропущено)", lst["title"][:70])
             continue
         vb = lst.get("vb", False)
-        res = evaluate_console(lst["title"], lst["price"], vb=vb) or evaluate(lst["title"], lst["price"], vb=vb)
-        pickup = is_pickup_search(subject)
+        cres = evaluate_console(lst["title"], lst["price"], vb=vb)
+        res = cres or evaluate(lst["title"], lst["price"], vb=vb)
+        # консоль із підписки «… in Hamburg» — як звичайна: лише «Direkt kaufen», ціна з пересилкою (05.10)
+        pickup = is_pickup_search(subject) and (cres is None or CONSOLE_PICKUP_OK)
         if pickup:   # підписка «… in Hamburg»: забираємо самі, готівкою
             apply_pickup(res)
         reason = f" ({res['reason']})" if res.get("reason") else ""

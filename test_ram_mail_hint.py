@@ -213,10 +213,25 @@ class TestProcess(unittest.TestCase):
         rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="21"), 6, False, set(), {})
         self.assertEqual(len(self.cards), 0)
         self.assertEqual(rmc.STATS.get("ka_no_buynow"), 1)
+        # 05.10: консоль із підписки «… in Hamburg» без «Direkt kaufen» — теж ні (скам PS5 за 185 € у Гамбурзі)
         msg = ka_mail("Xbox Series X 1TB", 200, ad_id="22")
-        msg.replace_header("Subject", "Neue Treffer zu deiner Suche „Konsolen - xbox series x in Hamburg“")
+        msg.replace_header("Subject", "Neue Treffer zu deiner Suche „Konsolen - xbox series x in Hamburg (+30 km)“")
+        rmc._process(msg, 6, False, set(), {})
+        self.assertEqual(len(self.cards), 0)
+        self.assertEqual(rmc.STATS.get("ka_no_buynow"), 2)
+        # пам'ять самовивозом у Гамбурзі без «Direkt kaufen» — як і раніше, можна (готівка після огляду)
+        msg = ka_mail("Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200", 60, ad_id="23")
+        msg.replace_header("Subject", "Neue Treffer zu deiner Suche „PC-Zubehör & Software - ddr4 in Hamburg (+20 km)“")
         rmc._process(msg, 6, False, set(), {})
         self.assertEqual(len(self.cards), 1)
+
+    def test_console_with_direkt_kaufen_from_hamburg_search_priced_with_shipping(self):
+        # 05.10: консоль із «Direkt kaufen» у підписці «… in Hamburg» — картка є, але рахуємо як пересилку, не самовивіз
+        msg = ka_mail("Xbox Series X 1TB + OVP", 250, ad_id="24")
+        msg.replace_header("Subject", "Neue Treffer zu deiner Suche „Konsolen - xbox series x in Hamburg (+30 km)“")
+        rmc._process(msg, 6, False, set(), {})
+        self.assertEqual(len(self.cards), 1)
+        self.assertIn("з пересилкою і Sicher bezahlen", self.cards[0][0])
 
 
 if __name__ == "__main__":
