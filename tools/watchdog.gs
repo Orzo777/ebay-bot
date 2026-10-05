@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-02c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-05a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -63,12 +63,21 @@ function wdOnce_(st, key, hours, text, msgs, now) {
   msgs.push(text);
 }
 
+// Збій самого GitHub: завдання так і не отримало машину («not acquired by Runner», інцидент 05.10) — наш код не запускався
+function wdInfraFail_(run) {
+  if (!run || WD_BAD.indexOf(run.conclusion) < 0) return false;
+  const jobs = (wdGh_('/actions/runs/' + run.id + '/jobs').json || {}).jobs || [];
+  return jobs.length > 0 && jobs.every(function (j) { return !j.runner_id && !(j.steps || []).length; });
+}
+
 function wdEbay_(st, now, msgs) {
   const runs = (wdGh_('/actions/workflows/ebay_watch.yml/runs?per_page=5').json || {}).workflow_runs || [];
   if (!runs.length || runs.some(function (r) { return WD_ACTIVE.indexOf(r.status) >= 0; })) return;
   const idle = Math.round((now.getTime() - new Date(runs[0].updated_at).getTime()) / 60000);
   if (idle < 20) return;
-  if (runs.length >= 2 && WD_BAD.indexOf(runs[0].conclusion) >= 0 && WD_BAD.indexOf(runs[1].conclusion) >= 0) {
+  // двічі поспіль упав наш код — не перезапускаємо; якщо GitHub просто не дав машину — перезапуск, як завжди
+  if (runs.length >= 2 && WD_BAD.indexOf(runs[0].conclusion) >= 0 && WD_BAD.indexOf(runs[1].conclusion) >= 0 &&
+      !wdInfraFail_(runs[0])) {
     wdOnce_(st, 'ebay_crash', 6, '⛔ eBay-сторож падає вже двічі поспіль — сам не перезапускаю, треба глянути:\n' +
             runs[0].html_url, msgs, now);
     return;
@@ -95,7 +104,8 @@ function wdFailures_(st, now, msgs) {
     }
     st.failSeen.push(r.id);
     if (now.getTime() - new Date(r.updated_at).getTime() > 3 * 3600e3) return;   // давні збої не ворушимо
-    lines.push('• ' + (WD_NAMES[r.name] || r.name) + (r.conclusion === 'startup_failure' ? ' (не стартував)' : '') + ': ' + r.html_url);
+    lines.push('• ' + (WD_NAMES[r.name] || r.name) + (r.conclusion === 'startup_failure' ? ' (не стартував)' :
+               wdInfraFail_(r) ? ' (GitHub не дав машину — збій GitHub, не наш код)' : '') + ': ' + r.html_url);
   });
   st.failSeen = st.failSeen.slice(-150);
   if (lines.length) msgs.push('⚠️ Збій у GitHub:\n' + lines.slice(0, 5).join('\n') +

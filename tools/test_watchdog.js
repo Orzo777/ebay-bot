@@ -21,6 +21,7 @@ function setup(o) {
       calls.push([opt && opt.method || 'get', u.replace(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+/, '')]);
       if (/telegram/.test(u)) { sent.push(opt.payload); return { getResponseCode: () => 200 }; }
       if (o.auth) return { getResponseCode: () => 401, getContentText: () => '' };
+      if (/\/jobs$/.test(u)) return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ jobs: o.jobs || [] }), getHeaders: () => ({}) };
       if (/dispatches/.test(u)) return { getResponseCode: () => o.dispatch || 204, getContentText: () => '', getHeaders: () => ({}) };
       const runs = /ebay_watch/.test(u) ? o.ebay || [] : /ram_mail_alert/.test(u) ? o.mailRuns || [] : o.all || [];
       return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ workflow_runs: runs }),
@@ -54,6 +55,22 @@ w = setup(Object.assign({ ebay: [run('completed', 'startup_failure', ago(40)), r
 w.run();
 check('crash loop: no restart', w.calls.some((c) => c[0] === 'post' && /dispatches/.test(c[1])), false);
 check('crash loop told', /падає/.test(w.text()), true);
+
+// 3б. 05.10: двічі поспіль «GitHub не дав машину» (інцидент GitHub, наш код не стартував) → перезапуск, як завжди
+w = setup(Object.assign({ ebay: [run('completed', 'failure', ago(40)), run('completed', 'failure', ago(90))],
+                          jobs: [{ runner_id: 0, steps: [] }] }, okMail));
+w.run();
+check('infra failure: restart', w.calls.some((c) => c[0] === 'post' && /ebay_watch.yml\/dispatches/.test(c[1])), true);
+check('infra failure: no crash alarm', /падає/.test(w.text()), false);
+// а якщо машина була і кроки йшли — це наш код: як і раніше, не перезапускає
+w = setup(Object.assign({ ebay: [run('completed', 'failure', ago(40)), run('completed', 'failure', ago(90))],
+                          jobs: [{ runner_id: 5, steps: [{ name: 'watch', conclusion: 'failure' }] }] }, okMail));
+w.run();
+check('real crash: no restart', w.calls.some((c) => c[0] === 'post' && /dispatches/.test(c[1])), false);
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], jobs: [{ runner_id: 0, steps: [] }], all: [
+  run('completed', 'failure', ago(20), { id: 5, name: 'ka-share', html_url: 'https://gh/5' })] }, okMail));
+w.run();
+check('infra failure explained', /збій GitHub, не наш код/.test(w.text()), true);
 
 // 4. свіжий збій ka-share → посилання; давній (5 год) — ні; вдруге — не повторює
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], all: [
