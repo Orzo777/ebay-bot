@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-04c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-06a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -292,6 +292,7 @@ function parseMail_(msg) {
   if (price == null && total != null) price = Math.round((total - (ship || 0) - (fee || 0)) * 100) / 100;
   return { kind: kind, src: src, title: title, id: idm ? idm[1] : '', link: idm ? 'https://www.ebay.de/itm/' + idm[1] : (kam ? kam[0] : ''),
            price: price, ship: ship, fee: fee, total: total, date: msg.getDate(), subject: subject, from: from,
+           track: kind === 'shipped' || kind === 'delivered' ? trackFrom_(subject + '\n' + body) : null,
            snippet: body.replace(/\s+/g, ' ').slice(0, 300) };
 }
 
@@ -331,6 +332,10 @@ function processLedger() {
                   (/ps\s?5|playstation\s?5/i.test(p.title) ? '\n💡 Цю PS5 можна спробувати продати на Amazon (вживане, тариф Einzelanbieter) — ' +
                    'тест з 03.10: там може бути +40–60 €. Напиши Claude «перевір PS5 на Amazon».' : ''));
         }
+      } else if ((p.kind === 'shipped' || p.kind === 'delivered') && p.track && rowByTrack_(p.track.num, 'outTrack')) {
+        const on = rowByTrack_(p.track.num, 'outTrack');   // наша посилка покупцю, а не купівля (06.10)
+        row = on + LEDGER_FIRST - 1;
+        what = outParcel_(on, p.kind === 'delivered' ? 'delivered' : 'transit', p.date);
       } else if (p.kind === 'shipped' || p.kind === 'delivered' || p.kind === 'cancel') {
         row = findRow_(p.id, p.title, true);
         const st = p.kind === 'shipped' ? 'В дорозі' : p.kind === 'delivered' ? 'Отримано' : 'Скасовано';
@@ -339,6 +344,8 @@ function processLedger() {
           if (cur !== 'Продано' && !(p.kind === 'shipped' && cur === 'Отримано')) {
             deals.getRange(row, COL.status).setValue(st);
             if (p.kind !== 'cancel') markEvent_(row - LEDGER_FIRST + 1, p.kind === 'shipped' ? 'shipped' : 'got', iso_(p.date));
+            if (p.track) setEvents_(row - LEDGER_FIRST + 1, { track: p.track.num, carrier: p.track.carrier });
+            if (p.kind === 'shipped' && cur !== 'В дорозі') shippedNotice_(row, p.track);
             if (p.kind === 'delivered' && cur !== 'Отримано') gotNotice_(row);
           }
           what = 'статус → ' + st;
@@ -359,6 +366,7 @@ function processLedger() {
     }
     log.appendRow([m.getId(), m.getDate(), p.from || m.getFrom(), m.getSubject(), what, row || '', p.snippet || '']);
   });
+  try { processCarriers_(log, done); } catch (e) { console.log('перевізники: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
   if (!props.getProperty('EXPENSES_V1')) { expensesSheet_(ss); props.setProperty('EXPENSES_V1', '1'); }   // аркуш одразу видно
   weeklyIfDue_(props, new Date());
@@ -390,7 +398,8 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '• виставив 3 [124] — товар №3 уже на eBay (статус «Виставлено», ціну — в нотатки), щоб звіт не нагадував\n' +
   '• звіт — тижневий звіт: прибуток, точність прогнозів, залежаний товар, що дають підписки (сам приходить щопонеділка)\n' +
   '• отримав 3 / перевірив 3 / проблема 3 — посилка №3 прийшла / протестована / щось не так (покажу, як заявити)\n' +
-  '• відправив 3 — проданий №3 відправлено покупцю\n' +
+  '• відправив 3 [трек] — проданий №3 відправлено покупцю; з треком скажу, коли покупець отримає\n' +
+  '• трек 3 00340… — трек-номер посилки №3 (купівля чи продаж), якщо його не було в листі\n' +
   '• нагадай 20.10 текст — нагадаю того дня; нагадування — що заплановано\n' +
   'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення. Щодня о 10:00 — що треба зробити ' +
   '(посилка не йде, не перевірено, не відправлено, заплановане).';
@@ -563,7 +572,7 @@ function sellCommand_(msg) {
 
 // ------------------------------------------------------------------ тижневий звіт (01.10)
 // Рядки обліку → зашифровано (як «продати») → GitHub weekly_report.yml → research/weekly_report.py → бот «Облік і продаж».
-function iso_(v) { return v instanceof Date ? Utilities.formatDate(v, 'Europe/Berlin', 'yyyy-MM-dd') : (v || ''); }
+function iso_(v) { return Object.prototype.toString.call(v) === '[object Date]' ? Utilities.formatDate(v, 'Europe/Berlin', 'yyyy-MM-dd') : (v || ''); }
 function num_(v) { return v === '' || v == null || isNaN(Number(v)) ? null : Math.round(Number(v) * 100) / 100; }
 
 function ledgerRows_() {
@@ -695,7 +704,8 @@ function dueReminders_(rows, ev, today) {
     if (!r.date || r.src === 'Самовивіз Гамбург') return;
     if (r.status === 'Оплачено' || r.status === 'В дорозі') {
       const base = e.shipped || r.date, d = days_(base, today), from = e.shipped ? 'від відправки' : 'від покупки';
-      const tail = ' Уже отримав — «отримав ' + r.n + '».';
+      const tail = (e.track ? ' Трек: ' + trackLink_({ num: e.track, carrier: e.carrier }) + ' .' : ' Є трек — «трек ' + r.n + ' номер».') +
+        ' Уже отримав — «отримав ' + r.n + '».';
       if (r.src === 'Kleinanzeigen') {
         if (d >= 8) once(r.n, 'ka8', '⚠️ ' + name + ' — досі не отримано (' + d + ' дн. ' + from + '). Проблему в «Sicher bezahlen» ' +
           'можна заявити лише до ' + addDays_(base, 10) + ', а на 14-й день гроші самі підуть продавцю. Посилки немає — «Problem melden» ' +
@@ -713,6 +723,9 @@ function dueReminders_(rows, ev, today) {
       const d = e.got ? days_(e.got, today) : 0, act = ' Перевірив — «перевірив ' + r.n + '», не так — «проблема ' + r.n + '».';
       if (!rem.test0) once(r.n, 'test0', '🧪 ' + name + ' отримано — протестуй: ' + testTip_(r.cat) + '. ' + claimLine_(r, e) + act);
       else if (d >= 2) once(r.n, 'test2', '🧪 ' + name + ' отримано ' + d + ' дн. тому, ще не перевірено. ' + claimLine_(r, e) + act);
+    } else if (r.status === 'Продано' && e.sent && e.outTrack && !e.outDelivered) {
+      if (days_(e.sent, today) >= 7) once(r.n, 'out7', '📦 ' + name + ' — посилка покупцю йде вже ' + days_(e.sent, today) +
+        ' дн. і досі не доставлена. Глянь трек: ' + trackLink_({ num: e.outTrack, carrier: e.outCarrier }) + ' .');
     } else if (r.status === 'Продано' && r.sdate && !e.sent) {
       const d = days_(r.sdate, today), act = ' Відправив — «відправив ' + r.n + '».';
       if (d < 1 || d > 7) return;
@@ -755,7 +768,8 @@ function remindersIfDue_(props, now) {
   // закриті рядки більше не потрібні (ліміт властивості 9 КБ)
   rows.forEach(function (r) {
     if (ev[r.n] && (['Повернено', 'Скасовано'].indexOf(r.status) >= 0 ||
-        (r.status === 'Продано' && (ev[r.n].sent || (r.sdate && days_(r.sdate, key) > 7))))) delete ev[r.n];
+        (r.status === 'Продано' && (ev[r.n].outDelivered || (ev[r.n].sent && !ev[r.n].outTrack) ||
+                                    (r.sdate && days_(r.sdate, key) > 30))))) delete ev[r.n];
   });
   saveEvents_(ev);
   const lines = a.lines.concat(b.lines);
@@ -765,20 +779,36 @@ function remindersIfDue_(props, now) {
 
 // «отримав 3» / «перевірив 3» / «проблема 3» / «відправив 3»
 function statusCommand_(msg) {
-  const m = String(msg.text || '').trim().match(/^\/?(отримав|отримала|перевірив|перевірила|проблема|відправив|відправила)(?=\s|$)\s*(\d{1,4})?/i);
+  const m = String(msg.text || '').trim().match(/^\/?(отримав|отримала|перевірив|перевірила|проблема|відправив|відправила|трек)(?=\s|$)\s*(\d{1,4})?(?:\s+([\s\S]{4,80}))?/i);
   if (!m) return false;
   const props = PropertiesService.getScriptProperties();
   if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID')) || !props.getProperty('LEDGER_ID')) return true;
   const cmd = m[1].toLowerCase().replace(/ла$/, 'в');
-  if (!m[2]) { notify_('Напиши з номером у таблиці: «' + cmd + ' 3».'); return true; }
+  if (!m[2]) { notify_('Напиши з номером у таблиці: «' + cmd + ' 3»' + (cmd === 'трек' ? ' і трек-номер: «трек 3 00340434…».' : '.')); return true; }
   const n = Number(m[2]), r = rowByN_(n);
   if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
   const sh = ledger_().getSheetByName('Угоди'), row = n + LEDGER_FIRST - 1, today = iso_(new Date());
   const e = events_()[n] || {}, name = '№' + n + ' «' + r.title + '»';
+  const t = trackArg_(m[3]);
   if (cmd === 'відправив') {
     if (r.status !== 'Продано') { notify_(name + ' — статус «' + r.status + '», а «відправив» — для проданого.'); return true; }
-    markEvent_(n, 'sent', today);
-    notify_('📮 ' + name + ' — відправлено, більше не нагадую.');
+    setEvents_(n, t ? { sent: today, outTrack: t.num, outCarrier: t.carrier } : { sent: today });
+    notify_('📮 ' + name + ' — відправлено, більше не нагадую.' + (t ? ' Коли покупець отримає — напишу.'
+      : ' Додай трек — «трек ' + n + ' номер», і я скажу, коли покупець отримає.'), t ? trackButton_(t) : null);
+    return true;
+  }
+  if (cmd === 'трек') {
+    if (!t) { notify_('Не бачу трек-номера. Напиши так: «трек ' + n + ' 00340434…» (можна з перевізником: «трек ' + n + ' hermes H100…»).'); return true; }
+    if (r.status === 'Продано') {
+      setEvents_(n, { outTrack: t.num, outCarrier: t.carrier, sent: e.sent || today });
+      notify_('📮 ' + name + ' — трек посилки покупцю: ' + (t.carrier || '') + ' ' + t.num + '. Коли покупець отримає — напишу.', trackButton_(t));
+      return true;
+    }
+    if (['Повернено', 'Скасовано'].indexOf(r.status) >= 0) { notify_(name + ' — статус «' + r.status + '», не змінюю.'); return true; }
+    setEvents_(n, { track: t.num, carrier: t.carrier, shipped: e.shipped || today });
+    if (r.status === 'Оплачено') sh.getRange(row, COL.status).setValue('В дорозі');
+    notify_('📦 ' + name + ' — трек ' + (t.carrier || '') + ' ' + t.num + ' записав. Листи перевізника про доставку тепер ' +
+            'зараховуються самі.', trackButton_(t));
     return true;
   }
   if (['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) >= 0) { notify_(name + ' — статус «' + r.status + '», не змінюю.'); return true; }
@@ -891,4 +921,147 @@ function expenseTotal_() {
   if (!sh || sh.getLastRow() < EXP_FIRST) return 0;
   return Math.round(sh.getRange(EXP_FIRST, 3, sh.getLastRow() - EXP_FIRST + 1, 1).getValues()
     .reduce(function (a, r) { return a + (Number(r[0]) || 0); }, 0) * 100) / 100;
+}
+
+
+// ------------------------------------------------------------------ відстеження посилок (06.10)
+// Трек-номер — з листа eBay/KA «відправлено» або командою «трек N номер»; листи перевізників (DHL, Hermes, DPD, GLS, UPS)
+// зараховуються лише за відомим треком — особисті посилки в тій самій пошті не чіпаємо і не записуємо в лог.
+// Купівля: «зараз доставлено» → «Отримано» + як протестувати; «у відділенні» → забери. Продаж («відправив N трек»):
+// «доставлено» → «✅ доставлено покупцю».
+const CARRIER_QUERY = 'from:(dhl.de OR dhl.com OR deutschepost.de OR myhermes.de OR hermesworld.com OR hermes-europe.de OR ' +
+  'dpd.de OR dpd.com OR gls-pakete.de OR gls-group.eu OR gls-group.com OR ups.com) newer_than:3d';
+const CARRIERS = [['DHL', /\bdhl\b|deutsche post/i], ['Hermes', /hermes/i], ['DPD', /\bdpd\b/i], ['GLS', /\bgls\b/i], ['UPS', /\bups\b/i]];
+
+function carrierOf_(text) {
+  for (let i = 0; i < CARRIERS.length; i++) if (CARRIERS[i][1].test(text)) return CARRIERS[i][0];
+  return '';
+}
+function guessCarrier_(num) {
+  if (/^1Z/.test(num)) return 'UPS';
+  if (/^(00340|JJD)/.test(num) || /^\d{12}$|^\d{20}$/.test(num)) return 'DHL';
+  if (/^H\d{19}$/.test(num)) return 'Hermes';
+  return '';
+}
+/** Трек-номер із тексту листа: після «Sendungsnummer / Trackingnummer / Paketnummer …» або впізнаваний формат DHL/UPS/Hermes. */
+function trackFrom_(text) {
+  text = String(text || '');
+  const m = text.match(/(?:sendungs(?:verfolgungs)?-?nummer|tracking-?(?:nummer|number|id|code)|paketnummer|sendungs-?id)\s*(?:lautet)?\s*[:#]?\s*([A-Z]{0,4}\d[\dA-Z]{7,34})\b/i) ||
+            text.match(/\b(00340\d{15}|JJD\d{14,20}|1Z[0-9A-Z]{16}|H\d{19})\b/);
+  if (!m) return null;
+  const num = m[1].toUpperCase();
+  return { num: num, carrier: carrierOf_(text) || guessCarrier_(num) };
+}
+/** «00340434…», «hermes H100…» з команди → трек. */
+function trackArg_(s) {
+  s = String(s || '').trim();
+  const num = (s.match(/[A-Z]{0,4}\d[\dA-Z]{7,34}/i) || [])[0];
+  if (!num) return null;
+  return { num: num.toUpperCase(), carrier: carrierOf_(s.replace(num, '')) || guessCarrier_(num.toUpperCase()) };
+}
+function trackLink_(t) {
+  const n = encodeURIComponent(t.num);
+  return { DHL: 'https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode=' + n,
+    Hermes: 'https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation#' + n,
+    DPD: 'https://tracking.dpd.de/status/de_DE/parcel/' + n, GLS: 'https://gls-group.com/DE/de/paketverfolgung?match=' + n,
+    UPS: 'https://www.ups.com/track?tracknum=' + n }[t.carrier] || 'https://parcelsapp.com/de/tracking/' + n;
+}
+function trackButton_(t) { return { inline_keyboard: [[{ text: '📦 Відстежити (' + (t.carrier || 'трек') + ')', url: trackLink_(t) }]] }; }
+
+/** Що каже лист перевізника: 'ready' (чекає у відділенні/Packstation), 'delivered', 'transit' або null. */
+function carrierKind_(subject, body) {
+  const t = String(subject || '') + '\n' + String(body || '').slice(0, 1500);
+  if (/abholbereit|zur abholung bereit|(?:liegt|wartet) .{0,60}(?:filiale|packstation|paketshop|abholstation|paketbox)|kann .{0,40}abgeholt werden|ready for pick-?up/i.test(t)) return 'ready';
+  if (/wurde (?:erfolgreich )?(?:zugestellt|geliefert|abgegeben)|ist zugestellt|erfolgreich zugestellt|zugestellt am|has been delivered|was delivered/i.test(t)) return 'delivered';
+  if (/unterwegs|auf dem weg|kommt (?:heute|morgen)|wird (?:heute|morgen|voraussichtlich) .{0,30}zugestellt|zustellung (?:heute|morgen)|angekündigt|voraussichtlich|in zustellung|out for delivery|on its way/i.test(t)) return 'transit';
+  return null;
+}
+
+function setEvents_(n, obj) {
+  const ev = events_();
+  ev[n] = Object.assign(ev[n] || {}, obj);
+  saveEvents_(ev);
+}
+function rowByTrack_(num, key) {
+  const ev = events_(), want = String(num || '').toUpperCase();
+  const hit = Object.keys(ev).filter(function (n) { return n !== '_' && String(ev[n][key] || '').toUpperCase() === want; })[0];
+  return hit ? Number(hit) : 0;
+}
+
+function shippedNotice_(row, t) {
+  const r = rowByN_(row - LEDGER_FIRST + 1);
+  if (!r) return;
+  notify_('🚚 №' + r.n + ' «' + r.title + '» відправлено' + (t ? ' — ' + (t.carrier || 'трек') + ' ' + t.num + '. Коли перевізник ' +
+          'доставить — напишу.' : '. Трек-номера в листі немає — дасть продавець, напиши «трек ' + r.n + ' номер».'), t ? trackButton_(t) : null);
+}
+
+/** Посилка покупцю (продаж). */
+function outParcel_(n, kind, date) {
+  const r = rowByN_(n), e = events_()[n] || {}, name = '№' + n + ' «' + (r ? r.title : '') + '»';
+  if (kind === 'delivered') {
+    if (e.outDelivered) return 'покупцю: уже доставлено';
+    setEvents_(n, { outDelivered: iso_(date) });
+    notify_('✅ ' + name + ' доставлено покупцю. Залиш покупцю відгук; гроші — за графіком виплат eBay.');
+    return 'покупцю: доставлено';
+  }
+  if (kind === 'ready' && !(e.rem || {}).outReady) {
+    markEvent_(n, 'rem', 'outReady');
+    notify_('📬 Посилка покупцю ' + name + ' чекає у відділенні / Packstation — покупець має її забрати.');
+    return 'покупцю: у відділенні';
+  }
+  return 'покупцю: в дорозі';
+}
+
+/** Посилка до нас (купівля). */
+function inParcel_(n, kind, date) {
+  const sh = ledger_().getSheetByName('Угоди'), row = n + LEDGER_FIRST - 1, cur = sh.getRange(row, COL.status).getValue();
+  const r = rowByN_(n), e = events_()[n] || {};
+  if (kind === 'delivered') {
+    if (['Оплачено', 'В дорозі'].indexOf(cur) < 0) return 'перевізник: доставлено (статус «' + cur + '» не міняю)';
+    sh.getRange(row, COL.status).setValue('Отримано');
+    setEvents_(n, { got: iso_(date) });
+    gotNotice_(row);
+    return 'перевізник: отримано';
+  }
+  if (kind === 'ready') {
+    if (!(e.rem || {}).ready && r) {
+      markEvent_(n, 'rem', 'ready');
+      notify_('📬 №' + n + ' «' + r.title + '» чекає у відділенні / Packstation — забери (зазвичай лежить 7 днів). Забрав — «отримав ' + n + '».');
+    }
+    return 'перевізник: у відділенні';
+  }
+  if (cur === 'Оплачено') {
+    sh.getRange(row, COL.status).setValue('В дорозі');
+    if (!e.shipped) setEvents_(n, { shipped: iso_(date) });
+  }
+  return 'перевізник: в дорозі';
+}
+
+/** Листи перевізників за відомими треками (купівлі, які ще йдуть, і наші посилки покупцям, ще не доставлені). */
+function processCarriers_(log, done) {
+  const ev = events_(), rows = ledgerRows_(), tracks = {};
+  rows.forEach(function (r) {
+    const e = ev[r.n] || {};
+    if (e.track && ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0) tracks[String(e.track).toUpperCase()] = [r.n, 'in'];
+    if (e.outTrack && r.status === 'Продано' && !e.outDelivered) tracks[String(e.outTrack).toUpperCase()] = [r.n, 'out'];
+  });
+  const keys = Object.keys(tracks);
+  if (!keys.length) return 0;   // нічого не чекаємо — пошту перевізників навіть не відкриваємо
+  let n = 0;
+  GmailApp.search(CARRIER_QUERY, 0, 20).forEach(function (th) {
+    th.getMessages().forEach(function (m) {
+      if (done[m.getId()]) return;
+      const body = m.getPlainBody() || '', flat = (m.getSubject() + ' ' + body).replace(/\s+/g, '').toUpperCase();
+      const hit = keys.filter(function (k) { return flat.indexOf(k) >= 0; })[0];
+      if (!hit) return;   // особиста чи чужа посилка — не чіпаємо
+      const kind = carrierKind_(m.getSubject(), body);
+      if (!kind) return;
+      const t = tracks[hit];
+      const what = t[1] === 'out' ? outParcel_(t[0], kind, m.getDate()) : inParcel_(t[0], kind, m.getDate());
+      log.appendRow([m.getId(), m.getDate(), m.getFrom(), m.getSubject(), what, t[0] + LEDGER_FIRST - 1, '']);
+      done[m.getId()] = 1;
+      n++;
+    });
+  });
+  return n;
 }
