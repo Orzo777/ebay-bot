@@ -291,6 +291,41 @@ class TestAuctions(unittest.TestCase):
         self.assertIn("15 хв", text)
         self.assertIn("1–2 хв до кінця", text)
 
+    def test_live_card(self):
+        # 06.10: картка аукціону оновлюється — поточна ставка, час, «уже дорожче», після кінця — фінал
+        from datetime import timedelta
+
+        import ebay_watch as ew
+        it = dict(self._it(140, 0.25), itemId="v1|3|0", bidCount=4)
+        lst, r = ew.auction_candidate(it, {}, NOW)
+        card = dict(ew.auction_card(it, r, "🛒 <b>eBay</b>\n<i>Corsair</i>\n", "🏷 Продати: 300–330 €"), m=77, kb="{}")
+        first = ew.live_text(card, NOW)
+        self.assertIn("🟢 <b>Іде</b>", first)
+        self.assertIn("зараз 140 € (4 ставок)", first)
+        self.assertIn("🏷 Продати", first)
+        max_bid = int((r["cap"] - r["ship_in"]) // 1)
+        edits, answers = [], [dict(it, currentBidPrice={"value": str(max_bid + 10)}, bidCount=9), None]
+        saved = (ew.edit_card, ew.__dict__.get("_request_with_backoff"))
+        import main
+        old_req = main._request_with_backoff
+        main._request_with_backoff = lambda *a, **k: answers.pop(0)
+        ew.edit_card = lambda mid, text, kb: edits.append((mid, text))
+        st = {"auction_cards": {"v1|3|0": card}}
+        try:
+            ew.update_auction_cards(type("C", (), {"_headers": lambda self: {}})(), st, NOW + timedelta(minutes=5))
+            self.assertIn(f"зараз {max_bid + 10} € (9 ставок)", edits[-1][1])
+            self.assertIn("Уже дорожче вигідного", edits[-1][1])
+            self.assertIn("v1|3|0", st["auction_cards"])
+            ew.update_auction_cards(type("C", (), {"_headers": lambda self: {}})(), st, NOW + timedelta(minutes=16))   # 404 після кінця
+            self.assertIn("🏁 <b>Аукціон завершено</b>", edits[-1][1])
+            self.assertIn(f"фінальна ставка {max_bid + 10} €", edits[-1][1])
+            self.assertIn("дорожче за наш максимум", edits[-1][1])
+            self.assertEqual(st["auction_cards"], {})   # фінал показали — забули
+            self.assertEqual(edits[0][0], 77)
+        finally:
+            main._request_with_backoff = old_req
+            ew.edit_card = saved[0]
+
     def test_share_link_ids(self):
         from ebay_watch import ebay_item_id
         self.assertEqual(ebay_item_id("https://www.ebay.de/itm/257771018556?_skw=ddr5&hash=x"), "257771018556")

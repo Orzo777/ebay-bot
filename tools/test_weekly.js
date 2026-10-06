@@ -62,5 +62,13 @@ say('виставив 2');
 check('sold not changed', [cells['6:11'], /Продано/.test(sent[sent.length - 1])], [undefined, true]);
 say('виставив 1', 99);
 check('foreign chat', sent.length, 3);
+// 06.10: купівлю з KA записано → прибрати переписку; номер оголошення — лише зашифрованим (публічний журнал запусків)
+check('ad id from KA link', [ctx.kaAdId_('https://www.kleinanzeigen.de/s-anzeige/msi-a320-a-pro/3531265450-228-877'), ctx.kaAdId_('https://www.ebay.de/itm/1')],
+      ['3531265450', '']);
+const f0 = fetched.length;
+check('close dispatched', ctx.kaCloseDispatch_(['3531265450'], 'куплено'), true);
+const last = fetched[fetched.length - 1];
+check('close → ka_reply.yml mode=close, encrypted', [fetched.length - f0, /ka_reply\.yml\/dispatches$/.test(last[0]), last[1].inputs.mode,
+      /3531265450|куплено/.test(JSON.stringify(last[1]))], [1, true, 'close', false]);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

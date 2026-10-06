@@ -377,6 +377,82 @@ def auction_lines(r: dict, it: dict, now: datetime) -> list[str]:
     return lines
 
 
+# 06.10 (прохання користувача): картка аукціону «жива». Раніше вона показувала ставку на момент надсилання, а коли
+# користувач відкривав eBay, там уже було дорожче рекомендованого. Тепер щокола (~3 хв) бот оновлює ту саму картку:
+# поточна ставка, скільки лишилось, чи ще вигідно; після кінця — «🏁 завершено, фінальна ставка». Один запит API
+# на активний аукціон за коло (картка йде за 2–20 хв до кінця → ~7 запитів на аукціон).
+LIVE_AFTER_END = timedelta(minutes=10)   # після кінця ще пробуємо забрати фінальну ставку, потім забуваємо
+
+
+def auction_card(it: dict, r: dict, head: str, tail: str) -> dict:
+    return {"head": head, "tail": tail, "end": it.get("itemEndDate"), "price": float(r["price"]),
+            "bids": int(it.get("bidCount") or 0), "r": {k: r[k] for k in ("cap", "ship_in", "good", "net_q")}}
+
+
+def live_text(c: dict, now: datetime) -> str:
+    """Текст картки аукціону на зараз: «🟢 іде» + ставка/час/порада або «🏁 завершено» з фінальною ставкою."""
+    r = dict(c["r"], price=c["price"])
+    max_bid = int((r["cap"] - r["ship_in"]) // 1)
+    try:
+        end = datetime.fromisoformat(c["end"].replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        end = None
+    if end is not None and now >= end:
+        body = [f"🏁 <b>Аукціон завершено</b> о {end.astimezone(_BERLIN):%H:%M}: фінальна ставка {c['price']:.0f} € "
+                f"({c['bids']} ставок).",
+                "Ставка в межах нашого максимуму — якщо виграв, облік запише покупку з листа eBay." if c["price"] <= max_bid
+                else f"Пішло дорожче за наш максимум {max_bid} € — пропускаємо."]
+    else:
+        body = [f"🟢 <b>Іде</b> · оновлено о {now.astimezone(_BERLIN):%H:%M}",
+                *auction_lines(r, {"bidCount": c["bids"], "itemEndDate": c["end"]}, now)]
+    return "\n".join([c["head"], *body, c["tail"]]).strip()
+
+
+def edit_card(message_id: int, text: str, markup: str | None):
+    import requests
+    data = {"chat_id": config.TELEGRAM_CHAT_ID, "message_id": message_id, "text": text[:4096], "parse_mode": "HTML",
+            "disable_web_page_preview": "true"}
+    if markup:
+        data["reply_markup"] = markup
+    try:   # 400 «message is not modified» / картку видалили — не біда
+        requests.post(f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/editMessageText", data=data, timeout=15)
+    except Exception:
+        pass
+
+
+def update_auction_cards(client, state: dict, now: datetime) -> int:
+    """Щокола: свіжа ставка й час для кожної надісланої картки аукціону; після кінця — фінал і забуваємо."""
+    from main import _request_with_backoff
+    cards = state.get("auction_cards") or {}
+    n = 0
+    for iid, c in list(cards.items()):
+        try:
+            end = datetime.fromisoformat(c["end"].replace("Z", "+00:00"))
+        except (AttributeError, ValueError):
+            cards.pop(iid, None)
+            continue
+        if now > end + LIVE_AFTER_END:
+            cards.pop(iid, None)
+            continue
+        try:
+            CALLS["n"] += 1
+            it = _request_with_backoff("GET", ITEM_URL + iid, headers=client._headers(), params={})
+        except Exception:
+            it = None   # після кінця Browse API часто віддає 404 — лишається остання відома ставка
+        if it:
+            bid = (it.get("currentBidPrice") or it.get("price") or {}).get("value")
+            if bid:
+                c["price"] = float(bid)
+            c["bids"] = int(it.get("bidCount") or c["bids"])
+            c["end"] = it.get("itemEndDate") or c["end"]
+        if c.get("m"):
+            edit_card(c["m"], live_text(c, now), c.get("kb"))
+            n += 1
+        if now >= datetime.fromisoformat(c["end"].replace("Z", "+00:00")):
+            cards.pop(iid, None)   # фінал показали
+    return n
+
+
 def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[str, dict | None, dict | None]:
     """Оцінка одного оголошення eBay (посилання, яким поділились із ботом) → (html, результат, оголошення)."""
     from main import _request_with_backoff
@@ -557,10 +633,11 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                     print("   дефект / шахрай / не тестовано — пропускаю")
                     continue
                 esc = html.escape
-                text = "\n".join([f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", "",
-                                   *auction_lines(r, it, now), f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
-                                   f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})",
-                                   *[f"⚠️ {esc(s)}" for s in risk["soft"]]])
+                head = "\n".join([f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", ""])
+                tail = "\n".join([f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
+                                  f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]]])
+                card = auction_card(it, r, head, tail)
+                text = live_text(card, now)
                 if dry_run:
                     print("   [DRY RUN] надіслав би картку аукціону")
                 else:
@@ -569,10 +646,17 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                     if ph and ph[1]:
                         print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку аукціону не надсилаю")
                         continue
-                    send_card(text + ("\n\n" + ph[0] if ph else ""), lst["url"], dict(r, verdict="BUY"), auction=True)
+                    card["tail"] += "\n\n" + ph[0] if ph else ""
+                    mid, kb = send_card(live_text(card, now), lst["url"], dict(r, verdict="BUY"), auction=True)
+                    state.setdefault("auction_cards", {})[it["itemId"]] = dict(card, m=mid, kb=kb)   # далі — живі оновлення
                 auctions_sent += 1
         cut = (now - timedelta(days=2)).isoformat()
         state["auctions"] = {k: v for k, v in state.get("auctions", {}).items() if v >= cut}
+    if state.get("auction_cards") and not dry_run:
+        try:
+            update_auction_cards(client, state, now)
+        except Exception as e:
+            print(f"   [аукціони] оновлення карток: {e.__class__.__name__}")
     if first_run:
         print(f"   перший запуск: запам'ятав {len(state.get('items', {}))} оголошень, сповіщення — з наступного кругу")
     prune(state, now)

@@ -83,5 +83,79 @@ class RememberedOnSendTest(unittest.TestCase):
             rmc.send_telegram_card, rmc.check_listing, rmc.add_to_card, rmc.CARDS = saved
 
 
+
+class CleanupTest(unittest.TestCase):
+    """06.10: відповіді продавця прибираються з чату, коли куплено або оголошення зняте."""
+
+    def setUp(self):
+        import requests
+        self.calls, self.old = [], requests.post
+        self.delete_ok = True
+
+        def post(url, data=None, **k):
+            method = url.rsplit("/", 1)[1]
+            self.calls.append((method, data))
+            code = 200 if method != "deleteMessage" or self.delete_ok else 400
+            body = {"result": {"message_id": 900 + len(self.calls)}} if method == "sendMessage" else {}
+            return type("R", (), {"status_code": code, "json": lambda self_: body})()
+        requests.post = post
+
+    def tearDown(self):
+        import requests
+        requests.post = self.old
+
+    def test_remember_close_and_fold_old(self):
+        replies = {}
+        ka_reply.remember(replies, ["3531265450", "3531265450", "x"], 501, NOW)
+        ka_reply.remember(replies, ["3531265450"], 502, NOW)
+        ka_reply.remember(replies, ["1111111", "2222222"], 601, NOW)   # один лист — кілька номерів
+        self.assertEqual(replies["3531265450"]["m"], [501, 502])
+        self.assertEqual(ka_reply.close(replies, ["3531265450"], "куплено"), 2)
+        self.assertEqual([c[0] for c in self.calls], ["deleteMessage", "deleteMessage"])
+        self.assertNotIn("3531265450", replies)
+        self.delete_ok = False   # старше 48 год — не видаляється, згортаємо
+        self.assertEqual(ka_reply.close(replies, ["1111111"], "оголошення зняте"), 1)
+        self.assertEqual(self.calls[-1][0], "editMessageText")
+        self.assertIn("Переписку закрито: оголошення зняте", self.calls[-1][1]["text"])
+        self.assertEqual(replies, {})   # те саме повідомлення під другим номером теж прибрано
+
+    def test_sweep_only_gone_ads(self):
+        replies = {}
+        for aid, mid in (("1000001", 1), ("1000002", 2), ("1000003", 3)):
+            ka_reply.remember(replies, [aid], mid, NOW)
+        pages = []
+        check = lambda link, *a: (pages.append(link), {"level": "gone"} if link.endswith("1000002") else
+                                  None if link.endswith("1000003") else {"level": "low"})[1]
+        self.assertEqual(ka_reply.sweep(replies, check), 1)
+        self.assertEqual(sorted(replies), ["1000001", "1000003"])   # недоступна сторінка — не знімаємо
+        self.assertEqual(pages, [ka_reply.KA_AD + a for a in ("1000001", "1000002", "1000003")])
+
+    def test_main_modes_keep_state(self):
+        d = tempfile.mkdtemp()
+        st = os.path.join(d, "replies.json")
+        old_env = dict(os.environ)
+        os.environ["OFFICE_BOT_TOKEN"] = "tok"
+        try:
+            blob, mac = sell.seal({"text": "💬 відповідь", "markup": "{}", "listing": "", "ids": ["3531265450"]}, "tok", "n1")
+            sys.argv = ["ka_reply.py", "--blob", blob, "--mac", mac, "--nonce", "n1", "--replies", st]
+            ka_reply.main()
+            self.assertEqual(ka_reply.load_replies(st)["3531265450"]["m"], [901])
+            blob, mac = sell.seal({"close": ["3531265450"], "why": "куплено"}, "tok", "n2")
+            sys.argv = ["ka_reply.py", "--close-blob", blob, "--mac", mac, "--nonce", "n2", "--replies", st]
+            ka_reply.main()
+            self.assertEqual(ka_reply.load_replies(st), {})
+            self.assertEqual(self.calls[-1], ("deleteMessage", {"chat_id": ka_reply.config.TELEGRAM_CHAT_ID, "message_id": 901}))
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_old_entries_pruned(self):
+        d = tempfile.mkdtemp()
+        st = os.path.join(d, "r.json")
+        ka_reply.save_replies(st, {"1": {"m": [1], "ts": (NOW - timedelta(days=20)).isoformat()},
+                                   "2": {"m": [2], "ts": NOW.isoformat()}}, NOW)
+        self.assertEqual(sorted(ka_reply.load_replies(st)), ["2"])
+
+
 if __name__ == "__main__":
     unittest.main()

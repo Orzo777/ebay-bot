@@ -127,5 +127,16 @@ const r7 = ctx.dueReminders_(rows, { 2: { sent: '2026-09-28', outTrack: 'H1', ou
 check('buyer parcel 8 days → reminder with link', r7.lines.some((l) => /№2 .*посилка покупцю йде вже 8 дн.*myhermes/.test(l)), true);
 const rk = ctx.dueReminders_(rows.map((r) => (r.n === 1 ? Object.assign({}, r, { status: 'В дорозі' }) : r)), { 1: { track: '00340434292135100186', carrier: 'DHL' } }, '2026-10-09');
 check('KA reminder carries track link', rk.lines.some((l) => /№1 .*dhl\.de/.test(l)), true);
+// 06.10: купівля з KA (новий рядок) → сигнал прибрати переписку з продавцем по цьому оголошенню
+const closes = [];
+vm.runInContext('kaCloseDispatch_ = function (ids, why) { __closes.push([ids, why]); return true; };', Object.assign(ctx, { __closes: closes }));
+mails.ledger = [msg('K1', 'Kleinanzeigen <noreply@kleinanzeigen.de>', 'Du hast „MSI A320 A Pro, AMD Ryzen 3 3200G" gekauft',
+  'Kaufpreis 50,00 €\nhttps://www.kleinanzeigen.de/s-anzeige/msi-a320-a-pro/3531265450-228-877')];
+mails.carrier = [];
+ctx.processLedger();
+check('KA purchase → close replies for that ad', closes, [[['3531265450'], 'куплено']]);
+mails.ledger = [msg('E1', 'eBay <ebay@ebay.de>', 'Bestellbestätigung für: Kingston 16GB DDR4', 'Artikelpreis: EUR 30,00\n/itm/123456789012')];
+ctx.processLedger();
+check('eBay purchase → nothing to close (replies are KA only)', closes.length, 1);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

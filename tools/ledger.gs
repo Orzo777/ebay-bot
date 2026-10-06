@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-06a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-06b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -326,6 +326,8 @@ function processLedger() {
           row = addPurchase_({ date: p.date, title: p.title, src: p.src, link: p.link, price: p.price, ship: p.ship,
                                fee: p.fee, id: p.id, status: 'Оплачено' });
           what = 'купівля записана';
+          const adId = kaAdId_(p.link);
+          if (p.src === 'Kleinanzeigen' && adId) kaCloseDispatch_([adId], 'куплено');   // переписку з продавцем — з чату (06.10)
           notify_('📒 Записав покупку №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.price != null ? ' — ' + p.price + ' €' : '') +
                   '\nКоли отримаєш і перевіриш — «продати ' + (row - LEDGER_FIRST + 1) + '»' +
                   (p.price == null ? '\n⚠️ Суму не знайшов у листі — впиши в таблиці.' : '') +
@@ -1064,4 +1066,30 @@ function processCarriers_(log, done) {
     });
   });
   return n;
+}
+
+
+// ------------------------------------------------------------------ прибирання переписки з продавцем (06.10)
+// Купівлю з KA записано → відповіді продавця по цьому оголошенню прибираються з чату (GitHub ka_reply.yml, mode=close).
+// Номер оголошення — зашифровано, як і решта даних обліку: репозиторій публічний, а з номера видно, що саме куплено.
+function kaAdId_(link) {
+  const m = String(link || '').match(/\/s-anzeige\/(?:[^\/\s"'<>?#]+\/)?(\d{6,})/);
+  return m ? m[1] : '';
+}
+
+function kaCloseDispatch_(ids, why) {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  if (!token || !ids.length) return false;
+  const sealed = seal_({ close: ids, why: why }, officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
+  try {
+    const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_reply.yml/dispatches', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+      payload: JSON.stringify({ ref: 'main', inputs: { blob: sealed.blob, mac: sealed.mac, nonce: sealed.nonce, mode: 'close' } }) });
+    return r.getResponseCode() === 204;
+  } catch (e) {
+    console.log('прибирання переписки: ' + e);
+    return false;
+  }
 }
