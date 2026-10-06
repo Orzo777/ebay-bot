@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-05a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-06a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -177,7 +177,7 @@ function watchdog() {
   const st = JSON.parse(props.getProperty('WD_STATE') || '{}');
   const now = new Date();
   const msgs = [];
-  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_].forEach(function (f) {
+  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_].forEach(function (f) {
     try { f(st, now, msgs); } catch (e) {
       if (/GH_AUTH/.test(String(e))) {
         wdOnce_(st, 'gh_auth', 12, (/GH_AUTH немає/.test(String(e))
@@ -211,19 +211,40 @@ function wdLocalVersion_(name) {   // старий файл без конста�
     VER_WATCHDOG: typeof VER_WATCHDOG === 'undefined' ? '' : VER_WATCHDOG }[name] || '';
 }
 
-function wdVersions_(now) {
+function wdOldFiles_() {   // файли, у яких версія в Apps Script ≠ версії на GitHub: ['ledger.gs ← tools/ledger.gs', …]
   const old = [];
-  let redeploy = false;
   WD_FILES.forEach(function (f) {
     const r = UrlFetchApp.fetch('https://raw.githubusercontent.com/' + REPO + '/main/tools/' + f[0], { muteHttpExceptions: true });
     if (r.getResponseCode() !== 200) return;
     const m = r.getContentText().match(new RegExp("const " + f[2] + " = '([^']+)'"));
-    if (m && m[1] !== wdLocalVersion_(f[2])) { old.push(f[1] + ' ← tools/' + f[0]); redeploy = redeploy || f[3]; }
+    if (m && m[1] !== wdLocalVersion_(f[2])) old.push(f[1] + ' ← tools/' + f[0]);
   });
+  return old;
+}
+
+// Щоранку: якщо Apps Script досі відстає від GitHub — ручна інструкція (запасний шлях, коли автооновлення не допомогло)
+function wdVersions_(now) {
+  const old = wdOldFiles_();
   if (!old.length) return '';
-  return '🔄 На GitHub є новіші версії файлів Apps Script — заміни їх вміст (Raw → скопіювати все → вставити → 💾):\n' +
-    old.map(function (s) { return '• ' + s; }).join('\n') +
-    (redeploy ? '\nПотім «Ввести в дію» → «Керування розгортаннями» → ✏ → «Нова версія» → «Ввести в дію».' : '');
+  return '🔄 Apps Script відстає від GitHub, автооновлення не допомогло:\n' + old.map(function (s) { return '• ' + s; }).join('\n') +
+    '\nНапиши Claude. Вручну: заміни вміст файлів (Raw → скопіювати все → вставити → 💾), потім «Ввести в дію» → ' +
+    '«Керування розгортаннями» → ✏ → «Нова версія» → «Ввести в дію».';
+}
+
+// 06.10: автооновлення (deploy_apps_script.yml) не стартувало під час збою GitHub (05.10), і Apps Script відставав
+// усю ніч. Щогодини звіряємо версії; відстає — самі запускаємо автооновлення ще раз (до 3 спроб), далі — пишемо.
+function wdAutoDeploy_(st, now, msgs) {
+  if (st.verAt && now.getTime() - st.verAt < 60 * 60000) return;
+  st.verAt = now.getTime();
+  const old = wdOldFiles_();
+  if (!old.length) { st.deployTries = 0; return; }
+  st.deployTries = (st.deployTries || 0) + 1;
+  if (st.deployTries <= 3) {
+    wdGh_('/actions/workflows/deploy_apps_script.yml/dispatches', 'post', { ref: 'main', inputs: { dry_run: 'false' } });
+    return;
+  }
+  wdOnce_(st, 'deploy_stuck', 12, '⚠️ Apps Script відстає від GitHub уже ' + (st.deployTries - 1) + ' год, автооновлення ' +
+          'не допомогло:\n' + old.map(function (s) { return '• ' + s; }).join('\n') + '\nНапиши Claude.', msgs, now);
 }
 
 function dailyReport() {

@@ -20,6 +20,7 @@ function setup(o) {
     UrlFetchApp: { fetch: (u, opt) => {
       calls.push([opt && opt.method || 'get', u.replace(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+/, '')]);
       if (/telegram/.test(u)) { sent.push(opt.payload); return { getResponseCode: () => 200 }; }
+      if (/raw\.githubusercontent/.test(u)) return { getResponseCode: () => 200, getContentText: () => (o.raw ? o.raw(u) : '') };
       if (o.auth) return { getResponseCode: () => 401, getContentText: () => '' };
       if (/\/jobs$/.test(u)) return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ jobs: o.jobs || [] }), getHeaders: () => ({}) };
       if (/dispatches/.test(u)) return { getResponseCode: () => o.dispatch || 204, getContentText: () => '', getHeaders: () => ({}) };
@@ -136,6 +137,22 @@ check('token expiry warned once', [w.sent.length, /закінчується 05\.
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], expires: '2026-11-15 10:00:00 UTC' }, okMail));
 w.run();
 check('far expiry silent', w.sent.length, 0);
+
+// 06.10: Apps Script відстає від GitHub (автооновлення не стартувало під час збою GitHub) → сторож сам запускає
+// автооновлення щогодини, до 3 спроб, і лише потім пише; коли наздогнав — лічильник скидається
+const newer = (u) => (/watchdog\.gs$/.test(u) ? "const VER_WATCHDOG = '2099-01-01';" : '');
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], raw: newer }, okMail));
+const deploys = () => w.calls.filter((c) => c[0] === 'post' && /deploy_apps_script\.yml\/dispatches/.test(c[1])).length;
+w.run();
+check('behind → deploy dispatched', [deploys(), w.sent.length], [1, 0]);
+w.run();
+check('not again within the hour', deploys(), 1);
+const st = () => JSON.parse(w.store.WD_STATE);
+for (let k = 0; k < 3; k++) { const s2 = st(); s2.verAt -= 61 * 60000; w.store.WD_STATE = JSON.stringify(s2); w.run(); }
+check('3 tries, then the user is told', [deploys(), /автооновлення не допомогло/.test(w.text())], [3, true]);
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { WD_STATE: JSON.stringify({ deployTries: 2 }) } }, okMail));
+w.run();
+check('caught up → counter reset, nothing sent', [st().deployTries, deploys(), w.sent.length], [0, 0, 0]);
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

@@ -31,6 +31,6 @@ const ctx = { console: { log: () => {} }, UrlFetchApp: { fetch: (u) => {
 vm.createContext(ctx);
 vm.runInContext(['gmail_trigger.gs', 'ledger.gs', 'kafilter.gs', 'watchdog.gs'].map((f) => raw[f]).join('\n') + '\nthis.v = wdVersions_;', ctx);
 const msg = ctx.v(new Date());
-if (!/ledger\.gs ← tools\/ledger\.gs/.test(msg) || /kafilter/.test(msg) || !/Ввести в дію/.test(msg)) { bad++; console.log('!! versions msg', msg); }
+if (!/ledger\.gs ← tools\/ledger\.gs/.test(msg) || /kafilter/.test(msg) || !/автооновлення не допомогло/.test(msg)) { bad++; console.log('!! versions msg', msg); }
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
