@@ -1134,9 +1134,9 @@ function samePhoto_(a, b) {
 
 /** Прибрати дублікати в рядку (08.10: фото, надіслані вдруге через зайве питання «до якого товару?»). → скільки лишилось. */
 function cleanPhotos_(n) {
-  const out = [];
-  photosOf_(n).forEach(function (x) { if (!out.some(function (y) { return samePhoto_(x, y); })) out.push(x); });
-  savePhotos_(n, out);
+  const all = photosOf_(n), out = [];
+  all.forEach(function (x) { if (!out.some(function (y) { return samePhoto_(x, y); })) out.push(x); });
+  if (out.length !== all.length) savePhotos_(n, out);   // пишемо лише коли справді були дублі
   return out;
 }
 

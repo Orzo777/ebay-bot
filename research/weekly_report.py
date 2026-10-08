@@ -116,7 +116,7 @@ def stale(rows: list[dict], today: date, market=sell.competitors) -> list[str]:
                     comp = market(ident)
                 except Exception as e:
                     print(f"ринок: {e.__class__.__name__}")
-            pr = sell.plan_price(ident, r.get("spent"), comp)
+            pr = sell.plan_price(ident, r.get("spent"), comp, undercut=True)   # залежалося — під найдешевших
             out.append(f"• {name} — {age} дн. і не продано → постав <b>{pr['list']} €</b>"
                        + (f" (3 найдешевші зараз {', '.join(f'{c:.0f}' for c in comp[:3])} €)" if comp else "")
                        + (f", прибуток ще ≈ {pr['profit_list']:.0f} €" if pr.get("profit_list") is not None else ""))
