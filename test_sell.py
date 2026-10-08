@@ -59,13 +59,17 @@ class PriceTest(unittest.TestCase):
                 self.assertGreaterEqual(pr["profit_accept"], min(sell.MIN_PROFIT_ABS, 0.1 * cost) - 0.5, (title, cost, comp))
                 self.assertGreaterEqual(sell.net_of(r, pr["decline"]) - cost, -0.01, (title, cost, comp))
 
-    def test_undercuts_cheapest_competitor_but_not_below_quick(self):
+    def test_median_price_competitors_only_warn(self):
+        # 08.10 (рішення користувача): ціна = медіана продажів, а не підрізання під найдешевших конкурентів
         r = sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200MHz")
-        self.assertEqual(sell.plan_price(r, 50, [145])["list"], 144)         # медіана 154, конкурент 145 → 144
-        self.assertEqual(sell.plan_price(r, 50, [120, 125, 129, 131])["list"], 124)   # третій найдешевший 129 → 128 → 124
-        low = sell.plan_price(r, 50, [100])                                   # конкурент нижче «швидкої» ціни
-        self.assertGreaterEqual(low["list"], r["quick_sale"] * sell.LOW_SHARE - 5)
-        self.assertTrue(low["warn"])
+        med = sell.nice(r["median_sale"])
+        self.assertEqual(sell.plan_price(r, 50, [])["list"], med)
+        for comp in ([145], [120, 125, 129, 131], [100]):
+            pr = sell.plan_price(r, 50, comp)
+            self.assertEqual(pr["list"], med, comp)
+            if comp[min(2, len(comp) - 1)] <= med:
+                self.assertIn("за медіаною продаватиметься повільніше", " ".join(pr["warn"]), comp)
+        self.assertFalse(sell.plan_price(r, 50, [999])["warn"])
 
     def test_loss_guard(self):
         r = sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200MHz")

@@ -144,23 +144,19 @@ def competitors(r: dict, client=None) -> list[float]:
 # ----------------------------------------------------------------------------- ціна
 def plan_price(r: dict, cost: float | None, comp: list[float]) -> dict:
     """Ціна «Sofort-Kaufen» (з безкоштовною доставкою) і пороги Preisvorschlag.
-    Ціль — медіана продажів, але серед трьох найдешевших конкурентів; не нижче 92% «швидкої» ціни (p25) і не нижче
-    мінімуму, з яким продаж ще дає ≥5 € / 10% прибутку. Автоприйняти — від 93% ціни, автовідхилити — нижче 87%
-    ціни чи 90% «швидкої» (що менше), але ніколи нижче мінімуму."""
+    Ціль — медіана реальних продажів (08.10, рішення користувача: раніше підлаштовувались під трьох найдешевших
+    конкурентів, і ціна сповзала до «швидкої»); не нижче мінімуму, з яким продаж ще дає ≥5 € / 10% прибутку.
+    Дешевші конкуренти — лише попередження. Автоприйняти — від 93% ціни, автовідхилити — нижче 87% ціни чи 90%
+    «швидкої» (що менше), але ніколи нижче мінімуму."""
     quick, med = r["quick_sale"], r["median_sale"]
     warn = []
     target = med
-    if comp:
-        # 01.10, живий замір: найдешевші оголошення часто нижчі за реальні продажі (вони й висять, бо не продаються).
-        # Ціль — бути серед трьох найдешевших надійних пропозицій, але не дешевше 92% «швидкої» ціни продажу.
-        ref = comp[min(2, len(comp) - 1)]
-        target = min(med, ref - 1)
-        target = max(target, quick * LOW_SHARE)
     floor = price_for_net(r, cost + max(MIN_PROFIT_ABS, MIN_PROFIT_PCT * cost)) if cost else 0.0
     list_price = max(nice(target), math.ceil(floor))
     if comp and list_price >= comp[min(2, len(comp) - 1)]:
-        warn.append(f"три найдешевші схожі вже по {', '.join(f'{c:.0f}' for c in comp[:3])} € — за цією ціною продаватиметься "
-                    "повільніше; швидше — лише знижуючи")
+        ref = comp[min(2, len(comp) - 1)]
+        warn.append(f"три найдешевші схожі вже по {', '.join(f'{c:.0f}' for c in comp[:3])} € — за медіаною продаватиметься "
+                    f"повільніше; не продається тиждень — знизь до ~{nice(max(ref - 1, quick * LOW_SHARE, floor))} €")
     accept = max(math.ceil(floor), round(list_price * ACCEPT_SHARE))
     decline = max(math.ceil(floor), round(min(quick * DECLINE_SHARE, list_price * 0.87)))
     accept = min(accept, list_price)

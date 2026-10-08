@@ -60,7 +60,10 @@ vm.runInContext(`ledger_ = function () { return { getSheetByName: () => __deals 
 let bad = 0;
 const check = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) { bad++; console.log('!!', name, JSON.stringify(got)); } };
 const say = (m) => vm.runInContext('officeMessage(__m)', Object.assign(ctx, { __m: Object.assign({ chat: { id: 7 } }, m) }));
-const photo = (id, mid, extra) => Object.assign({ message_id: mid, photo: [{ file_id: id + '_s' }, { file_id: id }] }, extra || {});
+let sizeSeq = 1000;
+const photo = (id, mid, extra, u, size) => Object.assign({ message_id: mid, photo: [{ file_id: id + '_s' },
+  { file_id: id, file_unique_id: u || 'U' + id, width: 1280, height: 960, file_size: size || ++sizeSeq }] }, extra || {});
+const asks = () => tg.filter((c) => c[0] === 'sendMessage' && /До якого товару/.test(c[1].text)).length;
 const calls = (m) => tg.filter((c) => c[0] === m);
 const lastSummary = () => { const c = tg.filter((x) => x[0] === 'sendMessage' || x[0] === 'editMessageText').pop(); return c ? c[1].text : ''; };
 
@@ -80,7 +83,7 @@ check('«16GB x 2» parsed', [ts.per, ts.modules, ts.ddr], [16, 2, '4']);
 gemini = [{ kind: 'memtest', memtest: { errors: 0, pass_done: true, result: null, ram: 'DDR4 2134MT/s x2 Corsair CMK32GX4M2B3200C16', gb: 29.9 } }];
 say(photo('F1', 11, { caption: '2', media_group_id: 'A' }));
 check('memtest → Перевірено', deals.cells['6:11'], 'Перевірено');
-check('photo stored to row 2', JSON.parse(store.PH_2), [{ id: 'F1', t: 'photo' }]);
+check('photo stored to row 2', JSON.parse(store.PH_2).map((x) => [x.id, x.u]), [['F1', 'UF1']]);
 check('user photo message removed from chat', calls('deleteMessage').some((c) => c[1].message_id === 11), true);
 check('summary', /№2.*фото: 1[\s\S]*✅ MemTest86: 0 помилок.*«Перевірено»/.test(lastSummary()), true);
 const mid = JSON.parse(store.PHS_2).mid;
@@ -107,10 +110,12 @@ check('unfinished pass → no status change', [deals.cells['5:11'], /⏳/.test(l
 // 5. фото без номера, на руках кілька товарів → питає; відповідь «1» прикріплює
 gemini = [{ kind: 'other' }];
 say(photo('F5', 15));
-check('asks for number once', [sent.filter((t) => /До якого товару/.test(t)).length, JSON.parse(store.PH_PENDING).length], [1, 1]);
+check('single photo without number → asks once', [asks(), JSON.parse(store.PH_PENDING).length], [1, 1]);
+const askMid = Number(store.PH_ASK);
 say({ message_id: 16, text: '1' });
-check('pending attached to №1, number message removed', [JSON.parse(store.PH_1).map((x) => x.id), store.PH_PENDING,
-      calls('deleteMessage').some((c) => c[1].message_id === 16)], [['F4', 'F5'], undefined, true]);
+check('pending attached to №1, number message and question removed', [JSON.parse(store.PH_1).map((x) => x.id), store.PH_PENDING,
+      calls('deleteMessage').some((c) => c[1].message_id === 16), calls('deleteMessage').some((c) => c[1].message_id === askMid), store.PH_ASK],
+      [['F4', 'F5'], undefined, true, true, undefined]);
 
 // 6. Gemini недоступний — фото все одно збережене
 gemini = [];
@@ -130,6 +135,38 @@ vm.runInContext('seal_ = function (d) { __sealed.v = d; return { blob: "b", mac:
 store.GITHUB_TOKEN = 'g';
 say({ message_id: 20, text: 'продати 2' });
 check('sell gets photos', sealed && sealed.photos.map((p) => p.id), ['F1', 'F2']);
+
+// 10. 08.10: альбом прийшов НЕ по порядку — фото без підпису раніше за підписане: без питання, обидва до №3
+const asks0 = asks();
+gemini = [{ kind: 'other' }, { kind: 'other' }];
+say(photo('B2', 30, { media_group_id: 'B' }));
+check('album sibling first → waits silently', [asks(), JSON.parse(store.PH_PENDING).length], [asks0, 1]);
+say(photo('B1', 31, { caption: '3', media_group_id: 'B' }));
+check('captioned photo pulls the waiting sibling', [JSON.parse(store.PH_3).map((x) => x.id).sort(), store.PH_PENDING, asks()],
+      [['B1', 'B2', 'F3'], undefined, asks0]);
+
+// 11. дублікати: те саме фото ще раз (той самий file_unique_id) і вдруге завантажене (той самий розмір) — не зберігаємо, без Gemini
+gemini = [{ kind: 'other' }];
+say(photo('B1again', 32, { caption: '3' }, 'UB1'));
+say(photo('B2reup', 33, { caption: '3' }, 'Unew', JSON.parse(store.PH_3).find((x) => x.id === 'B2').k.split(':')[1] * 1));
+check('duplicates not stored, Gemini not spent, messages removed', [JSON.parse(store.PH_3).length, gemini.length,
+      calls('deleteMessage').some((c) => c[1].message_id === 32) && calls('deleteMessage').some((c) => c[1].message_id === 33)], [3, 1, true]);
+gemini = [];
+
+// 12. уже збережені дублікати (до виправлення) чистяться
+store.PH_4 = JSON.stringify([{ id: 'X1', t: 'photo', u: 'UX' }, { id: 'X2', t: 'photo', u: 'UX' }, { id: 'X1', t: 'photo' }, { id: 'X3', t: 'photo', u: 'UY' }]);
+check('old duplicates cleaned', ctx.cleanPhotos_(4).map((x) => x.id), ['X1', 'X3']);
+
+// 13. альбом зовсім без підпису — питаємо з processLedger, коли сусід із підписом так і не прийшов (≥ 2 хв)
+const asks1 = asks();
+say(photo('C1', 40, { media_group_id: 'C' }));
+say(photo('C2', 41, { media_group_id: 'C' }));
+ctx.photoPendingCheck_();
+check('fresh album → not yet', asks(), asks1);
+const pend = JSON.parse(store.PH_PENDING); pend.forEach((x) => { x.ts -= 3 * 60000; }); store.PH_PENDING = JSON.stringify(pend);
+ctx.photoPendingCheck_(); ctx.photoPendingCheck_();
+check('after 2 min → asks once', asks(), asks1 + 1);
+delete store.PH_PENDING; delete store.PH_ASK;
 
 // 9. не своє — не перехоплюємо: текст «3» без фото, що чекають, іде далі як звичайно
 check('bare number without pending → not a photo answer', vm.runInContext('photoNumber_(__m)', Object.assign(ctx, { __m: { text: '3', chat: { id: 7 } } })), false);

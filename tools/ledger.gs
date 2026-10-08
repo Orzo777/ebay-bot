@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-08a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-08b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -369,6 +369,7 @@ function processLedger() {
     log.appendRow([m.getId(), m.getDate(), p.from || m.getFrom(), m.getSubject(), what, row || '', p.snippet || '']);
   });
   try { processCarriers_(log, done); } catch (e) { console.log('перевізники: ' + e); }
+  try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
   if (!props.getProperty('EXPENSES_V1')) { expensesSheet_(ss); props.setProperty('EXPENSES_V1', '1'); }   // аркуш одразу видно
   weeklyIfDue_(props, new Date());
@@ -562,7 +563,7 @@ function sellCommand_(msg) {
   const title = m[1] && extra ? extra : String(v[COL.title - 1]);
   const cost = Number(v[COL.spent - 1]) || Number(v[COL.price - 1]) || null;
   const key = officeToken_(props);
-  const sealed = seal_({ row: idx + 1, title: title, cost: cost, photos: photosOf_(idx + 1) }, key, Utilities.getUuid().replace(/-/g, ''));
+  const sealed = seal_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1) }, key, Utilities.getUuid().replace(/-/g, ''));
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/sell.yml/dispatches', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -1115,10 +1116,59 @@ function tgOffice_(method, payload) {
   return { code: r.getResponseCode(), json: j };
 }
 
+// u — file_unique_id (те саме фото, переслане ще раз); k — роздільність і розмір (те саме фото, вдруге завантажене з галереї)
 function photoFile_(msg) {   // найбільший розмір фото або картинка, надіслана файлом
-  if (msg.photo && msg.photo.length) return { id: msg.photo[msg.photo.length - 1].file_id, t: 'photo' };
-  if (msg.document && /^image\//.test(msg.document.mime_type || '')) return { id: msg.document.file_id, t: 'document' };
+  if (msg.photo && msg.photo.length) {
+    const p = msg.photo[msg.photo.length - 1];
+    return { id: p.file_id, t: 'photo', u: p.file_unique_id || '', k: (p.width || 0) + 'x' + (p.height || 0) + ':' + (p.file_size || 0) };
+  }
+  if (msg.document && /^image\//.test(msg.document.mime_type || '')) {
+    return { id: msg.document.file_id, t: 'document', u: msg.document.file_unique_id || '', k: 'd:' + (msg.document.file_size || 0) };
+  }
   return null;
+}
+
+function samePhoto_(a, b) {
+  return a.id === b.id || (a.u && a.u === b.u) || (a.k && a.k === b.k && !/^0x0:|:0$/.test(a.k));
+}
+
+/** Прибрати дублікати в рядку (08.10: фото, надіслані вдруге через зайве питання «до якого товару?»). → скільки лишилось. */
+function cleanPhotos_(n) {
+  const out = [];
+  photosOf_(n).forEach(function (x) { if (!out.some(function (y) { return samePhoto_(x, y); })) out.push(x); });
+  savePhotos_(n, out);
+  return out;
+}
+
+// Питання «до якого товару?» — одне повідомлення; прибирається, щойно фото прикріплені
+function askPhotoNumber_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('PH_ASK')) return;
+  const res = tgOffice_('sendMessage', { chat_id: props.getProperty('TELEGRAM_CHAT_ID'),
+    text: '📸 До якого товару це фото? Напиши номер у таблиці (наприклад «3»).' });
+  props.setProperty('PH_ASK', String(((res.json || {}).result || {}).message_id || 'x'));
+}
+function dropPhotoAsk_() {
+  const props = PropertiesService.getScriptProperties(), mid = props.getProperty('PH_ASK');
+  if (!mid) return;
+  props.deleteProperty('PH_ASK');
+  if (mid !== 'x') tgOffice_('deleteMessage', { chat_id: props.getProperty('TELEGRAM_CHAT_ID'), message_id: Number(mid) });
+}
+
+/** Фото альбому, що прийшли раніше за підписане, — до того ж рядка, без питань. */
+function flushPending_(n, mg) {
+  const props = PropertiesService.getScriptProperties();
+  const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');
+  const mine = pend.filter(function (p) { return p.mg === mg; }), rest = pend.filter(function (p) { return p.mg !== mg; });
+  if (!mine.length) return;
+  if (rest.length) props.setProperty('PH_PENDING', JSON.stringify(rest)); else { props.deleteProperty('PH_PENDING'); dropPhotoAsk_(); }
+  mine.forEach(function (p) { attachPhoto_(n, p.f, p.m); });
+}
+
+/** Із processLedger: альбом без жодного підпису — питаємо, коли сусід із підписом так і не прийшов (≥ 2 хв). */
+function photoPendingCheck_() {
+  const pend = JSON.parse(PropertiesService.getScriptProperties().getProperty('PH_PENDING') || '[]');
+  if (pend.some(function (p) { return Date.now() - (p.ts || 0) > 2 * 60000; })) askPhotoNumber_();
 }
 
 function openRows_() {
@@ -1134,13 +1184,14 @@ function photoMessage_(msg) {
   let n = Number(((msg.caption || '').match(/^\s*№?\s*(\d{1,4})\b/) || [])[1] || 0);
   if (n && mg) props.setProperty(mg, String(n));
   if (!n && mg) n = Number(props.getProperty(mg) || 0);
+  if (n && mg && rowByN_(n)) flushPending_(n, mg);
   if (!n) { const open = openRows_(); if (open.length === 1) n = open[0].n; }
   if (n && !rowByN_(n)) { notify_('У таблиці немає №' + n + ' — фото не зберіг.'); return true; }
-  if (!n) {   // спитаємо один раз; фото полежать до відповіді-номера
+  if (!n) {   // фото полежить до номера; альбом — тихо чекає сусіда з підписом (він може прийти пізніше)
     const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');
-    pend.push({ f: f, m: msg.message_id, mg: mg });
+    pend.push({ f: f, m: msg.message_id, mg: mg, ts: Date.now() });
     props.setProperty('PH_PENDING', JSON.stringify(pend.slice(-PHOTO_MAX)));
-    if (pend.length === 1) notify_('📸 До якого товару це фото? Напиши номер у таблиці (наприклад «3»).');
+    if (!mg) askPhotoNumber_();
     return true;
   }
   attachPhoto_(n, f, msg.message_id);
@@ -1157,6 +1208,7 @@ function photoNumber_(msg) {
   const n = Number(m[1]);
   if (!rowByN_(n)) { notify_('У таблиці немає №' + n + '. Напиши інший номер.'); return true; }
   props.deleteProperty('PH_PENDING');
+  dropPhotoAsk_();
   pend.forEach(function (p) { if (p.mg) props.setProperty(p.mg, String(n)); attachPhoto_(n, p.f, p.m); });
   tgOffice_('deleteMessage', { chat_id: props.getProperty('TELEGRAM_CHAT_ID'), message_id: msg.message_id });
   return true;
@@ -1164,10 +1216,11 @@ function photoNumber_(msg) {
 
 function attachPhoto_(n, f, messageId) {
   const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
-  const list = photosOf_(n);
-  if (!list.some(function (x) { return x.id === f.id; })) list.push(f);
-  savePhotos_(n, list);
+  const list = cleanPhotos_(n);
   tgOffice_('deleteMessage', { chat_id: chat, message_id: messageId });   // фото збережене — з чату прибираємо
+  if (list.some(function (x) { return samePhoto_(f, x); })) return;     // дубль — не зберігаємо і не витрачаємо Gemini
+  list.push(f);
+  savePhotos_(n, list);
   let g = null;
   try { g = photoGemini_(f.id); } catch (e) { console.log('фото Gemini: ' + e); }
   photoSummary_(n, g, list.length);
@@ -1277,7 +1330,7 @@ function photoShowCommand_(msg) {
   const m = String(msg.text || '').trim().match(/^\/?фото(?=\s|$)\s*(\d{1,4})?/i);
   if (!m) return false;
   if (!m[1]) { notify_('Напиши так: «фото 3». А щоб додати фото — надішли його з підписом «3».'); return true; }
-  const list = photosOf_(Number(m[1]));
+  const list = cleanPhotos_(Number(m[1]));
   if (!list.length) { notify_('До №' + m[1] + ' фото ще немає — надішли їх із підписом «' + m[1] + '».'); return true; }
   sendAlbum_(list, '📸 №' + m[1]);
   return true;
