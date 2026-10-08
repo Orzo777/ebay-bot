@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-06b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-08a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -403,6 +403,8 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '• відправив 3 [трек] — проданий №3 відправлено покупцю; з треком скажу, коли покупець отримає\n' +
   '• трек 3 00340… — трек-номер посилки №3 (купівля чи продаж), якщо його не було в листі\n' +
   '• нагадай 20.10 текст — нагадаю того дня; нагадування — що заплановано\n' +
+  '• фото з підписом 3 — фото товару №3 (наклейки, екран MemTest86): збережу, звірю наклейку з покупкою, MemTest86 без ' +
+  'помилок → «Перевірено»; «продати 3» пришле їх альбомом; «фото 3» — показати\n' +
   'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення. Щодня о 10:00 — що треба зробити ' +
   '(посилка не йде, не перевірено, не відправлено, заплановане).';
 
@@ -424,6 +426,7 @@ function notify_(text, markup) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
+  if (photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg)) return;
   if (sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
@@ -559,7 +562,7 @@ function sellCommand_(msg) {
   const title = m[1] && extra ? extra : String(v[COL.title - 1]);
   const cost = Number(v[COL.spent - 1]) || Number(v[COL.price - 1]) || null;
   const key = officeToken_(props);
-  const sealed = seal_({ row: idx + 1, title: title, cost: cost }, key, Utilities.getUuid().replace(/-/g, ''));
+  const sealed = seal_({ row: idx + 1, title: title, cost: cost, photos: photosOf_(idx + 1) }, key, Utilities.getUuid().replace(/-/g, ''));
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/sell.yml/dispatches', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -1092,4 +1095,203 @@ function kaCloseDispatch_(ids, why) {
     console.log('прибирання переписки: ' + e);
     return false;
   }
+}
+
+
+// ------------------------------------------------------------------ фото товару (08.10)
+// Фото в бот «Облік і продаж» із підписом-номером («3») → зберігаються до рядка обліку (file_id Telegram — для бота
+// безстроково), повідомлення з фото прибирається з чату, а підсумок по рядку — одним повідомленням, що оновлюється.
+// Gemini читає кожне фото (один запит): наклейка пам'яті → звірка з назвою покупки; екран MemTest86 з «Errors: 0» після
+// завершеного проходу → статус «Перевірено» (помилки → «Проблема»). «продати N» — альбом фото слідом за оголошенням.
+const PHOTO_MAX = 10;
+
+function photosOf_(n) { return JSON.parse(PropertiesService.getScriptProperties().getProperty('PH_' + n) || '[]'); }
+function savePhotos_(n, list) { PropertiesService.getScriptProperties().setProperty('PH_' + n, JSON.stringify(list.slice(-PHOTO_MAX))); }
+function tgOffice_(method, payload) {
+  const tok = officeToken_(PropertiesService.getScriptProperties());
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/' + method, { method: 'post', payload: payload, muteHttpExceptions: true });
+  let j = {};
+  try { j = JSON.parse(r.getContentText() || '{}'); } catch (e) { j = {}; }
+  return { code: r.getResponseCode(), json: j };
+}
+
+function photoFile_(msg) {   // найбільший розмір фото або картинка, надіслана файлом
+  if (msg.photo && msg.photo.length) return { id: msg.photo[msg.photo.length - 1].file_id, t: 'photo' };
+  if (msg.document && /^image\//.test(msg.document.mime_type || '')) return { id: msg.document.file_id, t: 'document' };
+  return null;
+}
+
+function openRows_() {
+  return ledgerRows_().filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; });
+}
+
+/** Фото → номер рядка: з підпису, з альбому (підпис лише на першому фото), єдиний товар на руках, або «чекає номера». */
+function photoMessage_(msg) {
+  const f = photoFile_(msg);
+  if (!f) return false;
+  const props = PropertiesService.getScriptProperties();
+  const mg = msg.media_group_id ? 'MG_' + msg.media_group_id : '';
+  let n = Number(((msg.caption || '').match(/^\s*№?\s*(\d{1,4})\b/) || [])[1] || 0);
+  if (n && mg) props.setProperty(mg, String(n));
+  if (!n && mg) n = Number(props.getProperty(mg) || 0);
+  if (!n) { const open = openRows_(); if (open.length === 1) n = open[0].n; }
+  if (n && !rowByN_(n)) { notify_('У таблиці немає №' + n + ' — фото не зберіг.'); return true; }
+  if (!n) {   // спитаємо один раз; фото полежать до відповіді-номера
+    const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');
+    pend.push({ f: f, m: msg.message_id, mg: mg });
+    props.setProperty('PH_PENDING', JSON.stringify(pend.slice(-PHOTO_MAX)));
+    if (pend.length === 1) notify_('📸 До якого товару це фото? Напиши номер у таблиці (наприклад «3»).');
+    return true;
+  }
+  attachPhoto_(n, f, msg.message_id);
+  return true;
+}
+
+/** Відповідь-номер на «до якого товару?» — прикріпити фото, що чекають. */
+function photoNumber_(msg) {
+  const m = String(msg.text || '').trim().match(/^№?\s*(\d{1,4})$/);
+  if (!m) return false;
+  const props = PropertiesService.getScriptProperties();
+  const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');
+  if (!pend.length) return false;
+  const n = Number(m[1]);
+  if (!rowByN_(n)) { notify_('У таблиці немає №' + n + '. Напиши інший номер.'); return true; }
+  props.deleteProperty('PH_PENDING');
+  pend.forEach(function (p) { if (p.mg) props.setProperty(p.mg, String(n)); attachPhoto_(n, p.f, p.m); });
+  tgOffice_('deleteMessage', { chat_id: props.getProperty('TELEGRAM_CHAT_ID'), message_id: msg.message_id });
+  return true;
+}
+
+function attachPhoto_(n, f, messageId) {
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  const list = photosOf_(n);
+  if (!list.some(function (x) { return x.id === f.id; })) list.push(f);
+  savePhotos_(n, list);
+  tgOffice_('deleteMessage', { chat_id: chat, message_id: messageId });   // фото збережене — з чату прибираємо
+  let g = null;
+  try { g = photoGemini_(f.id); } catch (e) { console.log('фото Gemini: ' + e); }
+  photoSummary_(n, g, list.length);
+}
+
+/** Gemini: що на фото — екран MemTest86, наклейка пам'яті чи інше. null — не вдалося. */
+function photoGemini_(fileId) {
+  const props = PropertiesService.getScriptProperties(), key = props.getProperty('GEMINI_API_KEY');
+  if (!key) return null;
+  const tok = officeToken_(props);
+  const info = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/getFile?file_id=' + encodeURIComponent(fileId),
+    { muteHttpExceptions: true }).getContentText() || '{}');
+  const path = ((info || {}).result || {}).file_path;
+  if (!path) return null;
+  const blob = UrlFetchApp.fetch('https://api.telegram.org/file/bot' + tok + '/' + path, { muteHttpExceptions: true }).getBlob();
+  const prompt = 'Фото для перепродажу оперативної пам\'яті або консолі. Поверни JSON без пояснень:\n' +
+    '{"kind": "memtest" (екран PassMark MemTest86) | "ram_label" (наклейка на планці/коробці пам\'яті) | "other",\n' +
+    ' "memtest": {"errors": число біля «Errors:» або null, "pass_done": true якщо завершено хоча б 1 повний прохід (напис PASS, ' +
+    '«Pass: 2/4» або більше, підсумковий екран), "result": "PASS" | "FAIL" | null, "ram": текст рядка RAM Config або модель пам\'яті, ' +
+    '"gb": обсяг пам\'яті в ГБ або null},\n' +
+    ' "label": {"brand": "", "part_number": "", "gb_per_module": число або null, "modules_visible": число або null, ' +
+    '"ddr": "DDR4" | "DDR5" | "DDR3" | null, "form": "desktop" | "laptop" | null (SO-DIMM = laptop; на наклейці PC4-xxxxS/SC = laptop, ' +
+    'U = desktop), "registered": true якщо RDIMM / Registered (наприклад PC4-2666V-R…), "text": головний рядок наклейки дослівно}}';
+  const models = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+  for (let i = 0; i < models.length; i++) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[i] + ':generateContent', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': key },
+      payload: JSON.stringify({ contents: [{ parts: [{ text: prompt },
+        { inline_data: { mime_type: blob.getContentType() || 'image/jpeg', data: Utilities.base64Encode(blob.getBytes()) } }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' } }) });
+    if (r.getResponseCode() !== 200) { console.log('Gemini фото ' + models[i] + ': ' + r.getResponseCode()); continue; }
+    try { return JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text.replace(/^```(?:json)?|```$/g, '')); }
+    catch (e) { console.log('Gemini фото: не JSON'); }
+  }
+  return null;
+}
+
+/** Що каже назва покупки про пам'ять: {ddr, form, per, modules, total, parts: [номери деталей]}. */
+function titleSpec_(t) {
+  t = String(t || '');
+  const total = Number((t.match(/(\d{1,3})\s*gb/i) || [])[1] || 0);
+  const spec = { ddr: ((t.match(/ddr\s?([345])/i) || [])[1] || ''),
+    form: /so-?dimm|laptop|notebook|imac|macbook|\bpc[345]-\d+[a-z]?s\b/i.test(t) ? 'laptop' : /desktop|\budimm\b|\bdimm\b|\bpc\b/i.test(t) ? 'desktop' : '',
+    parts: (t.match(/\b[A-Z0-9][A-Z0-9-]{7,}\b/g) || []).filter(function (x) { return /\d/.test(x) && /[A-Z]/.test(x); })
+      .map(function (x) { return x.replace(/[^A-Z0-9]/g, ''); }) };
+  const nx = t.match(/\b(\d)\s*[x×]\s*(\d{1,2})\s*gb/i), xn = t.match(/\b(\d{1,2})\s*gb\s*[x×]\s*(\d)\b/i);   // «2x16GB» / «16GB x 2»
+  if (nx) { spec.modules = Number(nx[1]); spec.per = Number(nx[2]); }
+  else if (xn) { spec.per = Number(xn[1]); spec.modules = Number(xn[2]); }
+  spec.total = spec.modules && spec.per ? spec.modules * spec.per : total;
+  return spec;
+}
+
+/** Наклейка vs назва покупки → {ok: [...], bad: [...]}. */
+function labelCheck_(title, label) {
+  const t = titleSpec_(title), ok = [], bad = [];
+  label = label || {};
+  const lp = String(label.part_number || label.text || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (lp && t.parts.some(function (p) { return p.length >= 8 && (lp.indexOf(p) >= 0 || p.indexOf(lp) >= 0); })) ok.push('модель ' + label.part_number);
+  const ddr = String(label.ddr || '').replace(/\D/g, '');
+  if (ddr && t.ddr) (ddr === t.ddr ? ok : bad).push('DDR' + ddr + (ddr === t.ddr ? '' : ', а купував DDR' + t.ddr));
+  if (label.form && t.form) (label.form === t.form ? ok : bad).push(label.form === t.form ? (t.form === 'laptop' ? 'для ноутбука' : 'для ПК')
+    : 'на наклейці ' + (label.form === 'laptop' ? 'ноутбучна (SO-DIMM)' : 'для ПК') + ', а купував ' + (t.form === 'laptop' ? 'ноутбучну' : 'для ПК'));
+  const per = Number(label.gb_per_module || 0), want = t.per || (t.modules ? t.total / t.modules : 0);
+  if (per && want) (per === want ? ok : bad).push(per === want ? per + ' ГБ на планку' : 'на наклейці ' + per + ' ГБ на планку, а купував ' + want + ' ГБ');
+  if (label.registered) bad.push('серверна (Registered / RDIMM) — у звичайний ПК не стане');
+  return { ok: ok, bad: bad };
+}
+
+/** Один підсумок по рядку: створюється раз і далі редагується (не засмічуємо чат). */
+function photoSummary_(n, g, count) {
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  const r = rowByN_(n);
+  const st = JSON.parse(props.getProperty('PHS_' + n) || '{}');
+  st.lines = st.lines || {};
+  if (g && g.kind === 'memtest' && g.memtest) {
+    const t = g.memtest, errs = t.errors == null ? null : Number(t.errors);
+    if (errs > 0 || t.result === 'FAIL') {
+      st.lines.memtest = '⛔ MemTest86: <b>' + (errs || '') + ' помилок</b> — планка несправна → статус «Проблема». Як заявити — «проблема ' + n + '».';
+      if (r && ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0) ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.status).setValue('Проблема');
+    } else if (errs === 0 && (t.pass_done || t.result === 'PASS')) {
+      const can = r && ['Оплачено', 'В дорозі', 'Отримано'].indexOf(r.status) >= 0;
+      if (can) { ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.status).setValue('Перевірено'); markEvent_(n, 'tested', iso_(new Date())); }
+      st.lines.memtest = '✅ MemTest86: 0 помилок' + (t.ram ? ', ' + esc_(String(t.ram).slice(0, 60)) : '') + (can ? ' → статус «Перевірено»' : '');
+    } else if (errs === 0) {
+      st.lines.memtest = '⏳ MemTest86: поки 0 помилок, але прохід не завершено — пришли фото, коли внизу «Pass: 2/4» або PASS.';
+    }
+  } else if (g && g.kind === 'ram_label' && g.label && r) {
+    const c = labelCheck_(r.title, g.label);
+    st.lines.label = c.bad.length ? '⚠️ Наклейка не збігається з покупкою: ' + c.bad.map(esc_).join('; ')
+      : c.ok.length ? '✅ Наклейка збігається: ' + c.ok.map(esc_).join(', ') : 'ℹ️ Наклейку прочитав (' + esc_(String(g.label.text || '').slice(0, 60)) + '), але звірити нема з чим';
+  }
+  const text = '📸 <b>№' + n + '</b> «' + esc_(r ? String(r.title).slice(0, 60) : '') + '» — фото: ' + count +
+    ['label', 'memtest'].filter(function (k) { return st.lines[k]; }).map(function (k) { return '\n' + st.lines[k]; }).join('') +
+    '\nПродати — «продати ' + n + '» (фото прийдуть альбомом); показати — «фото ' + n + '».';
+  let done = false;
+  if (st.mid) done = tgOffice_('editMessageText', { chat_id: chat, message_id: st.mid, text: text, parse_mode: 'HTML' }).code === 200;
+  if (!done) {
+    const res = tgOffice_('sendMessage', { chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: 'true' });
+    if (st.mid) tgOffice_('deleteMessage', { chat_id: chat, message_id: st.mid });
+    st.mid = ((res.json || {}).result || {}).message_id || null;
+  }
+  props.setProperty('PHS_' + n, JSON.stringify(st));
+}
+
+/** «фото 3» — надіслати збережені фото альбомом. */
+function photoShowCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?фото(?=\s|$)\s*(\d{1,4})?/i);
+  if (!m) return false;
+  if (!m[1]) { notify_('Напиши так: «фото 3». А щоб додати фото — надішли його з підписом «3».'); return true; }
+  const list = photosOf_(Number(m[1]));
+  if (!list.length) { notify_('До №' + m[1] + ' фото ще немає — надішли їх із підписом «' + m[1] + '».'); return true; }
+  sendAlbum_(list, '📸 №' + m[1]);
+  return true;
+}
+
+function sendAlbum_(list, caption) {
+  const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
+  ['photo', 'document'].forEach(function (t) {
+    const part = list.filter(function (x) { return x.t === t; });
+    for (let i = 0; i < part.length; i += 10) {
+      const chunk = part.slice(i, i + 10);
+      if (chunk.length === 1) tgOffice_(t === 'photo' ? 'sendPhoto' : 'sendDocument', { chat_id: chat, caption: caption, [t]: chunk[0].id });
+      else tgOffice_('sendMediaGroup', { chat_id: chat, media: JSON.stringify(chunk.map(function (x, j) {
+        return j === 0 ? { type: t, media: x.id, caption: caption } : { type: t, media: x.id }; })) });
+    }
+  });
 }

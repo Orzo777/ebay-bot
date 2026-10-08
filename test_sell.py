@@ -1,5 +1,6 @@
 """«продати N» (01.10): шифрування в парі з ledger.gs, ціни й пороги, німецькі тексти. Без мережі."""
 import itertools
+import json
 import os
 import sys
 import unittest
@@ -136,6 +137,23 @@ class MakeTest(unittest.TestCase):
             self.assertEqual(sell.competitors(r, client=type("C", (), {"_headers": lambda self: {}})()), [129.0, 144.99])
         finally:
             main._request_with_backoff = old
+
+
+class AlbumTest(unittest.TestCase):
+    def test_photos_after_listing(self):
+        # 08.10: фото товару з обліку — альбомом (до 10 у групі), одиночне — окремим фото; картинки-файли — окремо
+        import requests
+        posted, old = [], requests.post
+        requests.post = lambda url, data=None, **k: (posted.append((url.rsplit("/", 1)[1], data)), type("R", (), {"status_code": 200})())[1]
+        try:
+            photos = [{"id": f"P{i}", "t": "photo"} for i in range(12)] + [{"id": "D1", "t": "document"}, {"bad": 1}]
+            self.assertEqual(sell.office_send_album(photos, "📸 №3"), 13)
+        finally:
+            requests.post = old
+        self.assertEqual([m for m, _ in posted], ["sendMediaGroup", "sendMediaGroup", "sendDocument"])
+        first = json.loads(posted[0][1]["media"])
+        self.assertEqual((len(first), first[0]["caption"], "caption" in first[1]), (10, "📸 №3", False))
+        self.assertEqual(len(json.loads(posted[1][1]["media"])), 2)
 
 
 if __name__ == "__main__":

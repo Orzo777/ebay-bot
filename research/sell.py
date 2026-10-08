@@ -355,6 +355,26 @@ def office_send_html(text: str, markup: dict | None) -> bool:
     return r.status_code == 200
 
 
+def office_send_album(photos: list, caption: str) -> int:
+    """08.10: фото товару, збережені в обліку (file_id Telegram), — альбомом слідом за оголошенням. → скільки надіслано."""
+    import requests
+    token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN
+    api, n = f"{config.TELEGRAM_API_BASE}/bot{token}/", 0
+    for kind in ("photo", "document"):
+        part = [p["id"] for p in photos or [] if isinstance(p, dict) and p.get("t") == kind and p.get("id")]
+        for i in range(0, len(part), 10):
+            chunk = part[i:i + 10]
+            if len(chunk) == 1:
+                r = requests.post(api + ("sendPhoto" if kind == "photo" else "sendDocument"),
+                                  data={"chat_id": config.TELEGRAM_CHAT_ID, kind: chunk[0], "caption": caption}, timeout=30)
+            else:
+                media = [dict({"type": kind, "media": fid}, **({"caption": caption} if j == 0 else {})) for j, fid in enumerate(chunk)]
+                r = requests.post(api + "sendMediaGroup", data={"chat_id": config.TELEGRAM_CHAT_ID,
+                                                                "media": json.dumps(media, ensure_ascii=False)}, timeout=30)
+            n += len(chunk) if r.status_code == 200 else 0
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--blob")
@@ -371,8 +391,9 @@ def main():
             office_send_html(f"⚠️ Не зміг прочитати запит «продати»: {html.escape(str(e))}", None)
             raise SystemExit(1)
         title, cost, row = d.get("title") or "", d.get("cost"), d.get("row")
+        photos = d.get("photos") or []
     else:
-        title, cost, row = a.title or "", a.cost, None
+        title, cost, row, photos = a.title or "", a.cost, None, []
     try:
         text, kb = make(title, float(cost) if cost not in (None, "") else None, row)
     except Exception as e:   # картку-помилку — у бот, щоб не чекати мовчки
@@ -383,6 +404,8 @@ def main():
         print(text)
     elif not office_send_html(text, kb):
         raise SystemExit(1)
+    elif photos:
+        print(f"фото альбомом: {office_send_album(photos, f'📸 Фото для оголошення №{row}')} з {len(photos)}")
 
 
 if __name__ == "__main__":
