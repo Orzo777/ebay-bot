@@ -17,11 +17,9 @@ on:
         description: "chat.id відправника (перевіряється проти секрету)"
         required: true
 
-# Страховка від повторів Telegram (Apps Script відповідає 302 → Telegram шле те саме ще раз):
-# однаковий текст одночасно — старіший запуск скасовується, лишається один.
-concurrency:
-  group: ka-share-${{ inputs.chat_id }}-${{ inputs.text }}
-  cancel-in-progress: true
+# Повтори Telegram (Apps Script відповідає 302 → Telegram шле те саме ще раз) відсіює сам Apps Script за update_id
+# (TG_SEEN у gmail_trigger.gs). 08.10: тут була черга concurrency з ПОВНИМ текстом у назві — довге посилання з додатка
+# eBay (сотні символів параметрів) перевищило ліміт назви, і GitHub валив запуск ще до старту («workflow file issue»).
 
 permissions:
   contents: read
