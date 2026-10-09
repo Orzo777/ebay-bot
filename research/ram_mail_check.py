@@ -250,26 +250,27 @@ def search_link(body: str) -> tuple[str | None, str | None]:
 # Кнопка «інші нові збіги»: m-suche-verwenden (збережена підписка) відкривається лише з входом у KA — у браузері
 # Telegram входу немає, і KA часто віддає помилку 500 (27.09). Тому ведемо на ПУБЛІЧНУ сторінку пошуку з тими ж
 # фільтрами (найновіші зверху). Бот цих сторінок не відкриває — це лише посилання для людини.
-_RAM_SEARCH = {  # назва підписки → межі ціни (як у KA, 26.09)
-    "arbeitsspeicher ddr5": (20, 108), "ddr5 16gb": (10, 108), "ddr5 sodimm 16gb": (10, 81), "ddr5 sodimm 32gb": (20, 191),
-    "ddr5 2x16gb": (20, 256), "ddr5 32gb": (20, 256), "ddr5 2x32gb": (40, 427), "ddr5 64gb": (40, 427),
-    "ddr4 2x16gb": (15, 87), "ddr4 sodimm 32gb": (15, 89), "ddr4 64gb": (30, 202),
+# 09.10: верхні межі +7–9% — комісію eBay прибрано, стеля «торгуйся» зросла (стара межа × нова стеля / стара)
+_RAM_SEARCH = {  # назва підписки → межі ціни (як у KA)
+    "arbeitsspeicher ddr5": (20, 117), "ddr5 16gb": (10, 117), "ddr5 sodimm 16gb": (10, 88), "ddr5 sodimm 32gb": (20, 206),
+    "ddr5 2x16gb": (20, 276), "ddr5 32gb": (20, 276), "ddr5 2x32gb": (40, 458), "ddr5 64gb": (40, 458),
+    "ddr4 2x16gb": (15, 94), "ddr4 sodimm 32gb": (15, 98), "ddr4 64gb": (30, 217),
     # 28.09: «Laptop/Notebook RAM» без «SO-DIMM» і «32GB» без «2x16» не ловила жодна підписка; для 2x24 підписки не було
-    "ddr4 32gb": (15, 93), "ddr5 48gb": (20, 311),
+    "ddr4 32gb": (15, 101), "ddr5 48gb": (20, 334),
 }
 _KA = "https://www.kleinanzeigen.de"
 _CONSOLE_SEARCH = {
-    "xbox series x": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:150:402/xbox-series-x/"
+    "xbox series x": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:150:432/xbox-series-x/"
                      "k0c279+konsolen.art_s:xbox+konsolen.model_s:series_x+konsolen.versand_s:ja",
-    "ps5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:150:323/ps5/"
+    "ps5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:150:347/ps5/"
            "k0c279+konsolen.art_s:playstation+konsolen.versand_s:ja",
-    "switch 2": "/s-konsolen/nintendo/anbieter:privat/anzeige:angebote/preis:150:285/switch-2/"
+    "switch 2": "/s-konsolen/nintendo/anbieter:privat/anzeige:angebote/preis:150:307/switch-2/"
                 "k0c279+konsolen.art_s:nintendo+konsolen.model_s:switch_2+konsolen.versand_s:ja",
     # 28.09: ~20% консолей продавці публікують без фільтра моделі — дублюємо підписки за назвою (KA ігнорує «x», «2», «5»,
     # тож нижня межа €230 відсікає Series S / Switch OLED / PS4, а решту відсіює бот)
-    "xbox series": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:230:402/xbox-series/"
+    "xbox series": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:230:432/xbox-series/"
                    "k0c279+konsolen.art_s:xbox+konsolen.versand_s:ja",
-    "playstation 5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:230:323/playstation-5/"
+    "playstation 5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:230:347/playstation-5/"
                      "k0c279+konsolen.art_s:playstation+konsolen.versand_s:ja",
 }
 
