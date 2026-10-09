@@ -206,6 +206,7 @@ class EbayModeTest(unittest.TestCase):
         ok, sent, back, fake = self.run_mode(d)
         self.assertNotIn("AddFixedPriceItem", [c[0] for c in fake.calls])
         self.assertIn("Нічого не опубліковано", sent[0][0])
+        self.assertIn("без комісії", sent[0][0])
         self.assertEqual(back, [])
         ok, sent, back, fake = self.run_mode(dict(d, dry=False), FakeEbay(verify_inner=err("Bad thing", "1")))
         self.assertIn("не прийняв", sent[0][0])

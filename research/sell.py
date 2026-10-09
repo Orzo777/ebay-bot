@@ -551,6 +551,10 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
     warn = ("\nℹ️ eBay каже:\n" + _short(el.explain(res["warnings"]), 4)) if res["warnings"] else ""
     parts = ", ".join(f"{k} {money_de(v)} €" for k, v in (res.get("fees") or {}).items())
     fee = (f"комісія за виставлення {money_de(res['fee'])} €" + (f": {parts}" if parts else "")) if res["fee"] else "без комісії за виставлення"
+    if set(res.get("fees") or {}) <= {"InsertionFee"} and 0 < res["fee"] <= 0.5:
+        # 09.10, довідка eBay «Gebühren für private Verkäufer»: 320 оголошень на місяць без Angebotsgebühr, далі 0,50 €;
+        # Verify показує 0,50 € без урахування цього ліміту — реально 0 €
+        fee = "виставлення безкоштовне (eBay рахує 0,50 € лише після 320 оголошень на місяць)"
     if not res["ok"]:
         return send(f"⚠️ eBay не прийняв оголошення {what}:\n{_short(res['errors'])}\nНічого не опубліковано. Перешли це Claude." + warn, None)
     if dry:
