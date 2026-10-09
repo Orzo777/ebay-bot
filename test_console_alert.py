@@ -425,3 +425,25 @@ class TestPass3bBundles(unittest.TestCase):
         for t, p in [("Sony PlayStation 5 Controller GTA VI Limited schwarz", 279), ("Nintendo Switch Joy-Con Pair 2er-Set", 80),
                      ("Virtual Boy für Nintendo Switch & Nintendo Switch 2 - NEU & OVP", 160)]:
             self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", t)
+
+
+
+class TestRetro0910(unittest.TestCase):
+    """09.10: «Atari 2600 Konsole von 1991 + … PS5 Controller» за 260 € → BUY (eBay-сторож)."""
+
+    def test_retro_with_our_console_word_is_skipped(self):
+        from console_alert import evaluate_console
+        for t in ["Atari 2600 Konsole von 1991 + Neu ohne Folie + 100 % Komplett und Fun + PS5 Controller",
+                  "Sega Mega Drive + Xbox Series X Spiel", "Wii U Konsole + Switch Pro Controller", "PS2 Slim + PS5 Spiele Sammlung"]:
+            r = evaluate_console(t, 260)
+            self.assertEqual(r["verdict"], "SKIP", t)
+            self.assertIn("ретро", r["reason"], t)
+        for t, p in [("Sony PlayStation 5 Slim Disc 1TB", 300), ("Xbox Series X 1TB", 300), ("PS5 Konsole + 3 Spiele", 300)]:
+            self.assertNotEqual(evaluate_console(t, p)["verdict"], "SKIP", t)
+
+
+    def test_no_signal_in_title_is_defect(self):
+        from console_alert import evaluate_console
+        for t in ["Ps5 Slim 1TB hmdi kein signal", "PS5 Konsole kein Bild", "Xbox Series X no signal", "PS5 HDMI defekt"]:
+            self.assertEqual(evaluate_console(t, 270)["verdict"], "SKIP", t)
+        self.assertNotEqual(evaluate_console("PS5 Slim 1TB mit HDMI Kabel", 300)["verdict"], "SKIP")

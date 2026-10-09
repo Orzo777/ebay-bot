@@ -27,12 +27,18 @@ SUSPICIOUS_BELOW = 250  # навіть за старими цінами (до 1.
 _SERIES_X = re.compile(r"serie[sn]?\s*x\b", re.I)
 # «Series» саме по собі НЕ «Series S» (28.09: «Elite Controller Series 2» відкидав справжні Xbox Series X) — потрібен пробіл
 _X_AND_S = re.compile(r"serie[sn]?\s*x\s*(?:/|\||&|und|oder|,)\s*s\b|\bserie[sn]?\s+s\s*(?:/|\||&|und|oder|,)\s*x\b", re.I)
+_RETRO = re.compile(r"\batari\b|\bsega\b|mega\s?drive|dreamcast|commodore|\bamiga\b|\bc64\b|\bsnes\b|super\s+nintendo|"
+                    r"\bnes\b|\bn64\b|nintendo\s*64|gamecube|game\s?boy|\bgba\b|\bwii(?:\s?u)?\b|\bpsp\b|ps\s?vita|"
+                    r"playstation\s*[123]\b|\bps[123]\b|xbox\s*360|neo\s?geo|\bretro\b|vintage", re.I)
+_ANY_OURS = re.compile(r"ps\s?5|playstation\s*5|xbox\s*series|switch", re.I)
 _OTHER_CONSOLE = re.compile(r"\bserie[sn]?\s+s\b|\bseries-s\b|playstation|\bps[45]\b|switch|xbox\s*one", re.I)
 # «Fn ACC Ps5» за €150 (eBay 28.09) — продаж ігрового акаунта, не консолі
 _REJECT_BASE = re.compile(r"defekt|bastler|ersatzteil|kaputt|\bsuche\b|\bsuch\b|tausch|gesperrt|gebannt|banned|\bacc\b|\baccount|"
                      r"\bkonto\b|reparatur\w*|repair|leerkarton|(?:ovp|verpackung|karton|box)\s+(?:ist\s+)?leer\b|"
                      r"\bleere\s+(?:ovp|verpackung|karton|box)|dummy|attrappe|mainboard|ersatz-?\s?gehäuse|"
                      r"vermiet|\bmiete\b|gutschein|\bcoins\b|\bbann\b|ohne\s+bild|"
+                     # 09.10: «Ps5 Slim 1TB hmdi kein signal» за 270 € — BUY (врятував лише фільтр Direkt kaufen)
+                     r"kein\w*\s+(?:bild|signal|ton)\b|no\s+signal|h[dm]{2}i\w*\s+(?:defekt|kaputt|geht\s+nicht)|"
                      r"geht\s+(?:ständig|immer|oft|einfach|von\s+alleine|von\s+selbst)\s+aus\b|"
                      r"nicht\s+(?:mehr\s+)?einschalt|lädt\s+nicht|ohne\s+funktion|wasserschaden|"
                      r"ohne\s+(?:laufwerk|netzteil|konsole)|\bnur\s+(?:die\s+)?(?:ovp|karton|verpackung|controller)|"
@@ -184,6 +190,9 @@ def _skip(title: str, price: float, reason: str, wrong_type: bool = True) -> dic
 
 def evaluate_console(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict | None:
     title = re.sub(r"[®™©\ufe0f]", "", title or "")   # «PlayStation®5» (eBay 28.09: 7 консолей не розпізнано)
+    if _RETRO.search(title) and _ANY_OURS.search(title):
+        # 09.10: «Atari 2600 Konsole … + PS5 Controller» (eBay) пішла як BUY за 260 € — ретро-консоль, а наша — лише згадка
+        return _skip(title, price, "ретро / інша консоль (Atari, Sega, Wii, PS1–3 …) — не наш товар")
     if not _SERIES_X.search(title):
         return evaluate_ps5(title, price, shipping, vb)
     ship_in = SHIP_IN if shipping is None else shipping
