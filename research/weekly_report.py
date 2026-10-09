@@ -153,6 +153,20 @@ def stale(rows: list[dict], today: date, market=sell.competitors) -> list[str]:
     return (["📦 <b>Що зробити з товаром</b>"] + out) if out else ["📦 <b>Товар</b>: залежаного немає ✓"]
 
 
+def auctions(ebay: dict, today: date) -> list[str]:
+    """09.10: аукціони за тиждень, про які були картки: у скількох фінальна ставка вклалась у наш максимум."""
+    week = (today - timedelta(days=6)).isoformat()
+    res = [r for r in ebay.get("auction_results") or [] if r.get("d", "") >= week]
+    if not res:
+        return []
+    ok = [r for r in res if r["final"] <= r["max"]]
+    over = sorted((r["final"] - r["max"]) / r["max"] * 100 for r in res if r["final"] > r["max"] and r["max"])
+    line = f"🔨 <b>Аукціони за тиждень</b>: {len(res)} з картками, у {len(ok)} фінал ≤ нашого максимуму (можна було виграти)"
+    if over:
+        line += f"; решта пішли дорожче на {over[len(over) // 2]:.0f}% (медіана)"
+    return [line]
+
+
 def search(ebay: dict, ka: dict, rows: list[dict], today: date) -> list[str]:
     e, k = health.totals(ebay.get("stats"), 168), health.totals(ka.get("stats"), 168)
     week = today - timedelta(days=6)
@@ -187,7 +201,7 @@ def search(ebay: dict, ka: dict, rows: list[dict], today: date) -> list[str]:
 def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.competitors) -> str:
     acc, _ = accuracy(rows, today)
     parts = [[f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}"],
-             money(rows, today), acc, stale(rows, today, market), search(ebay, ka, rows, today)]
+             money(rows, today), acc, stale(rows, today, market), search(ebay, ka, rows, today) + auctions(ebay, today)]
     return "\n\n".join("\n".join(p) for p in parts)
 
 

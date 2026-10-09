@@ -112,3 +112,16 @@ class MonthLinesTest(unittest.TestCase):
         self.assertIn("лежав у середньому 8 дн.", lines[0])
         self.assertTrue(lines[1].strip().startswith("по категоріях: Консоль"))
         self.assertEqual(wr.month_lines([], date(2026, 10, 9)), [])
+
+
+
+class AuctionsTest(unittest.TestCase):
+    def test_auction_line(self):
+        from datetime import date
+        import weekly_report as wr
+        ebay = {"auction_results": [{"d": "2026-10-08", "final": 150, "max": 190}, {"d": "2026-10-07", "final": 230, "max": 190},
+                                    {"d": "2026-10-06", "final": 200, "max": 160}, {"d": "2026-09-01", "final": 10, "max": 100}]}
+        line = wr.auctions(ebay, date(2026, 10, 9))[0]
+        self.assertIn("3 з картками, у 1 фінал", line)
+        self.assertIn("дорожче на 25%", line)   # медіана з 21% і 25%
+        self.assertEqual(wr.auctions({}, date(2026, 10, 9)), [])

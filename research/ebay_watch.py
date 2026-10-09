@@ -387,7 +387,7 @@ LIVE_AFTER_END = timedelta(minutes=10)   # після кінця ще пробу
 
 
 def auction_card(it: dict, r: dict, head: str, tail: str) -> dict:
-    return {"head": head, "tail": tail, "end": it.get("itemEndDate"), "price": float(r["price"]),
+    return {"head": head, "tail": tail, "end": it.get("itemEndDate"), "price": float(r["price"]), "type": r.get("type", ""),
             "bids": int(it.get("bidCount") or 0), "r": {k: r[k] for k in ("cap", "ship_in", "good", "net_q")}}
 
 
@@ -451,6 +451,11 @@ def update_auction_cards(client, state: dict, now: datetime) -> int:
             edit_card(c["m"], live_text(c, now), c.get("kb"))
             n += 1
         if now >= datetime.fromisoformat(c["end"].replace("Z", "+00:00")):
+            # 09.10: фінал аукціону — для тижневого звіту (чи реалістичні наші максимальні ставки)
+            mx = int((c["r"]["cap"] - c["r"]["ship_in"]) // 1)
+            res = state.setdefault("auction_results", [])
+            res.append({"d": now.date().isoformat(), "final": round(c["price"]), "max": mx, "type": c.get("type", "")})
+            del res[:-200]
             cards.pop(iid, None)   # фінал показали
     return n
 

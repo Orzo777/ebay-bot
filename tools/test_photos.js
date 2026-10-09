@@ -170,5 +170,19 @@ delete store.PH_PENDING; delete store.PH_ASK;
 
 // 9. не своє — не перехоплюємо: текст «3» без фото, що чекають, іде далі як звичайно
 check('bare number without pending → not a photo answer', vm.runInContext('photoNumber_(__m)', Object.assign(ctx, { __m: { text: '3', chat: { id: 7 } } })), false);
+// 09.10: звіт MemTest86 файлом (HTML з флешки)
+const rep = '<html><body><h2>MemTest86 Report</h2><table><tr><td>Test Result:</td><td>PASS</td></tr>' +
+  '<tr><td>Errors:</td><td>0</td></tr><tr><td>Passes completed:</td><td>1</td></tr>' +
+  '<tr><td>Part Number:</td><td>CMK32GX4M2B3200C16</td></tr></table></body></html>';
+const p1 = ctx.parseMemtest_(rep);
+check('parse report', [p1.memtest.result, p1.memtest.errors, p1.memtest.pass_done, p1.memtest.ram], ['PASS', 0, true, 'CMK32GX4M2B3200C16']);
+check('parse FAIL', ctx.parseMemtest_('Test Result: FAIL ... Errors: 12').memtest.errors, 12);
+check('not a report', ctx.parseMemtest_('hello world'), null);
+deals.cells['8:11'] = 'Отримано';
+vm.runInContext('UrlFetchApp.fetch = (function (orig) { return function (u, o) { if (/\\/file\\//.test(u)) return { getContentText: () => __rep, getBlob: () => ({}) }; return orig(u, o); }; })(UrlFetchApp.fetch);',
+  Object.assign(ctx, { __rep: rep }));
+say({ message_id: 60, caption: '4', document: { file_id: 'D1', file_name: 'MemTest86-Report-20261009.html', mime_type: 'text/html' } });
+check('report → status Перевірено + summary', [deals.cells['8:11'], /№4[\s\S]*✅ MemTest86: 0 помилок, CMK32GX4M2B3200C16 → статус «Перевірено»/.test(lastSummary())], ['Перевірено', true]);
+check('report message removed', calls('deleteMessage').some((c) => c[1].message_id === 60), true);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

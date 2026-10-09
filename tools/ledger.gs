@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-09c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-09d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -433,7 +433,7 @@ function notify_(text, markup, mode) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
-  if (photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || onHandCommand_(msg)) return;
+  if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || onHandCommand_(msg)) return;
   if (sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
@@ -1591,4 +1591,40 @@ function processEbayMail_(log, done) {
     });
   });
   return n;
+}
+
+
+// ------------------------------------------------------------------ звіт MemTest86 файлом (09.10)
+// HTML / LOG зі флешки (MemTest86 кладе туди звіт після Esc) з номером у підписі → результат точніше, ніж з фото:
+// PASS / FAIL, кількість помилок, моделі планок (SPD). Далі — як із фото: «Перевірено» або «Проблема», рядок у підсумку.
+function parseMemtest_(text) {
+  const t = String(text || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+  const res = (t.match(/(?:test\s+)?result\s*:?\s*(PASS|FAIL)/i) || [])[1];
+  const errs = t.match(/(?:total\s+)?errors?\s*:?\s*(\d+)/i);
+  const passes = t.match(/(?:passes?|durchl[äa]ufe)\s*(?:completed)?\s*:?\s*(\d+)/i);
+  const parts = (t.match(/part\s*(?:no|number|nummer)\.?\s*:?\s*([A-Z0-9][A-Z0-9-]{5,})/gi) || [])
+    .map(function (x) { return x.replace(/^.*?:?\s*([A-Z0-9][A-Z0-9-]{5,})$/i, '$1'); });
+  if (!res && !errs) return null;
+  return { kind: 'memtest', memtest: { errors: errs ? Number(errs[1]) : (res && res.toUpperCase() === 'PASS' ? 0 : null),
+    result: res ? res.toUpperCase() : null, pass_done: !!(res || (passes && Number(passes[1]) >= 1)),
+    ram: parts.filter(function (x, i, a) { return a.indexOf(x) === i; }).slice(0, 2).join(', ') } };
+}
+
+function memtestReport_(msg) {
+  const d = msg.document;
+  if (!d || !(/html|text|log/i.test(d.mime_type || '') || /\.(?:html?|log|txt)$/i.test(d.file_name || ''))) return false;
+  if (!/memtest/i.test((d.file_name || '') + ' ' + (msg.caption || '')) && !/^\s*№?\s*\d{1,4}\b/.test(msg.caption || '')) return false;
+  let n = Number(((msg.caption || '').match(/^\s*№?\s*(\d{1,4})\b/) || [])[1] || 0);
+  if (!n) { const open = openRows_(); if (open.length === 1) n = open[0].n; }
+  if (!n || !rowByN_(n)) { notify_('🧪 Звіт MemTest86 отримав — напиши номер товару в підписі до файлу (наприклад «3»).'); return true; }
+  const props = PropertiesService.getScriptProperties(), tok = officeToken_(props);
+  const info = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/getFile?file_id=' + encodeURIComponent(d.file_id),
+    { muteHttpExceptions: true }).getContentText() || '{}');
+  const path = ((info || {}).result || {}).file_path;
+  const text = path ? UrlFetchApp.fetch('https://api.telegram.org/file/bot' + tok + '/' + path, { muteHttpExceptions: true }).getContentText() : '';
+  const g = parseMemtest_(text);
+  if (!g) { notify_('🧪 Не знайшов у файлі результату MemTest86 (PASS / FAIL, Errors). Пришли фото екрана.'); return true; }
+  tgOffice_('deleteMessage', { chat_id: props.getProperty('TELEGRAM_CHAT_ID'), message_id: msg.message_id });
+  photoSummary_(n, g, photosOf_(n).length);
+  return true;
 }

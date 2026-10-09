@@ -321,6 +321,7 @@ class TestAuctions(unittest.TestCase):
             self.assertIn(f"фінальна ставка {max_bid + 10} €", edits[-1][1])
             self.assertIn("дорожче за наш максимум", edits[-1][1])
             self.assertEqual(st["auction_cards"], {})   # фінал показали — забули
+            self.assertEqual(st["auction_results"][0]["final"], max_bid + 10)   # для тижневого звіту
             self.assertEqual(edits[0][0], 77)
         finally:
             main._request_with_backoff = old_req
