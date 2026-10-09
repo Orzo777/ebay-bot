@@ -112,3 +112,34 @@ class TestWholePcByGpu0910(unittest.TestCase):
     def test_ryzen_apu_office_pc_not_overvalued(self):
         from pc_alert import evaluate_pc
         self.assertEqual(evaluate_pc("PC Ryzen 5 5600G 16GB 512GB SSD", 200)["verdict"], "SKIP")   # було BUY-GOOD +153 €
+
+
+class TestPartsRefresh0910(unittest.TestCase):
+    """09.10: щомісячний замір цін деталей ПК (price_refresh.pc_parts): 0.65 × p25 / 0.7 × p25, крок ±25%, раз на місяць."""
+
+    def test_refresh(self):
+        import price_refresh as pr
+
+        def fetch(q, cond, cat):
+            if q == "rtx 3060":   # 10 справжніх «RTX 3060» + шум (Ti, ПК, дефект) — шум не рахується
+                return ([{"title": f"MSI RTX 3060 12GB {i}", "total": 290.0 + 10 * i} for i in range(10)] +
+                        [{"title": "RTX 3060 Ti", "total": 50.0}, {"title": "Gaming PC RTX 3060", "total": 30.0},
+                         {"title": "RTX 3060 defekt", "total": 20.0}])
+            if q == "gtx 1060":
+                return [{"title": "GTX 1060 6GB", "total": 500.0} for _ in range(10)]   # стрибок — обмежиться +25%
+            if q == "i5-9400":
+                return [{"title": "Intel Core i5 9400 CPU", "total": 60.0} for _ in range(3)]   # замало — без змін
+            return []
+        data = {}
+        out = pr.pc_parts(data, fetch, "2026-10-09")
+        g, c = data["pc_parts"]["gpu"], data["pc_parts"]["cpu"]
+        self.assertEqual(g["rtx 3060"], round(0.65 * 310))        # p25 з 10 цін 290..380 = 310 (у межах ±25% від 247)
+        self.assertEqual(g["gtx 1060"], round(49 * 1.25))          # не більше +25% за раз
+        self.assertNotIn("i5|9", c)
+        self.assertIn("RTX 3060", "\n".join(out))
+        self.assertEqual(pr.pc_parts(data, fetch, "2026-10-20"), [])   # раз на місяць
+
+    def test_override_loaded_only_without_flag(self):
+        import pc_alert
+        g, c = pc_alert._parts_refresh(pc_alert.GPU_PART_BASE, pc_alert.CPU_PART_BASE)   # RAM_PRICES_OFF=1 у тестах
+        self.assertEqual(g, pc_alert.GPU_PART_BASE)

@@ -16,6 +16,7 @@
 Запуск: python research/price_refresh.py [--dry-run]   (~35 викликів Browse API; місячний замір — ще ~20)
 """
 import argparse
+import re
 import json
 import os
 import statistics
@@ -263,6 +264,64 @@ def scan(data: dict, fetch, today: str) -> list[str]:
     return out
 
 
+# ----------------------------------------------------------------------------- деталі ПК (09.10)
+# Ціни відеокарт і процесорів у ПК-боті були «зашиті» (дві хибні картки 09.10 — саме звідти). Раз на місяць:
+# 0.65 × p25 вживаних оголошень eBay.de (відеокарти) і 0.7 × p25 (процесори) — та сама методика, якою таблицю заповнили;
+# зміна за раз — не більше ±25% (один шумний замір не перекидає оцінки). ~60 запитів API на місяць.
+PC_EVERY_DAYS, PC_MIN_ITEMS, PC_MAX_STEP = 30, 8, 0.25
+CPU_MODELS = {"i5|8": "i5-8400", "i5|9": "i5-9400", "i5|10": "i5-10400", "i5|11": "i5-11400", "i5|12": "i5-12400",
+              "i5|13": "i5-13400", "i7|8": "i7-8700", "i7|9": "i7-9700", "i7|10": "i7-10700", "i7|11": "i7-11700",
+              "i7|12": "i7-12700", "i7|13": "i7-13700", "i9|9": "i9-9900", "i9|10": "i9-10900", "i9|12": "i9-12900",
+              "i9|13": "i9-13900", "r5|2": "ryzen 5 2600", "r5|3": "ryzen 5 3600", "r5|5": "ryzen 5 5600", "r5|7": "ryzen 5 7600",
+              "r7|2": "ryzen 7 2700", "r7|3": "ryzen 7 3700", "r7|5": "ryzen 7 5800", "r7|7": "ryzen 7 7700", "r9|5": "ryzen 9 5900",
+              "r9|7": "ryzen 9 7900"}
+_PC_JUNK = re.compile(r"defekt|bastler|laptop|notebook|\bpc\b|komplett|bundle|set\b|kühler|lüfter|ohne|nur\s|tausch|suche", re.I)
+
+
+def _p25(prices: list[float]) -> float | None:
+    prices = sorted(prices)
+    return prices[len(prices) // 4] if len(prices) >= PC_MIN_ITEMS else None
+
+
+def _gpu_re(model: str) -> re.Pattern:   # «rtx 3060» без «ti», «rtx 3060 ti» — саме ti
+    parts = model.split()
+    base, num, suffix = parts[0], parts[1], parts[2] if len(parts) > 2 else ""
+    tail = rf"\s?-?{suffix}\b" if suffix else r"(?!\s?-?(?:ti|super|xt)\b)"
+    return re.compile(rf"\b{base}\s?-?{num}{tail}", re.I)
+
+
+def pc_parts(data: dict, fetch, today: str) -> list[str]:
+    """Раз на місяць оновити ціни деталей ПК-бота → data['pc_parts'] = {'gpu': {...}, 'cpu': {...}, 'date': …}."""
+    import pc_alert
+    pp = data.setdefault("pc_parts", {})
+    if pp.get("date") and (date.fromisoformat(today) - date.fromisoformat(pp["date"])).days < PC_EVERY_DAYS:
+        return []
+    out = []
+    for kind, base, share, cat in (("gpu", pc_alert.GPU_PART_BASE, 0.65, "27386"), ("cpu", pc_alert.CPU_PART_BASE, 0.7, "164")):
+        cur = pp.setdefault(kind, {})
+        for key, old in base.items():
+            k = key if kind == "gpu" else f"{key[0]}|{key[1]}"
+            q = key if kind == "gpu" else CPU_MODELS.get(k)
+            if not q:
+                continue
+            want = _gpu_re(key) if kind == "gpu" else re.compile(re.escape(q).replace("\\ ", r"\s?-?").replace("\\-", r"[\s-]?"), re.I)
+            try:
+                items = fetch(q, "3000", cat)
+            except Exception as ex:
+                print(f"деталі {q}: {ex.__class__.__name__}")
+                continue
+            p = _p25([i["total"] for i in items if want.search(i["title"]) and not _PC_JUNK.search(i["title"])])
+            if not p:
+                continue
+            prev = cur.get(k, old)
+            new = round(min(max(share * p, prev * (1 - PC_MAX_STEP)), prev * (1 + PC_MAX_STEP)))
+            cur[k] = new
+            if abs(new - prev) >= max(5, 0.1 * prev):
+                out.append(f"• {q.upper() if kind == 'gpu' else q}: {prev:.0f} → {new} €")
+    pp["date"] = today
+    return (["🖥 Ціни деталей ПК-бота оновлено (раз на місяць, eBay.de):", *out] if out else [])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -275,6 +334,7 @@ def main():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     data, changes = refresh(data, ebay_fetch, today)
     found = scan(data, ebay_fetch, today)
+    parts = pc_parts(data, ebay_fetch, today)
     for group in ("types", "consoles"):
         for e in data[group].values():
             print(f"{e['name']:34} продавців {e['sellers']:3} ask {e['ask']} якір {e['anchor_ask']} ×{e['ratio']} → p25 €{e['p25']} мед €{e['med']}")
@@ -288,6 +348,8 @@ def main():
         health.office_send("Сторож цін — стелі купівлі вже перераховано, бот рахує за новими цінами:\n" + "\n".join(changes))
     if found:
         health.office_send("\n".join(found))
+    if parts:
+        health.office_send("\n".join(parts))
 
 
 if __name__ == "__main__":

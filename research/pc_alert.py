@@ -12,6 +12,8 @@ HP i7-11700F / RTX 3060 Ti / 64 ГБ DDR4 за 549 € — сама пам'ят�
 Ручна перевірка:
     python research/pc_alert.py "Dell Optiplex 7060 i5-8500 16GB 256GB SSD" 50
 """
+import json
+import os
 import re
 
 # Цілий офісний ПК без відеокарти: p25 за процесором (Terapeak 26.09, «PC i5-8500» тощо; мініпк і ноутбуки відкинуто)
@@ -26,7 +28,7 @@ PC_BY_CPU = {
 # Ігровий ПК з відеокартою (цілий) і та сама відеокарта окремо (p25)
 GAMING_PC_BY_GPU = {"gtx 1060": 200, "gtx 1650": 200, "gtx 1070": 200, "rx 580": 190, "rtx 2060": 250, "rtx 3060": 459}
 # Відеокарта окремо: Terapeak 26.09 (перші шість), решта — 0.65 × p25 оголошень eBay.de 03.10
-GPU_PART = {"gtx 1060": 49, "gtx 1650": 70, "gtx 1070": 72, "rx 580": 55, "rtx 2060": 126, "rtx 3060": 247,
+GPU_PART_BASE = {"gtx 1060": 49, "gtx 1650": 70, "gtx 1070": 72, "rx 580": 55, "rtx 2060": 126, "rtx 3060": 247,
             "gtx 1080": 89, "gtx 1080 ti": 123, "gtx 1660": 75, "gtx 1660 super": 89, "gtx 1660 ti": 89,
             "rtx 2060 super": 129, "rtx 2070": 122, "rtx 2070 super": 121, "rtx 2080": 135, "rtx 2080 super": 166,
             "rtx 2080 ti": 214, "rtx 3050": 134, "rtx 3060 ti": 167, "rtx 3070": 200, "rtx 3070 ti": 238, "rtx 3080": 297,
@@ -35,11 +37,32 @@ GPU_PART = {"gtx 1060": 49, "gtx 1650": 70, "gtx 1070": 72, "rx 580": 55, "rtx 2
             # 09.10: 0.65 × p25 вживаних на eBay.de (1050 Ti 4 ГБ: 131 оголошення, p25 75 €; 1050 2 ГБ: 56, p25 50 €)
             "gtx 1050 ti": 49, "gtx 1050": 32}
 # Процесор окремо: 0.7 × p25 оголошень eBay.de 03.10 за типовою моделлю покоління (i5-10400, i7-11700, Ryzen 5 5600…)
-CPU_PART = {("i5", 8): 24, ("i5", 9): 34, ("i5", 10): 54, ("i5", 11): 67, ("i5", 12): 92, ("i5", 13): 120,
+CPU_PART_BASE = {("i5", 8): 24, ("i5", 9): 34, ("i5", 10): 54, ("i5", 11): 67, ("i5", 12): 92, ("i5", 13): 120,
             ("i7", 8): 52, ("i7", 9): 73, ("i7", 10): 98, ("i7", 11): 130, ("i7", 12): 140, ("i7", 13): 173,
             ("i9", 9): 151, ("i9", 10): 202, ("i9", 12): 165, ("i9", 13): 214,
             ("r5", 2): 35, ("r5", 3): 55, ("r5", 5): 88, ("r5", 7): 97, ("r7", 2): 43, ("r7", 3): 70, ("r7", 5): 107,
             ("r7", 7): 109, ("r9", 5): 173, ("r9", 7): 175}
+
+
+def _parts_refresh(gpu: dict, cpu: dict) -> tuple[dict, dict]:
+    """09.10: щомісячний замір деталей (price_refresh.pc_parts → ram_prices.json) поверх базових цін; RAM_PRICES_OFF=1 — лише база."""
+    gpu, cpu = dict(gpu), dict(cpu)
+    if os.getenv("RAM_PRICES_OFF") == "1":
+        return gpu, cpu
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"), encoding="utf-8") as fh:
+            pp = json.load(fh).get("pc_parts") or {}
+    except (OSError, ValueError):
+        return gpu, cpu
+    gpu.update({k: v for k, v in (pp.get("gpu") or {}).items() if k in gpu})
+    for k, v in (pp.get("cpu") or {}).items():
+        fam, _, gen = k.partition("|")
+        if (fam, int(gen or 0)) in cpu:
+            cpu[(fam, int(gen))] = v
+    return gpu, cpu
+
+
+GPU_PART, CPU_PART = _parts_refresh(GPU_PART_BASE, CPU_PART_BASE)
 RAM_PART = {8: 27, 16: 51, 32: 134}   # DDR4 (8 ГБ планка; 2×8; 2×16) — запасні, якщо немає щоденних цін сторожа
 SSD_PART = {256: 15, 500: 30, 1000: 60, 2000: 110}   # NVMe/SATA вживані, ~0.6 × оголошень (SSD подорожчали за рік)
 CPU_IN_GAMING_PC = 35   # процесор, що зазвичай стоїть у ПК з GTX 1060/1650/RX 580 (i5 6–9-го, Ryzen 5 1–2-го) — у ціну ПК вже входить
