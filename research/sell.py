@@ -35,6 +35,7 @@ from ram_parse import parse_title
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 MIN_PROFIT_ABS, MIN_PROFIT_PCT = 5.0, 0.10      # нижче цього прибутку автоматично НЕ погоджуємось
 ACCEPT_SHARE, DECLINE_SHARE = 0.93, 0.90        # від ціни оголошення / від «швидкої» ціни
+SHIP_CHARGE_RAM = 6.49   # 09.10: доставку платить покупець окремим рядком (DHL Paket), як купує й сам користувач
 LOW_SHARE = 0.92                                # нижче 92% «швидкої» ціни не ставимо
 
 
@@ -199,8 +200,9 @@ def _brand_series(title: str, brand: str) -> str:
 
 
 def _part_number(title: str) -> str | None:
-    m = re.search(r"\b(?=[A-Z0-9/-]*\d)(?=[A-Z0-9/-]*[A-Z])[A-Z0-9][A-Z0-9/-]{7,}\b", title)
-    return m.group(0) if m and not re.match(r"^(?:DDR|PC)\d", m.group(0)) else None
+    cands = [m for m in re.findall(r"\b(?=[A-Z0-9/-]*\d)(?=[A-Z0-9/-]*[A-Z])[A-Z0-9][A-Z0-9/-]{7,}\b", title)
+             if not re.match(r"^(?:DDR|PC)\d|^\d+X\d+(?:GB)?$", m) and not re.search(r"(?:GB|MHZ|MT/S)$", m)]
+    return max(cands, key=len) if cands else None
 
 
 def _for_device(title: str) -> str | None:
@@ -222,17 +224,27 @@ def ram_texts(title: str, r: dict) -> dict:
     dev = _for_device(title)
     ecc = bool(s.get("ecc_udimm"))   # 04.10: ECC без буфера — пишемо в назві, шукають за «ECC UDIMM» (сервери, NAS)
     form = "SO-DIMM Laptop RAM" if lap else "ECC Unbuffered DIMM" if ecc else "DIMM Desktop RAM"
-    parts = [head, cap, gen + (f"-{speed}" if speed else ""), form]
-    t = re.sub(r"\s+", " ", " ".join(p for p in parts if p)).strip()
-    if dev and len(t) + len(dev) + 5 <= 80:
-        t += f" für {dev}"
-    while len(t) > 80 and " " in t:
-        t = t.rsplit(" ", 1)[0]
-    for extra in (" – getestet", " getestet"):
-        if len(t + extra) <= 80:
-            t += extra
-            break
     pn = _part_number(title)
+    genspeed = gen + (f"-{speed}" if speed else "")
+    t = None
+    if pn:   # 09.10 (прохання користувача): номер моделі в назві — за ним шукають покупці, яким потрібен саме цей набір
+        short = "SO-DIMM" if lap else "ECC UDIMM" if ecc else "DIMM"
+        for parts in ([head, cap, genspeed, pn, form, "getestet"], [head, cap, genspeed, pn, short, "getestet"],
+                      [head, cap, genspeed, pn, short], [head, cap, genspeed, pn]):
+            c = re.sub(r"\s+", " ", " ".join(x for x in parts if x)).strip()
+            if len(c) <= 80:
+                t = c
+                break
+    if not t:
+        t = re.sub(r"\s+", " ", " ".join(x for x in [head, cap, genspeed, form] if x)).strip()
+        if dev and len(t) + len(dev) + 5 <= 80:
+            t += f" für {dev}"
+        while len(t) > 80 and " " in t:
+            t = t.rsplit(" ", 1)[0]
+        for extra in (" – getestet", " getestet"):
+            if len(t + extra) <= 80:
+                t += extra
+                break
     lines = [f"Verkauft wird {'ein Kit' if mods > 1 else 'ein Modul'}: {head + ' ' if head else ''}{cap} {gen} {form}.", "",
              f"• Kapazität: {total} GB" + (f" ({mods} × {per} GB)" if mods > 1 else ""),
              f"• Typ: {gen} {'SO-DIMM (Laptop' + (', ' + dev if dev else '') + ')' if lap else 'ECC UDIMM (unbuffered, ungepuffert)' if ecc else 'DIMM (Desktop-PC)'}",
@@ -240,17 +252,28 @@ def ram_texts(title: str, r: dict) -> dict:
                if ecc else []),
              *([f"• Geschwindigkeit: {speed} MHz ({pc})"] if speed else []),
              *([f"• Teilenummer: {pn}"] if pn else []),
-             "• Zustand: gebraucht, voll funktionsfähig, getestet", "",
+             "• Zustand: gebraucht, voll funktionsfähig",
+             "• Getestet mit MemTest86: 0 Fehler (Screenshot in den Fotos)", "",
              f"Lieferumfang: {mods} {'Module' if mods > 1 else 'Modul'} wie auf den Fotos.",
-             "Versand: kostenlos als versichertes DHL-Paket, antistatisch verpackt, in der Regel am nächsten Werktag.", "",
+             f"Versand: als versichertes DHL-Paket mit Sendungsnummer ({money_de(SHIP_CHARGE_RAM)} €), antistatisch verpackt, "
+             "in der Regel am nächsten Werktag.", "",
              "Privatverkauf: keine Gewährleistung und keine Rücknahme. Ihre Rechte aus dem eBay-Käuferschutz bleiben davon unberührt."]
-    specs = [("Marke", head.split()[0] if head else "Markenlos"), ("Produktlinie", " ".join(head.split()[1:]) or "—"),
-             ("Gesamtkapazität", f"{total} GB"), ("Kapazität pro Modul", f"{per} GB"), ("Anzahl der Module", str(mods)),
-             ("Speichertyp", gen), ("Formfaktor", "SO-DIMM" if lap else "DIMM"),
-             ("Bus-Geschwindigkeit", f"{speed} MHz" if speed else "—"), ("Zustand", "Gebraucht")]
-    before = ["зроби фото наклейки з номером (покупці перевіряють партномер)",
-              "опис каже «getestet» — переконайся, що планки пройшли тест (MemTest / запуск ПК)"]
-    return dict(title=t[:80], desc="\n".join(lines), specs=specs, category="Computer & Zubehör › Speicher (RAM)", before=before)
+    pins = {("DDR4", True): 260, ("DDR4", False): 288, ("DDR5", True): 262, ("DDR5", False): 288}.get((gen, lap))
+    # поля — як у формі eBay «Angebot fertigstellen» (09.10): обов'язкові, потім інші; «—» — не заповнювати
+    required = [("Marke", head.split()[0] if head else "Markenlos"), ("Produktart", f"{gen} SDRAM")]
+    more = [("Formfaktor", "SO-DIMM" if lap else "DIMM"), ("Anzahl der Module", str(mods)), ("Kapazität pro Modul", f"{per} GB"),
+            ("Gesamtkapazität", f"{total} GB"), ("Busgeschwindigkeit", f"{speed} MHz" if speed else "—"),
+            ("Modell", head or "—"), ("Herstellernummer", pn or "—"), ("Anzahl der Pins", str(pins) if pins else "—"),
+            ("Speicher-Eigenschaften", "ECC-Speicher" if ecc else "—")]
+    cond = "Gebraucht, voll funktionsfähig. Mit MemTest86 getestet: 0 Fehler (Foto anbei)."
+    before = ["фото наклейки крупно, щоб читався номер моделі (покупці перевіряють), обидві планки, екран MemTest86 "
+              "(«фото N» — бот пришле збережені)",
+              "опис каже «getestet» — переконайся, що планки пройшли тест (MemTest86, 0 помилок)"]
+    warn_ecc = None if ecc else ("«Alle übernehmen» у підказках eBay не тисни, якщо там «ECC-Speicher» — "
+                                 "ця пам'ять не ECC; познач галочками лише правильні пункти")
+    return dict(title=t[:80], desc="\n".join(lines), required=required, more=more, cond=cond, warn=warn_ecc,
+                category="Arbeitsspeicher (RAM)", before=before, weight="0 kg 300 g", dims="20 × 15 × 5 cm",
+                ship=SHIP_CHARGE_RAM, pn=pn)
 
 
 def console_texts(title: str, r: dict) -> dict:
@@ -281,43 +304,89 @@ def console_texts(title: str, r: dict) -> dict:
              f"• Zustand: gebraucht, voll funktionsfähig, getestet ({check}keine Fehler)",
              f"• Auf Werkseinstellungen zurückgesetzt und {acct}",
              "• Lieferumfang: wie auf den Fotos" + (" (inkl. Controller)" if ctrl else "") + ", Strom- und HDMI-Kabel", "",
-             "Versand: kostenlos als versichertes DHL-Paket, sicher verpackt.", "",
+             f"Versand: als versichertes DHL-Paket mit Sendungsnummer ({money_de(r.get('ship_out') or console_alert.SHIP)} €), sicher verpackt.", "",
              "Privatverkauf: keine Gewährleistung und keine Rücknahme. Ihre Rechte aus dem eBay-Käuferschutz bleiben davon unberührt."]
-    specs = [("Marke", name.split()[0]), ("Modell", " ".join(name.split()[1:])), ("Zustand", "Gebraucht"),
-             ("Region", "PAL"), ("Farbe", "—")]
+    required = [("Marke", name.split()[0]), ("Modell", " ".join(name.split()[1:]))]
+    more = [("Plattform", "Sony PlayStation 5" if "PS5" in t else "Microsoft Xbox Series X" if "Xbox" in t else
+             "Nintendo Switch 2" if "Switch 2" in t else "Nintendo Switch"), ("Region", "PAL"), ("Farbe", "—")]
+    cond = "Gebraucht, voll funktionsfähig, getestet. Auf Werkseinstellungen zurückgesetzt."
     before = ["скинь консоль до заводських налаштувань і вийди з акаунту (" + acct.replace("vom ", "").replace(" abgemeldet", "") + ")",
               "сфотографуй консоль увімкненою (екран налаштувань) — покупці довіряють більше",
               "перевір, що в коробці все, що на фото й в описі (кабелі, контролер)"]
-    return dict(title=tt[:80], desc="\n".join(lines), specs=specs, category="Konsolen & Videospiele › Konsolen", before=before)
+    return dict(title=tt[:80], desc="\n".join(lines), required=required, more=more, cond=cond, warn=None,
+                category="Videospielkonsolen", before=before, weight="5 kg", dims="50 × 40 × 20 cm",
+                ship=r.get("ship_out") or console_alert.SHIP, pn=None)
 
 
 # ----------------------------------------------------------------------------- картка
+def money_de(x: float) -> str:
+    return f"{x:.2f}".replace(".", ",")
+
+
+def item_prices(pr: dict, ship: float) -> dict:
+    """Платна доставка (09.10, як купує сам користувач): ціна товару = ціна «разом» мінус доставка; пороги — теж без неї."""
+    return dict(item=max(1, round(pr["list"] - ship)), accept=max(1, round(pr["accept"] - ship)),
+                decline=max(1, round(pr["decline"] - ship)))
+
+
 def build_card(row: int | None, title: str, r: dict, pr: dict, comp: list[float], tx: dict, cost: float | None) -> str:
-    e = html.escape
+    """Перше повідомлення — загальне, українською: скільки ставити, скільки лишиться, що на ринку."""
+    e = lambda x: html.escape(x, quote=False)   # noqa: E731
+    ip = item_prices(pr, tx["ship"])
     lines = [f"🏷 <b>Продаж{' №' + str(row) if row else ''}</b> · {e(r['type'])}", f"<i>{e(title[:90])}</i>", "",
-             f"💶 Ціна: <b>{pr['list']} €</b> «Sofort-Kaufen», доставка безкоштовна"]
+             f"💶 Ціна: <b>{ip['item']} €</b> + доставка {money_de(tx['ship'])} € (разом ≈ {pr['list']} €)"]
     if cost:
         lines.append(f"   купив за {cost:.0f} € → чистими ≈ {pr['net_list']:.0f} €, прибуток ≈ <b>{pr['profit_list']:.0f} €</b>")
-    lines += [f"🤝 Preisvorschlag: автоматично приймати від <b>{pr['accept']} €</b>"
-              + (f" (прибуток ≈ {pr['profit_accept']:.0f} €)" if cost else "") + f", відхиляти нижче <b>{pr['decline']} €</b>",
+    lines += [f"🤝 Пропозиції ціни: приймати від <b>{ip['accept']} €</b>"
+              + (f" (прибуток ≈ {pr['profit_accept']:.0f} €)" if cost else "") + f", відхиляти нижче <b>{ip['decline']} €</b>",
               f"📊 Продано за 30 днів: швидко {r['quick_sale']} €, медіана {r['median_sale']} € · {ram_alert._speed_label(r['sell_through'])}",
               (f"🔎 Зараз на eBay схожих: {len(comp)}, найдешевше {comp[0]:.0f} € з доставкою" if comp
                else "🔎 Зараз на eBay схожих не знайшов — ціна за медіаною продажів"),
               *[f"⚠️ {e(w)}" for w in pr["warn"]], "",
-              "📝 <b>Назва</b> (натисни — скопіюється):", f"<code>{e(tx['title'])}</code>", "",
-              "📄 <b>Опис</b>:", f"<code>{e(tx['desc'])}</code>", "",
-              f"📂 Категорія: {e(tx['category'])}",
-              "🏷 Artikelmerkmale: " + "; ".join(f"{e(k)}: {e(v)}" for k, v in tx["specs"] if v != "—"), "",
-              "✅ <b>Перед публікацією:</b>", *[f"• {e(b)}" for b in tx["before"]],
-              "• Preisvorschlag: увімкни «Preisvorschläge» і впиши обидва пороги — eBay сам прийме чи відхилить",
-              "• Пересилка: «Kostenloser Versand», DHL Paket; відправ протягом 1–2 днів (рейтинг продавця)"]
+              "✅ <b>Перед публікацією:</b>", *[f"• {e(b)}" for b in tx["before"]], "",
+              "👇 Далі — покроково, як у формі eBay. Сірі значення натисни — скопіюються."]
     return "\n".join(lines)
+
+
+def build_steps(row: int | None, pr: dict, tx: dict) -> str:
+    """Друге повідомлення — покроково в порядку форми eBay «Angebot fertigstellen»; назви полів німецькою, як на сайті."""
+    e = lambda x: html.escape(x, quote=False)   # noqa: E731
+    ip = item_prices(pr, tx["ship"])
+    code = lambda v: f"<code>{e(str(v))}</code>"   # noqa: E731
+    field = lambda k, v: f"   • {e(k)}: {code(v)}"   # noqa: E731
+    out = ["📋 <b>Покроково на eBay</b> · «Angebot fertigstellen»", "",
+           "1️⃣ <b>FOTOS &amp; VIDEO</b> — Hauptfoto: товар цілком; далі наклейка крупно, екран тесту.", "",
+           "2️⃣ <b>TITEL</b> → Angebotstitel:", code(tx["title"]), "",
+           f"3️⃣ <b>ARTIKELKATEGORIE</b> → {e(tx['category'])} (eBay підставить сам; інше — «Bearbeiten»)", "",
+           "4️⃣ <b>ARTIKELMERKMALE</b>"]
+    if tx.get("warn"):
+        out.append(f"   ⚠️ {e(tx['warn'])}")
+    out += ["   <i>Erforderlich:</i>", *[field(k, v) for k, v in tx["required"]],
+            "   <i>Weitere (optional) — «Mehr anzeigen»:</i>", *[field(k, v) for k, v in tx["more"] if v != "—"],
+            *([f"   • {e(k)}: залиш порожнім" for k, v in tx["more"] if v == "—" and k == "Speicher-Eigenschaften"]), "",
+            "5️⃣ <b>ZUSTAND</b> → Artikelzustand: <b>Gebraucht</b>", "   Zustandsbeschreibung:", code(tx["cond"]), "",
+            "6️⃣ <b>BESCHREIBUNG</b>:", code(tx["desc"]), "",
+            "7️⃣ <b>PREISGESTALTUNG</b>", "   • Format: Sofort-Kaufen", field("Artikelpreis", f"{ip['item']},00"),
+            "   • Preisvorschläge zulassen: увімкни",
+            field("Mindestbetrag für Preisvorschlag", f"{ip['decline']},00"),
+            field("Automatisch akzeptieren", f"{ip['accept']},00"), "",
+            "8️⃣ <b>DETAILS ZUR LIEFERUNG</b> → «Nur Versand»",
+            f"   • Paketgewicht: {e(tx['weight'])} · Paketmaße: {e(tx['dims'])}",
+            "   • Inlandsversand → Ersten Versandservice hinzufügen → <b>DHL Paket</b>",
+            field("Käufer zahlt", money_de(tx["ship"])),
+            "   • «Kostenlosen Versand anbieten» — без галочки", "",
+            "9️⃣ <b>ANGEBOT BEWERBEN</b> → Basis і Premium вимкнені (перший тиждень)", "",
+            "🔟 <b>Angebot einstellen</b> → потім у бот: " + code(f"виставив {row or 'N'} {ip['item']}"), "",
+            "📦 <b>Після продажу:</b> Mein eBay → Verkauft → «Versandetikett kaufen» → DHL Paket → запакуй "
+            "(антистатичний пакет + коробка з наповнювачем) → у бот: " + code(f"відправив {row or 'N'} трек")]
+    return "\n".join(out)
 
 
 def keyboard(tx: dict, r: dict) -> dict:
     q, cat = competitor_query(r)
     return {"inline_keyboard": [
         [{"text": "📋 Скопіювати назву", "copy_text": {"text": tx["title"][:256]}}],
+        *([[{"text": "📋 Herstellernummer", "copy_text": {"text": tx["pn"][:256]}}]] if tx.get("pn") else []),
         [{"text": "🔎 Конкуренти на eBay", "url": f"https://www.ebay.de/sch/{cat}/i.html?_nkw={quote_plus(q)}&LH_BIN=1&LH_ItemCondition=3000&_sop=15"}],
         [{"text": "➕ Виставити на eBay", "url": "https://www.ebay.de/sl/prelist/suggest"}]]}
 
@@ -326,7 +395,7 @@ def make(title: str, cost: float | None, row: int | None = None, comp_fn=competi
     r = identify(title)
     if not r:
         return (f"🤔 Не впізнав товар «{html.escape(title[:80])}».\nНапиши повніше, наприклад:\n"
-                f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None)
+                f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None, "")
     try:
         comp = comp_fn(r)
     except Exception as e:
@@ -337,7 +406,7 @@ def make(title: str, cost: float | None, row: int | None = None, comp_fn=competi
         pr["warn"].insert(0, f"з назви не видно, скільки планок — порахував як ОДНУ на {r['spec']['total']} ГБ. "
                              f"Якщо це кіт, напиши: продати {row or 'N'} <назва з 2x…GB>")
     tx = ram_texts(title, r) if r["kind"] == "ram" else console_texts(title, r)
-    return build_card(row, title, r, pr, comp, tx, cost), keyboard(tx, r)
+    return build_card(row, title, r, pr, comp, tx, cost), keyboard(tx, r), build_steps(row, pr, tx)
 
 
 def office_send_html(text: str, markup: dict | None) -> bool:
@@ -394,14 +463,14 @@ def main():
     else:
         title, cost, row, photos = a.title or "", a.cost, None, []
     try:
-        text, kb = make(title, float(cost) if cost not in (None, "") else None, row)
+        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row)
     except Exception as e:   # картку-помилку — у бот, щоб не чекати мовчки
         office_send_html(f"⚠️ Не вийшло підготувати оголошення: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise
     print("готово" + (" (dry-run)" if a.dry_run else ""))
     if a.dry_run:
-        print(text)
-    elif not office_send_html(text, kb):
+        print(text + "\n\n" + steps)
+    elif not office_send_html(text, None) or (steps and not office_send_html(steps, kb)):
         raise SystemExit(1)
     elif photos:
         print(f"фото альбомом: {office_send_album(photos, f'📸 Фото для оголошення №{row}')} з {len(photos)}")

@@ -109,14 +109,53 @@ class TextTest(unittest.TestCase):
         self.assertIn("Digital Edition", sell.console_texts("PS5 Digital Edition", r)["title"])
 
 
+class StepsTest(unittest.TestCase):
+    """09.10 (прохання користувача): «продати N» — огляд українською + покроково як у формі eBay, поля німецькою."""
+
+    def test_part_number_in_title_and_steps(self):
+        t = "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200 CMK32GX4M2B3200C16"
+        text, kb, steps = sell.make(t, 70.63, 2, lambda r: [])
+        r = sell.identify(t)
+        tx = sell.ram_texts(t, r)
+        self.assertIn("CMK32GX4M2B3200C16", tx["title"])
+        self.assertLessEqual(len(tx["title"]), 80)
+        self.assertEqual(kb["inline_keyboard"][1][0]["copy_text"]["text"], "CMK32GX4M2B3200C16")   # кнопка Herstellernummer
+        order = ["FOTOS", "TITEL", "ARTIKELKATEGORIE", "ARTIKELMERKMALE", "ZUSTAND", "BESCHREIBUNG", "PREISGESTALTUNG",
+                 "DETAILS ZUR LIEFERUNG", "ANGEBOT BEWERBEN", "Angebot einstellen"]
+        self.assertEqual([steps.index(x) for x in order], sorted(steps.index(x) for x in order))   # порядок як у формі
+        for f in ("Produktart: <code>DDR4 SDRAM</code>", "Herstellernummer: <code>CMK32GX4M2B3200C16</code>",
+                  "Anzahl der Pins: <code>288</code>", "Käufer zahlt: <code>6,49</code>", "DHL Paket", "виставив 2 "):
+            self.assertIn(f, steps)
+        self.assertIn("ECC-Speicher", steps)   # попередження не тиснути «Alle übernehmen»
+        # платна доставка: ціна товару = «разом» мінус 6,49, пороги теж
+        pr = sell.plan_price(r, 70.63, [])
+        ip = sell.item_prices(pr, sell.SHIP_CHARGE_RAM)
+        self.assertEqual(ip["item"], round(pr["list"] - 6.49))
+        self.assertIn(f"Artikelpreis: <code>{ip['item']},00</code>", steps)
+        self.assertIn(f"Automatisch akzeptieren: <code>{ip['accept']},00</code>", steps)
+        self.assertIn(f"<b>{ip['item']} €</b> + доставка 6,49 €", text)
+        self.assertNotIn("kostenlos", tx["desc"].lower())
+        self.assertNotRegex(tx["desc"], r"[а-яіїє]")
+
+    def test_part_number_picks_real_model(self):
+        self.assertEqual(sell._part_number("2X16GB SK Hynix DDR4 PC4-2666V (HMA82GU7CJR8N) ECC UDIMM"), "HMA82GU7CJR8N")
+        self.assertEqual(sell._part_number("Samsung 32GB DDR5-4800 SO-DIMM M425R4GA3BB0-CQK0D"), "M425R4GA3BB0-CQK0D")
+        self.assertIsNone(sell._part_number("Corsair Vengeance 2X16GB DDR4-3200 PC4-25600"))
+
+    def test_console_steps(self):
+        text, kb, steps = sell.make("Sony PS5 Slim Disc 1TB mit Controller", 300, 4, lambda r: [])
+        self.assertIn("Plattform: <code>Sony PlayStation 5</code>", steps)
+        self.assertNotIn("Anzahl der Pins", steps)
+
+
 class MakeTest(unittest.TestCase):
     def test_unknown_item(self):
-        text, kb = sell.make("Lampe", 5, 4, lambda r: [])
+        text, kb, steps = sell.make("Lampe", 5, 4, lambda r: [])
         self.assertIn("Не впізнав", text)
         self.assertIsNone(kb)
 
     def test_single_module_warning_and_card(self):
-        text, kb = sell.make("RAM ddr4 32GB für iMac", 45, 3, lambda r: [])
+        text, kb, steps = sell.make("RAM ddr4 32GB für iMac", 45, 3, lambda r: [])
         self.assertIn("ОДНУ на 32 ГБ", text)
         self.assertIn("продати 3", text)
         self.assertEqual(kb["inline_keyboard"][0][0]["copy_text"]["text"], "32GB DDR4 SO-DIMM Laptop RAM für iMac – getestet")
@@ -124,7 +163,7 @@ class MakeTest(unittest.TestCase):
     def test_competitor_api_failure_still_gives_card(self):
         def boom(r):
             raise RuntimeError("429")
-        text, _ = sell.make("Xbox Series X 1TB", 380, 5, boom)
+        text, _, _ = sell.make("Xbox Series X 1TB", 380, 5, boom)
         self.assertIn("схожих не знайшов", text)
 
     def test_competitor_filter(self):
