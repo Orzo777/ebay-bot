@@ -259,7 +259,7 @@ class TestCompactCards0410(unittest.TestCase):
         self.assertIn("з пропозицією", buy_txt)
         self.assertEqual(len(buy_kb), 2)
         self.assertTrue(buy_kb[1].startswith("📋 Текст із пропозицією"))
-        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 67)
+        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 75)   # «бери» (09.10: комісія 0 — 67 € тепер «дуже вигідно»)
         r["buy_now"], r["risk_lines"] = False, []   # самовивіз без «Direkt kaufen» — тексти як раніше
         self.assertEqual(format_html(r).count("<code>"), 2)
 

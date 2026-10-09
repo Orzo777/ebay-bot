@@ -291,7 +291,7 @@ _HAMBURG_SEARCH = {
     "playstation 5": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:230:{ps5}/playstation-5/k0c279" + _HAMBURG
                      + "+konsolen.art_s:playstation",
 }
-HAMBURG_MAX = dict(ddr5=430, ddr4=207, xbox=425, ps5=343, switch2=299)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
+HAMBURG_MAX = dict(ddr5=462, ddr4=223, xbox=457, ps5=368, switch2=311)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
 _PICKUP_SUBJECT = re.compile(r"\bin Hamburg\b", re.I)
 _NO_PICKUP = re.compile(r"nur\s+(?:per\s+)?versand|keine\s+abholung|kein(?:e)?\s+selbstabholung", re.I)
 

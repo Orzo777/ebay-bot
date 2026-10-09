@@ -59,7 +59,7 @@ class TestNewTypes(unittest.TestCase):
         r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 140)
         self.assertEqual(r["type"], "DDR5 SO-DIMM 32 ГБ (2×16) кіт")
         self.assertEqual(r["verdict"], "BUY")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 155)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 165)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8% (09.10: комісія 0)
         self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "SKIP")
         self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 165, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
 
@@ -180,8 +180,8 @@ class TestPickup(unittest.TestCase):
     def test_pickup_can_turn_skip_into_negotiate(self):
         from ram_alert import apply_pickup
         from console_alert import evaluate_console
-        self.assertEqual(evaluate_console("Xbox Series X 1TB Konsole", 415, vb=True)["verdict"], "SKIP")
-        self.assertIn(apply_pickup(evaluate_console("Xbox Series X 1TB Konsole", 415, vb=True))["verdict"],
+        self.assertEqual(evaluate_console("Xbox Series X 1TB Konsole", 445, vb=True)["verdict"], "SKIP")   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
+        self.assertIn(apply_pickup(evaluate_console("Xbox Series X 1TB Konsole", 445, vb=True))["verdict"],
                       ("BUY", "NEGOTIATE"))
 
     def test_hamburg_caps_match_model(self):

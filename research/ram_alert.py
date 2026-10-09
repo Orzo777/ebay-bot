@@ -74,10 +74,13 @@ NOISE_BRANDS = {"other", "HP", "Dell", "Lenovo", "Apple", "Supermicro", "Medion"
 MAX_SINGLE_GB = {"ddr4": 32, "ddr5": 48}
 
 
-# Продаж на eBay.de (перевірено 26.09.2026): комісія 6,5% + €0.45 за замовлення (Computer/Speicher, як і Konsolen);
+# 09.10.2026: комісії з продажу 0 — довідка eBay «Gebühren für private Verkäufer»: продаж у межах Німеччини
+# безкоштовний (320 оголошень на місяць без Angebotsgebühr); Verify при автопублікації: «Final Value Fee waived».
+# Рішення користувача 09.10 — прибрати одразу. Була 6,5% + 0,45 €. Буде виплата не повна — повернути тут.
+# Продаж на eBay.de: приватний продавець, комісії немає;
 # пересилка — DHL Paket до 2 кг €6.19 (Päckchen €4.19 не має відстеження і страховки — для eBay не годиться),
 # упаковка ~€1; якщо дорожче €500 — DHL-страховка до €2 500 за €6.99 (базова покриває лише €500).
-FEE_SELL, ORDER_FEE_SELL, SHIP_OUT_RAM, PACK_RAM, INSURE_OVER_500 = 0.065, 0.45, 6.19, 1.0, 6.99
+FEE_SELL, ORDER_FEE_SELL, SHIP_OUT_RAM, PACK_RAM, INSURE_OVER_500 = 0.0, 0.0, 6.19, 1.0, 6.99
 
 
 def costs(sale_price: float) -> float:

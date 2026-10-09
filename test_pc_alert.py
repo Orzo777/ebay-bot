@@ -21,7 +21,7 @@ class TestParse(unittest.TestCase):
 
 class TestEvaluate(unittest.TestCase):
     def test_verdicts(self):
-        self.assertEqual(evaluate_pc("Dell Optiplex 7060 i5-8500 16GB 256GB SSD", 50)["verdict"], "BUY")
+        self.assertEqual(evaluate_pc("Dell Optiplex 7060 i5-8500 16GB 256GB SSD", 65)["verdict"], "BUY")   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
         self.assertEqual(evaluate_pc("Gaming PC GTX 1060 6GB i5-6500 16GB", 60)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate_pc("HP ProDesk 600 G3 i5-7500 8GB RAM 256GB SSD", 45)["verdict"], "SKIP")
         self.assertEqual(evaluate_pc("Office PC i3-8100 8GB", 60)["verdict"], "SKIP")
@@ -111,7 +111,7 @@ class TestWholePcByGpu0910(unittest.TestCase):
 
     def test_ryzen_apu_office_pc_not_overvalued(self):
         from pc_alert import evaluate_pc
-        self.assertEqual(evaluate_pc("PC Ryzen 5 5600G 16GB 512GB SSD", 200)["verdict"], "SKIP")   # було BUY-GOOD +153 €
+        self.assertEqual(evaluate_pc("PC Ryzen 5 5600G 16GB 512GB SSD", 215)["verdict"], "SKIP")   # було BUY-GOOD +153 € (200 €; 09.10 комісія 0 → 215)
 
 
 class TestPartsRefresh0910(unittest.TestCase):

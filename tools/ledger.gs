@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-09e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-09f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -54,6 +54,22 @@ function setupLedger() {
   console.log('Облік готовий: ' + ss.getUrl());
 }
 
+const FEE_NOTE = 'Приватний продавець на eBay.de: продаж у Німеччині без комісії (довідка eBay, 09.10.2026). ' +
+  'Якщо виплата буде менша за ціну — впиши реальну комісію.';
+
+/** 09.10: комісію eBay прибрано (0%) — у вже створеній таблиці міняємо лише старі значення 6,5% / 0,45 €, один раз. */
+function feeZero_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('FEE_ZERO') === '1') return;
+  const set = ledger_().getSheetByName('Налаштування');
+  if (!set) return;
+  const v = set.getRange('B3:B4').getValues();
+  if (Math.abs(Number(v[0][0]) - 0.065) < 1e-9) set.getRange('B3').setValue(0);
+  if (Math.abs(Number(v[1][0]) - 0.45) < 1e-9) set.getRange('B4').setValue(0);
+  set.getRange('C3:C4').setValues([[FEE_NOTE], [FEE_NOTE]]);
+  props.setProperty('FEE_ZERO', '1');
+}
+
 function buildLedger_(ss) {
   const deals = ss.getSheets()[0];
   deals.setName('Угоди');
@@ -64,8 +80,8 @@ function buildLedger_(ss) {
   // Налаштування
   set.getRange('A1').setValue('Налаштування розрахунку').setFontSize(14).setFontWeight('bold');
   set.getRange('A3:C5').setValues([
-    ['Комісія eBay за продаж, % від суми', 0.065, 'Як у моделі бота (6,5%). Приватні продавці на eBay.de часто платять 0% — зміни після першого продажу.'],
-    ['Фіксований збір eBay за замовлення, €', 0.45, 'Як у моделі бота (0,45 €). Постав 0, якщо не стягують.'],
+    ['Комісія eBay за продаж, % від суми', 0, FEE_NOTE],
+    ['Фіксований збір eBay за замовлення, €', 0, FEE_NOTE],
     ['Пакування за замовчуванням, €', 4, 'Підставляється, коли «Пакування» в «Угоди» порожнє.']]);
   set.getRange('B3').setNumberFormat(PCT_FMT);
   set.getRange('B4:B5').setNumberFormat(EUR_FMT);
@@ -297,6 +313,7 @@ function parseMail_(msg) {
 }
 
 function processLedger() {
+  try { feeZero_(); } catch (e) { console.log('feeZero_: ' + e.message); }
   const ss = ledger_();
   const log = ss.getSheetByName('Лог листів');
   const deals = ss.getSheetByName('Угоди');

@@ -30,10 +30,10 @@ class TestConsoleListings(unittest.TestCase):
     def test_real_cheap_consoles_are_buy(self):
         # повна вартість = ціна + пересилка 11 € + Sicher bezahlen (0,50 € + 4,5%)
         self.assertEqual(verdict("Xbox Series X 1 TB, 2 Controller, 15 Spiele", 250), "BUY-GOOD")
-        self.assertEqual(verdict("Xbox Series X 1TB + 2 Spiele + Controller + OVP - Top Zustand", 300), "BUY")
+        self.assertEqual(verdict("Xbox Series X 1TB + 2 Spiele + Controller + OVP - Top Zustand", 320), "BUY")   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
         self.assertEqual(verdict("Xbox Series X Konsole (1TB) mit Rechnung und drei Controller!", 340), "BUY")
-        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 360), "NEGOTIATE")
-        self.assertEqual(verdict("Microsoft Xbox Series X 1TB Black 4K Wi-Fi inkl. Controller", 390), "SKIP")
+        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 390), "NEGOTIATE")
+        self.assertEqual(verdict("Microsoft Xbox Series X 1TB Black 4K Wi-Fi inkl. Controller", 420), "SKIP")
         self.assertEqual(evaluate_console("Microsoft Xbox Series X 1TB Black", 395, vb=True)["verdict"], "NEGOTIATE")
 
     def test_market_price_is_skip(self):
@@ -68,23 +68,23 @@ class TestConsoleListings(unittest.TestCase):
 
 class TestNegotiate(unittest.TestCase):
     def test_negotiate_offer_whole_sum(self):
-        # 26.09 (вечір, ціни Terapeak p25 545): 360 € — трохи понад стелю 348 → торг, пропозиція 320
-        r = evaluate_console("Xbox Series X Console", 360)
+        # 26.09 (вечір, ціни Terapeak p25 545): трохи понад стелю → торг; 09.10 комісія 0: стеля 403, 390 € → пропозиція 345
+        r = evaluate_console("Xbox Series X Console", 390)
         self.assertEqual(r["verdict"], "NEGOTIATE")
-        self.assertEqual(offer_price(r), 320)
+        self.assertEqual(offer_price(r), 345)
         self.assertIsNone(offer_template(r))   # «торгуйся»: один текст, одразу з пропозицією (29.09)
         t = seller_template(r)
-        self.assertIn("320 €", t)
-        self.assertTrue(t.startswith("Hallo! Ich nehme die Xbox Series X für 320 €"))   # хук: одразу рішення і сума
+        self.assertIn("345 €", t)
+        self.assertTrue(t.startswith("Hallo! Ich nehme die Xbox Series X für 345 €"))   # хук: одразу рішення і сума
         self.assertIn("reservieren", t)
         self.assertIn("Versand und Gebühr übernehme ich", t)
         self.assertNotIn("noch da", t)
         self.assertIn("Xbox Series X", t)
         self.assertLessEqual(len(t), 256)
-        self.assertIn("Запропонуй <b>320 €</b>", format_html(r))
+        self.assertIn("Запропонуй <b>345 €</b>", format_html(r))
 
     def test_negotiate_offer_not_above_cap(self):
-        r = evaluate_console("Xbox Series X 1TB", 370, vb=True)
+        r = evaluate_console("Xbox Series X 1TB", 410, vb=True)   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
         self.assertEqual(r["verdict"], "NEGOTIATE")
         self.assertLessEqual(buy_cost(offer_price(r), r["ship_in"]), r["cap"])   # разом — не вище стелі
         self.assertEqual(offer_price(r) % 5, 0)
