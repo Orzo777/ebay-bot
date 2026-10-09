@@ -3,6 +3,8 @@ name: sell
 # «продати N» у боті «Облік і продаж» (01.10): Apps Script (tools/ledger.gs) бере рядок з обліку, шифрує назву і ціну
 # купівлі токеном бота й запускає цей workflow; research/sell.py рахує ціну й пороги Preisvorschlag, пише назву й опис
 # німецькою і шле картку в бот. Репозиторій публічний — тому blob зашифрований, а в лог не пишемо ні ціну, ні прибуток.
+# 09.10: той самий workflow підключає eBay («ebay вхід» → код → ключ шифровано назад в Apps Script) і виставляє
+# оголошення кнопкою «🚀» (research/ebay_list.py, Trading API). Ключ eBay живе лише в Script Properties.
 
 on:
   workflow_dispatch:
@@ -46,7 +48,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Self-check (unit tests)
-        run: python -m unittest test_sell
+        run: python -m unittest test_sell test_ebay_list
 
       - name: Prepare listing
         env:
@@ -55,14 +57,7 @@ jobs:
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          BLOB: ${{ inputs.blob }}
-          MAC: ${{ inputs.mac }}
-          NONCE: ${{ inputs.nonce }}
-          TEST_TITLE: ${{ inputs.test_title }}
+          EBAY_RUNAME: ${{ secrets.EBAY_RUNAME }}
           PYTHONIOENCODING: utf-8
-        run: |
-          if [ -n "$TEST_TITLE" ]; then
-            python research/sell.py --title "$TEST_TITLE" --dry-run
-          else
-            python research/sell.py --blob "$BLOB" --mac "$MAC" --nonce "$NONCE"
-          fi
+        # параметри (зашифрований blob) читаємо з файлу події, а не з env — env видно в журналі кроку
+        run: python research/sell.py --from-event

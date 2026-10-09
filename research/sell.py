@@ -307,8 +307,10 @@ def console_texts(title: str, r: dict) -> dict:
              f"Versand: als versichertes DHL-Paket mit Sendungsnummer ({money_de(r.get('ship_out') or console_alert.SHIP)} €), sicher verpackt.", "",
              "Privatverkauf: keine Gewährleistung und keine Rücknahme. Ihre Rechte aus dem eBay-Käuferschutz bleiben davon unberührt."]
     required = [("Marke", name.split()[0]), ("Modell", " ".join(name.split()[1:]))]
-    more = [("Plattform", "Sony PlayStation 5" if "PS5" in t else "Microsoft Xbox Series X" if "Xbox" in t else
-             "Nintendo Switch 2" if "Switch 2" in t else "Nintendo Switch"), ("Region", "PAL"), ("Farbe", "—")]
+    # 09.10: назви й значення — з Taxonomy API eBay.de (категорія 139971), щоб і автопублікація їх прийняла
+    more = [("Plattform", "Sony PlayStation 5" if "PS5" in t else "Microsoft Xbox Series X|S" if "Xbox" in t else
+             "Nintendo Switch 2" if "Switch 2" in t else "Nintendo Switch"), ("Regionalcode", "PAL"),
+            ("Produktart", "Handheld-System" if "Lite" in name else "Heimkonsole"), ("Farbe", "—")]
     cond = "Gebraucht, voll funktionsfähig, getestet. Auf Werkseinstellungen zurückgesetzt."
     before = ["скинь консоль до заводських налаштувань і вийди з акаунту (" + acct.replace("vom ", "").replace(" abgemeldet", "") + ")",
               "сфотографуй консоль увімкненою (екран налаштувань) — покупці довіряють більше",
@@ -382,20 +384,22 @@ def build_steps(row: int | None, pr: dict, tx: dict) -> str:
     return "\n".join(out)
 
 
-def keyboard(tx: dict, r: dict) -> dict:
+def keyboard(tx: dict, r: dict, row: int | None = None, ebay: bool = False) -> dict:
     q, cat = competitor_query(r)
+    auto = [[{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}]] if row and ebay else []
     return {"inline_keyboard": [
         [{"text": "📋 Скопіювати назву", "copy_text": {"text": tx["title"][:256]}}],
         *([[{"text": "📋 Herstellernummer", "copy_text": {"text": tx["pn"][:256]}}]] if tx.get("pn") else []),
         [{"text": "🔎 Конкуренти на eBay", "url": f"https://www.ebay.de/sch/{cat}/i.html?_nkw={quote_plus(q)}&LH_BIN=1&LH_ItemCondition=3000&_sop=15"}],
-        [{"text": "➕ Виставити на eBay", "url": "https://www.ebay.de/sl/prelist/suggest"}]]}
+        *auto,
+        [{"text": "➕ Виставити вручну", "url": "https://www.ebay.de/sl/prelist/suggest"}]]}
 
 
-def make(title: str, cost: float | None, row: int | None = None, comp_fn=competitors) -> tuple[str, dict | None]:
+def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=competitors) -> dict | None:
+    """Товар → ринок, ціна, німецькі тексти (спільне для картки й автопублікації). None — не впізнали."""
     r = identify(title)
     if not r:
-        return (f"🤔 Не впізнав товар «{html.escape(title[:80])}».\nНапиши повніше, наприклад:\n"
-                f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None, "")
+        return None
     try:
         comp = comp_fn(r)
     except Exception as e:
@@ -406,7 +410,16 @@ def make(title: str, cost: float | None, row: int | None = None, comp_fn=competi
         pr["warn"].insert(0, f"з назви не видно, скільки планок — порахував як ОДНУ на {r['spec']['total']} ГБ. "
                              f"Якщо це кіт, напиши: продати {row or 'N'} <назва з 2x…GB>")
     tx = ram_texts(title, r) if r["kind"] == "ram" else console_texts(title, r)
-    return build_card(row, title, r, pr, comp, tx, cost), keyboard(tx, r), build_steps(row, pr, tx)
+    return dict(r=r, pr=pr, comp=comp, tx=tx)
+
+
+def make(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, ebay: bool = False) -> tuple[str, dict | None]:
+    p = prepare(title, cost, row, comp_fn)
+    if not p:
+        return (f"🤔 Не впізнав товар «{html.escape(title[:80])}».\nНапиши повніше, наприклад:\n"
+                f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None, "")
+    r, pr, comp, tx = p["r"], p["pr"], p["comp"], p["tx"]
+    return build_card(row, title, r, pr, comp, tx, cost), keyboard(tx, r, row, ebay), build_steps(row, pr, tx)
 
 
 def office_send_html(text: str, markup: dict | None) -> bool:
@@ -443,6 +456,123 @@ def office_send_album(photos: list, caption: str) -> int:
     return n
 
 
+# ----------------------------------------------------------------------------- автопублікація на eBay (09.10)
+def tg_file(file_id: str, token: str) -> bytes | None:
+    import requests
+    r = requests.get(f"{config.TELEGRAM_API_BASE}/bot{token}/getFile", params={"file_id": file_id}, timeout=20)
+    path = ((r.json() if r.status_code == 200 else {}).get("result") or {}).get("file_path")
+    if not path:
+        return None
+    f = requests.get(f"{config.TELEGRAM_API_BASE}/file/bot{token}/{path}", timeout=60)
+    return f.content if f.status_code == 200 else None
+
+
+def post_back(data: dict, key: str) -> bool:
+    """Зашифровано → Apps Script (адреса — з вебхука бота «Облік і продаж»): ключ eBay, «виставлено» в облік.
+    Підпис — токеном бота, тож підробити такий запит без токена не можна."""
+    import uuid
+    import requests
+    info = requests.get(f"{config.TELEGRAM_API_BASE}/bot{key}/getWebhookInfo", timeout=20).json()
+    url = (info.get("result") or {}).get("url") or ""
+    if not url.startswith("https://script.google.com/"):
+        print("post_back: немає адреси Apps Script")
+        return False
+    nonce = uuid.uuid4().hex
+    blob, mac = seal(data, key, nonce)
+    r = requests.post(url, data=json.dumps({"sealed": {"blob": blob, "mac": mac, "nonce": nonce}}),
+                      headers={"Content-Type": "application/json"}, timeout=30, allow_redirects=False)
+    print(f"post_back: {r.status_code}")
+    return r.status_code in (200, 302)
+
+
+def _short(items: list[str], n: int = 4) -> str:
+    return "\n".join(f"• {html.escape(x[:300])}" for x in items[:n])
+
+
+def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=post_back, comp_fn=competitors) -> bool:
+    """«ebay вхід» → посилання на дозвіл; вставлена адреса з кодом → ключ в Apps Script; «🚀 Виставити» → оголошення."""
+    import ebay_list as el
+    if post is None:
+        import requests
+        post = requests.post
+    send = send or office_send_html
+    app, cert, runame = config.EBAY_APP_ID, config.EBAY_CERT_ID, os.getenv("EBAY_RUNAME") or ""
+    mode = d.get("mode")
+    if mode == "auth_url":
+        if not runame:
+            return send("⚠️ Підключення eBay ще не налаштоване (немає RuName у секретах GitHub) — напиши Claude.", None)
+        return send("🔑 <b>Підключення eBay</b>\n1. Натисни кнопку, увійди у свій eBay і натисни «Agree» / «Zustimmen».\n"
+                    "2. eBay покаже сторінку «Authorization successfully completed» (або схожу).\n"
+                    "3. Скопіюй <b>адресу цієї сторінки</b> (рядок браузера, починається з https://) і встав сюди.\n"
+                    "⏱ Код в адресі дійсний 5 хвилин.", {"inline_keyboard": [[{"text": "🔑 Дозволити боту на eBay",
+                                                                              "url": el.consent_url(app, runame)}]]})
+    if mode == "auth_code":
+        code = el.code_from(d.get("code") or "")
+        if not code:
+            return send("⚠️ В адресі немає коду eBay (…code=…). Натисни «ebay вхід» ще раз.", None)
+        try:
+            rt, exp = el.exchange_code(code, app, cert, runame, post)
+        except el.EbayError as e:
+            return send("⚠️ eBay не прийняв код: " + html.escape(str(e)[:200]) +
+                        "\nСкоріш за все, минуло понад 5 хвилин — напиши «ebay вхід» і встав адресу одразу.", None)
+        if not back({"kind": "ebay_rt", "rt": rt, "exp": exp}, key):
+            return send("⚠️ Ключ eBay отримав, але не зміг зберегти в Apps Script — напиши Claude.", None)
+        print("ключ eBay передано в Apps Script")
+        return True
+    if mode != "publish":
+        return send(f"⚠️ Невідомий режим «{html.escape(str(mode))}» — напиши Claude.", None)
+
+    row, dry = d.get("row"), bool(d.get("dry"))
+    what = f"№{row}" if row else "товару"
+    if not d.get("rt"):
+        return send("🔑 eBay ще не підключено — напиши «ebay вхід».", None)
+    p = prepare(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, row, comp_fn)
+    if not p:
+        return send(f"🤔 Не впізнав товар {what} — виставляти автоматично не буду. Напиши «продати {row} &lt;назва повніше&gt;».", None)
+    tx, pr = p["tx"], p["pr"]
+    ip = item_prices(pr, tx["ship"])
+    try:
+        token = el.access_token(d["rt"], app, cert, post)
+        pics = []
+        for i, ph in enumerate([x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]):
+            if len(pics) >= el.MAX_PHOTOS:
+                break
+            data = file_fn(ph["id"], key)
+            if data and el.is_image(data):
+                pics.append(el.upload_picture(data, f"n{row}-{i + 1}", token, post))
+        if not pics:
+            return send(f"📸 Для {what} немає фото — надішли фото в бот з номером у підписі («{row}»), потім натисни ще раз.", None)
+        res = el.verify_and_add(p["r"]["kind"], tx, ip, pics, f"ledger-{row}", token, post, dry)
+    except el.AuthError as e:
+        back({"kind": "ebay_bad"}, key)
+        return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід» — підключимо знову.", None)
+    except el.EbayError as e:
+        return send(f"⚠️ Не вийшло виставити {what}: {html.escape(str(e)[:300])}\nНічого не опубліковано. Перешли це Claude.", None)
+    warn = ("\n⚠️ Попередження eBay:\n" + _short(res["warnings"], 3)) if res["warnings"] else ""
+    fee = f"комісія за виставлення {money_de(res['fee'])} €" if res["fee"] else "без комісії за виставлення"
+    if not res["ok"]:
+        return send(f"⚠️ eBay не прийняв оголошення {what}:\n{_short(res['errors'])}\nНічого не опубліковано. Перешли це Claude." + warn, None)
+    if dry:
+        return send(f"🧪 Перевірка {what}: eBay прийняв би оголошення ✅ ({fee}, фото: {len(pics)}). Нічого не опубліковано.\n"
+                    f"<i>{html.escape(tx['title'])}</i> — {ip['item']} € + {money_de(tx['ship'])} € доставка" + warn, None)
+    link = f"https://www.ebay.de/itm/{res['item_id']}"
+    back({"kind": "listed", "row": row, "price": ip["item"], "item_id": res["item_id"]}, key)
+    return send(f"🚀 <b>{what} виставлено на eBay</b>\n<i>{html.escape(tx['title'])}</i>\n"
+                f"💶 {ip['item']} € + доставка {money_de(tx['ship'])} € · пропозиції: автоприйняти від {ip['accept']} €, "
+                f"відхиляти нижче {ip['decline']} €\n📸 фото: {len(pics)} · {fee}\n"
+                "Перевір оголошення за посиланням; змінити щось — «Bearbeiten» на eBay." + warn,
+                {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": link}]]})
+
+
+def _event_inputs() -> dict:
+    """Параметри запуску — з файлу події GitHub, а не з env (env видно в журналі кроку; репозиторій публічний)."""
+    path = os.getenv("GITHUB_EVENT_PATH")
+    if not path or not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f).get("inputs") or {}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--blob")
@@ -451,19 +581,30 @@ def main():
     ap.add_argument("--title")
     ap.add_argument("--cost", type=float)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--from-event", action="store_true", help="blob/mac/nonce/test_title — з GITHUB_EVENT_PATH")
     a = ap.parse_args()
+    if a.from_event:
+        ev = _event_inputs()
+        a.blob, a.mac, a.nonce = ev.get("blob") or None, ev.get("mac"), ev.get("nonce")
+        if not a.blob and ev.get("test_title"):
+            a.title, a.dry_run = ev["test_title"], True
+    ebay = False
     if a.blob:
         try:
             d = unseal(a.blob, a.mac, os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or "", a.nonce)
         except Exception as e:
             office_send_html(f"⚠️ Не зміг прочитати запит «продати»: {html.escape(str(e))}", None)
             raise SystemExit(1)
+        if d.get("mode"):   # 09.10: підключення eBay / автопублікація
+            if not ebay_mode(d, os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or ""):
+                raise SystemExit(1)
+            return
         title, cost, row = d.get("title") or "", d.get("cost"), d.get("row")
-        photos = d.get("photos") or []
+        photos, ebay = d.get("photos") or [], bool(d.get("ebay"))
     else:
         title, cost, row, photos = a.title or "", a.cost, None, []
     try:
-        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row)
+        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row, ebay=ebay)
     except Exception as e:   # картку-помилку — у бот, щоб не чекати мовчки
         office_send_html(f"⚠️ Не вийшло підготувати оголошення: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise

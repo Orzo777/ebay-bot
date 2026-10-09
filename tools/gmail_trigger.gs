@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-10-09a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-10-09b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -73,6 +73,11 @@ function doPost(e) {
   try {
     lock.waitLock(10000);
     const update = JSON.parse(e.postData.contents);
+    // 09.10: зашифроване з GitHub (ключ eBay, «виставлено») — не Telegram; перевіряє підпис sealedPost у ledger.gs
+    if (update.sealed) {
+      if (typeof sealedPost === 'function') sealedPost(update.sealed);
+      return HtmlService.createHtmlOutput('ok');
+    }
     // Другий бот «Облік і продаж» (ledger.gs) приходить сюди ж з адресою …/exec?bot=office; у кожного бота свої update_id
     const office = !!(e.parameter && e.parameter.bot === 'office');
     const seenKey = office ? 'TG_SEEN_OFFICE' : 'TG_SEEN';

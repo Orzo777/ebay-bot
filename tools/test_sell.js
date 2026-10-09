@@ -29,7 +29,7 @@ const COLN = 23;
 const row = (title, status, spent, price) => { const r = new Array(COLN).fill(''); r[2] = title; r[10] = status; r[9] = spent; r[6] = price; return r; };
 const data = [row('OWC 2x16GB DDR4 für iMac', 'Отримано', 50.49, 45), row('PS5 Slim', 'Продано', 300, 300)];
 vm.runInContext(`
-  PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => ({ TELEGRAM_CHAT_ID: '7', LEDGER_ID: 'L', OFFICE_BOT_TOKEN: 'O', GITHUB_TOKEN: 'g' })[k] }) };
+  PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => ({ TELEGRAM_CHAT_ID: '7', LEDGER_ID: 'L', OFFICE_BOT_TOKEN: 'O', GITHUB_TOKEN: 'g' })[k], setProperty: () => {} }) };
   ledger_ = function () { return { getSheetByName: () => ({ getLastRow: () => 4 + __data.length,
     getRange: (r, c, n, w) => ({ getValues: () => __data.slice(r - 5, r - 5 + n) }) }) }; };
   notify_ = function (t) { __sent.push(t); };
