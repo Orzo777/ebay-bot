@@ -1,11 +1,11 @@
 {
  "gmail_trigger.gs": {
-  "ver": "2026-10-06a",
-  "sha": "43ec734e819ea504"
+  "ver": "2026-10-09a",
+  "sha": "2686cbb5d788e133"
  },
  "ledger.gs": {
-  "ver": "2026-10-08b",
-  "sha": "962cdb03672d72b7"
+  "ver": "2026-10-09a",
+  "sha": "d040b28c0cceedc4"
  },
  "kafilter.gs": {
   "ver": "2026-10-02b",

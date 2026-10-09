@@ -33,6 +33,7 @@ import config
 from console_alert import evaluate_console
 from ka_listing_check import check_listing, risk_lines
 import cardmap
+import quiet
 import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import add_to_card
@@ -133,7 +134,8 @@ def extract_listings(subject: str, body: str) -> list[dict]:
     return out
 
 
-def build_keyboard(link: str | None, seller_text: str | None, search: str | None = None, offer_text: str | None = None) -> dict:
+def build_keyboard(link: str | None, seller_text: str | None, search: str | None = None, offer_text: str | None = None,
+                   buy: tuple | None = None) -> dict:
     """Кнопки під карткою: відкрити оголошення + скопіювати ЛИШЕ текст продавцю
     (copy_text, Bot API 7.11+, ліміт 256 символів) + уся підписка (у листі лише одне з кількох нових)."""
     rows = []
@@ -149,22 +151,24 @@ def build_keyboard(link: str | None, seller_text: str | None, search: str | None
         rows.append([{"text": label, "copy_text": {"text": offer_text[:256]}}])
     if search:
         rows.append([{"text": "🔎 Інші нові збіги цієї підписки", "url": search}])
+    if buy and buy[0]:   # 09.10: самовивіз готівкою — листа від KA не буде; кнопка одразу записує покупку в облік
+        rows.append([{"text": "✅ Купив (самовивіз)", "callback_data": f"b|{buy[0]}|{int(buy[1] or 0)}"}])
     return {"inline_keyboard": rows}
 
 
 def send_telegram_card(html_text: str, link: str | None, seller_text: str | None, search: str | None = None,
-                       silent: bool = False, offer_text: str | None = None):
+                       silent: bool = False, offer_text: str | None = None, buy: tuple | None = None):
     import requests
 
     url = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": html_text, "parse_mode": "HTML",
                "disable_web_page_preview": "true", "disable_notification": "true" if silent else "false",
-               "reply_markup": json.dumps(build_keyboard(link, seller_text, search, offer_text), ensure_ascii=False)}
+               "reply_markup": json.dumps(build_keyboard(link, seller_text, search, offer_text, buy), ensure_ascii=False)}
     r = requests.post(url, data=payload, timeout=15)
     if r.status_code == 400:   # старий клієнт/API без copy_text — картка важливіша за кнопку
         print("   Telegram 400:", r.text[:200], "→ повтор без кнопки копіювання")
-        kb = build_keyboard(link, seller_text, search, offer_text)
-        kb["inline_keyboard"] = [row for row in kb["inline_keyboard"] if "url" in row[0]]
+        kb = build_keyboard(link, seller_text, search, offer_text, buy)
+        kb["inline_keyboard"] = [row for row in kb["inline_keyboard"] if "url" in row[0] or "callback_data" in row[0]]
         payload["reply_markup"] = json.dumps(kb, ensure_ascii=False)
         r = requests.post(url, data=payload, timeout=15)
     r.raise_for_status()
@@ -437,7 +441,8 @@ def send_pc_card(lst: dict):
     import requests
 
     kb = {"inline_keyboard": [[{"text": "🔗 Відкрити оголошення", "url": lst["link"]}]]} if lst.get("link") else None
-    silent = (lst.get("pc_eval") or {}).get("verdict") == "UNKNOWN"   # «глянь сам» — без звуку
+    verdict = (lst.get("pc_eval") or {}).get("verdict")
+    silent = verdict == "UNKNOWN" or quiet.silent(verdict)   # «глянь сам» і нічні «можна» — без звуку
     payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": pc_text(lst), "parse_mode": "HTML",
                "disable_web_page_preview": "false", "disable_notification": "true" if silent else "false"}
     if kb:
@@ -606,7 +611,9 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             card = format_html(res)
             if late:
                 card = f"⏰ <b>Запізніла картка</b>: лист прийшов {age * 60:.0f} хв тому — могли вже купити\n\n" + card
-            mid, kb = send_telegram_card(card, lst["link"], card_seller_text(res), slink, late, offer_template(res)) or (None, None)
+            mid, kb = send_telegram_card(card, lst["link"], card_seller_text(res), slink, late or quiet.silent(res["verdict"]),
+                                          offer_template(res), (cardmap.ad_id(lst["link"]), lst["price"]) if pickup else None) \
+                or (None, None)
             cardmap.remember(CARDS, lst["link"], mid, lst["title"])
             add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [],   # фото → рядок «📷 …» (29.09)
                         collapse_server=True)

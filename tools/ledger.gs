@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-08b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-09a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -362,7 +362,7 @@ function processLedger() {
           what = 'продаж записано';
           notify_('💰 Продано: ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
                   '\nПрибуток дорахує таблиця.\n📮 Відправ у строк з лота (зазвичай 1–3 робочі дні) і завантаж трек-номер в eBay. ' +
-                  'Відправив — «відправив ' + (row - LEDGER_FIRST + 1) + '».');
+                  'Відправив — «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» (або кнопка нижче).', btns_([['відправив', row - LEDGER_FIRST + 1]]));
         } else { what = 'продаж: не знайшов, що це за товар — впиши вручну'; }
       }
     }
@@ -370,6 +370,7 @@ function processLedger() {
   });
   try { processCarriers_(log, done); } catch (e) { console.log('перевізники: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
+  try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
   if (!props.getProperty('EXPENSES_V1')) { expensesSheet_(ss); props.setProperty('EXPENSES_V1', '1'); }   // аркуш одразу видно
   weeklyIfDue_(props, new Date());
@@ -388,11 +389,13 @@ function weeklyIfDue_(props, now) {
 // ------------------------------------------------------------------ Telegram
 // Облік і продаж — в окремому боті «Облік і продаж» (OFFICE_BOT_TOKEN), щоб не змішувати з картками покупок.
 // Поки другого бота немає — пише в основний, як раніше.
-const OFFICE_KEYBOARD = { keyboard: [[{ text: 'облік' }, { text: 'продати' }, { text: 'звіт' }, { text: 'допомога' }]], resize_keyboard: true,
+const OFFICE_KEYBOARD = { keyboard: [[{ text: 'на руках' }, { text: 'облік' }, { text: 'продати' }], [{ text: 'звіт' }, { text: 'допомога' }]],
+  resize_keyboard: true,
   is_persistent: true };
 const OFFICE_HELP = 'Тут облік і продаж (картки покупок — в основному боті).\n' +
   '• купив 45 OWC 2x16 DDR4 — записати покупку (додай ebay / самовивіз, якщо не KA)\n' +
   '• продав 110 OWC — записати продаж\n' +
+  '• на руках — що в тебе зараз: статус, скільки днів, що робити далі (з кнопками)\n' +
   '• облік — підсумок і посилання на таблицю\n' +
   '• витрата 50 стенд для тесту RAM — витрата не на товар (обладнання, пакування, пересилка); прибуток після витрат — ' +
   'у «Підсумку»\n' +
@@ -427,7 +430,7 @@ function notify_(text, markup) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
-  if (photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg)) return;
+  if (photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || onHandCommand_(msg)) return;
   if (sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
@@ -694,7 +697,7 @@ function gotNotice_(row) {
   if (!r || r.src === 'Самовивіз Гамбург') return;
   const e = events_()[r.n] || {};
   notify_('📦 №' + r.n + ' «' + r.title + '» отримано. Протестуй протягом 1–2 днів: ' + testTip_(r.cat) + '.\n' + claimLine_(r, e) +
-          '\nПеревірив — «перевірив ' + r.n + '», щось не так — «проблема ' + r.n + '».');
+          '\nПеревірив — «перевірив ' + r.n + '», щось не так — «проблема ' + r.n + '».', btns_([['перевірив', r.n], ['проблема', r.n]]));
   markEvent_(r.n, 'rem', 'test0');
 }
 
@@ -779,7 +782,7 @@ function remindersIfDue_(props, now) {
   });
   saveEvents_(ev);
   const lines = a.lines.concat(b.lines);
-  if (lines.length) notify_('📋 На сьогодні:\n\n' + lines.join('\n\n'));
+  if (lines.length) notify_('📋 На сьогодні:\n\n' + lines.join('\n\n'), digestButtons_(a.marks));
   return lines.length > 0;
 }
 
@@ -826,8 +829,9 @@ function statusCommand_(msg) {
   } else if (cmd === 'перевірив') {
     sh.getRange(row, COL.status).setValue('Перевірено');
     markEvent_(n, 'tested', today);
-    notify_('✅ ' + name + ' перевірено. ' + (r.src === 'Kleinanzeigen' ? 'Тепер можна підтвердити отримання в KA. ' : 'Можна залишити відгук. ') +
-            'Продати — «продати ' + n + '».');
+    notify_('✅ ' + name + ' перевірено. ' + (r.src === 'Kleinanzeigen' ? 'Тепер можна підтвердити отримання в KA. ' :
+            'Залиш продавцю відгук на eBay (Mein eBay → Käufe → «Bewertung abgeben»). ') + 'Продати — «продати ' + n + '».',
+            btns_([['продати', n]]));
   } else {
     sh.getRange(row, COL.status).setValue('Проблема');
     notify_('🚩 ' + name + ' — статус «Проблема». Що робити:\n' + (r.src === 'Kleinanzeigen'
@@ -998,7 +1002,8 @@ function shippedNotice_(row, t) {
   const r = rowByN_(row - LEDGER_FIRST + 1);
   if (!r) return;
   notify_('🚚 №' + r.n + ' «' + r.title + '» відправлено' + (t ? ' — ' + (t.carrier || 'трек') + ' ' + t.num + '. Коли перевізник ' +
-          'доставить — напишу.' : '. Трек-номера в листі немає — дасть продавець, напиши «трек ' + r.n + ' номер».'), t ? trackButton_(t) : null);
+          'доставить — напишу.' : '. Трек-номера в листі немає — дасть продавець, напиши «трек ' + r.n + ' номер».'),
+          btns_([['отримав', r.n]], t ? trackButton_(t).inline_keyboard[0] : null));
 }
 
 /** Посилка покупцю (продаж). */
@@ -1032,7 +1037,8 @@ function inParcel_(n, kind, date) {
   if (kind === 'ready') {
     if (!(e.rem || {}).ready && r) {
       markEvent_(n, 'rem', 'ready');
-      notify_('📬 №' + n + ' «' + r.title + '» чекає у відділенні / Packstation — забери (зазвичай лежить 7 днів). Забрав — «отримав ' + n + '».');
+      notify_('📬 №' + n + ' «' + r.title + '» чекає у відділенні / Packstation — забери (зазвичай лежить 7 днів). Забрав — «отримав ' + n + '».',
+              btns_([['отримав', n]]));
     }
     return 'перевізник: у відділенні';
   }
@@ -1316,9 +1322,10 @@ function photoSummary_(n, g, count) {
     ['label', 'memtest'].filter(function (k) { return st.lines[k]; }).map(function (k) { return '\n' + st.lines[k]; }).join('') +
     '\nПродати — «продати ' + n + '» (фото прийдуть альбомом); показати — «фото ' + n + '».';
   let done = false;
-  if (st.mid) done = tgOffice_('editMessageText', { chat_id: chat, message_id: st.mid, text: text, parse_mode: 'HTML' }).code === 200;
+  const kb = JSON.stringify(btns_([['продати', n], ['фото', n]]));
+  if (st.mid) done = tgOffice_('editMessageText', { chat_id: chat, message_id: st.mid, text: text, parse_mode: 'HTML', reply_markup: kb }).code === 200;
   if (!done) {
-    const res = tgOffice_('sendMessage', { chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: 'true' });
+    const res = tgOffice_('sendMessage', { chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: 'true', reply_markup: kb });
     if (st.mid) tgOffice_('deleteMessage', { chat_id: chat, message_id: st.mid });
     st.mid = ((res.json || {}).result || {}).message_id || null;
   }
@@ -1347,4 +1354,120 @@ function sendAlbum_(list, caption) {
         return j === 0 ? { type: t, media: x.id, caption: caption } : { type: t, media: x.id }; })) });
     }
   });
+}
+
+
+// ------------------------------------------------------------------ кнопки в боті «Облік і продаж» (09.10)
+// Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
+const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
+  'продати': '💰 Продати', 'фото': '📸 Фото' };
+
+/** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
+function btns_(list, extra) {
+  const rows = [];
+  list.forEach(function (x, i) {
+    const b = { text: BTN[x[0]] + ' №' + x[1], callback_data: 'c|' + x[0] + '|' + x[1] };
+    if (i % 2 === 0) rows.push([b]); else rows[rows.length - 1].push(b);
+  });
+  if (extra) rows.push(extra);
+  return { inline_keyboard: rows };
+}
+
+/** Кнопки до «На сьогодні»: по одній головній дії на рядок обліку (до 8). */
+function digestButtons_(marks) {
+  const act = { ka5: 'отримав', ka8: 'отримав', eb10: 'отримав', eb20: 'отримав', test0: 'перевірив', test2: 'перевірив',
+    ship1: 'відправив', ship2: 'відправив' };
+  const seen = {}, list = [];
+  marks.forEach(function (m) {
+    const a = act[m[1]];
+    if (a && m[0] !== '_' && !seen[m[0]]) { seen[m[0]] = 1; list.push([a, m[0]]); }
+  });
+  return list.length ? btns_(list.slice(0, 8)) : null;
+}
+
+/** Натискання кнопки (doPost, ?bot=office): виконати команду, кнопки з повідомлення прибрати. */
+function officeCallback(cq) {
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  const m = String(cq.data || '').match(/^c\|([^|]+)\|(\d{1,4})$/);
+  const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
+  tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + ' №' + m[2] : '' });
+  if (!m || !chat || String(from) !== String(chat) || !BTN[m[1]]) return;
+  if (m[1] !== 'продати' && m[1] !== 'фото') {   // дія виконана — кнопки більше не потрібні
+    tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
+  }
+  officeMessage({ text: m[1] + ' ' + m[2], chat: { id: from }, message_id: 0 });
+}
+
+/** «на руках» — усе непродане: статус, скільки днів, що зробити далі (кнопки — головна дія). */
+function onHandCommand_(msg) {
+  if (!/^\/?(?:на руках|склад|що на руках)$/i.test(String(msg.text || '').trim())) return false;
+  const today = iso_(new Date()), ev = events_();
+  const open = ledgerRows_().filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; });
+  if (!open.length) { notify_('На руках нічого — усе продано. 👍'); return true; }
+  const next = { 'Оплачено': ['чекаю відправки', 'отримав'], 'В дорозі': ['в дорозі', 'отримав'], 'Отримано': ['протестуй', 'перевірив'],
+    'Перевірено': ['можна продавати', 'продати'], 'Проблема': ['заяви проблему продавцю / eBay / KA', ''], 'Виставлено': ['на eBay, чекає покупця', ''] };
+  const acts = [];
+  const lines = open.map(function (r) {
+    const d = r.date ? days_(r.date, today) : null, nx = next[r.status] || ['', ''];
+    if (nx[1]) acts.push([nx[1], r.n]);
+    const e = ev[r.n] || {};
+    return '№' + r.n + ' ' + String(r.title).slice(0, 45) + '\n   ' + r.status + (d != null ? ' · ' + d + ' дн. від покупки' : '') +
+      (nx[0] ? ' → ' + nx[0] : '') + (e.track && ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0 ? ' · трек ' + e.track : '');
+  });
+  const spent = open.reduce(function (a, r) { return a + (Number(r.spent) || 0); }, 0);
+  notify_('📦 На руках: ' + open.length + ' · у товарі ≈ ' + spent.toFixed(0) + ' €\n\n' + lines.join('\n'), acts.length ? btns_(acts.slice(0, 10)) : null);
+  return true;
+}
+
+/** Один раз: вебхукам обох ботів дозволити натискання кнопок (callback_query); адреса й черга — без змін. */
+function enableButtons_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('WEBHOOK_CB') === '1') return;
+  [props.getProperty('OFFICE_BOT_TOKEN'), props.getProperty('TELEGRAM_BOT_TOKEN')].filter(Boolean).forEach(function (tok) {
+    const info = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/getWebhookInfo', { muteHttpExceptions: true }).getContentText() || '{}');
+    const url = ((info || {}).result || {}).url;
+    if (!url) return;
+    UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/setWebhook', { method: 'post', muteHttpExceptions: true,
+      payload: { url: url, allowed_updates: '["message","callback_query"]' } });
+  });
+  props.setProperty('WEBHOOK_CB', '1');
+}
+
+
+// ------------------------------------------------------------------ «✅ Купив (самовивіз)» на картці основного бота (09.10)
+// Самовивіз готівкою: листа від KA не буде, тож облік не дізнався б про покупку. Кнопка записує рядок одразу
+// (назва — з картки, ціна — з оголошення; інша — виправ у таблиці), статус «Отримано» і запускає відлік перевірки.
+function tgMain_(method, payload) {
+  const tok = PropertiesService.getScriptProperties().getProperty('TELEGRAM_BOT_TOKEN');
+  return UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/' + method, { method: 'post', payload: payload, muteHttpExceptions: true });
+}
+
+function cardTitle_(message) {   // назва — останній курсивний фрагмент картки (<i>…</i>)
+  const t = String((message || {}).text || ''), it = ((message || {}).entities || []).filter(function (e) { return e.type === 'italic'; });
+  const last = it[it.length - 1];
+  return (last ? t.substr(last.offset, last.length) : t.split('\n').filter(Boolean).pop() || '').trim().slice(0, 150);
+}
+
+function mainCallback(cq) {
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  const m = String(cq.data || '').match(/^b\|(\d{6,})\|(\d{1,5})$/);
+  const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
+  if (!m || !chat || String(from) !== String(chat) || !props.getProperty('LEDGER_ID')) {
+    tgMain_('answerCallbackQuery', { callback_query_id: cq.id });
+    return;
+  }
+  const id = 'ka:' + m[1];
+  // кнопку з картки прибираємо (решта кнопок лишається)
+  const kb = ((cq.message.reply_markup || {}).inline_keyboard || [])
+    .map(function (row) { return row.filter(function (b) { return !b.callback_data; }); }).filter(function (row) { return row.length; });
+  tgMain_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: kb }) });
+  if (findRow_(id, null, false)) { tgMain_('answerCallbackQuery', { callback_query_id: cq.id, text: 'Уже в обліку' }); return; }
+  const title = cardTitle_(cq.message) || 'покупка з KA ' + m[1];
+  const row = addPurchase_({ title: title, src: 'Самовивіз Гамбург', link: 'https://www.kleinanzeigen.de/s-anzeige/' + m[1],
+                             price: Number(m[2]) || null, fee: '', id: id, status: 'Отримано', note: 'з кнопки «Купив»' });
+  const n = row - LEDGER_FIRST + 1;
+  markEvent_(n, 'got', iso_(new Date()));
+  tgMain_('answerCallbackQuery', { callback_query_id: cq.id, text: '📒 Записав №' + n });
+  notify_('📒 Записав покупку №' + n + ' (самовивіз): ' + title + ' — ' + m[2] + ' €. Заплатив інакше — виправ ціну в таблиці.\n' +
+          '🧪 Протестуй: ' + testTip_(category_(title)) + '.', btns_([['перевірив', n], ['проблема', n]]));
 }

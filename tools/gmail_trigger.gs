@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-10-06a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-10-09a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -81,6 +81,11 @@ function doPost(e) {
     if (seen.indexOf(update.update_id) >= 0) return HtmlService.createHtmlOutput('ok');
     seen.push(update.update_id);
     props.setProperty(seenKey, JSON.stringify(seen.slice(-200)));
+    if (update.callback_query) {   // натискання кнопки (09.10): бот «Облік і продаж»
+      if (office && typeof officeCallback === 'function') officeCallback(update.callback_query);
+      else if (!office && typeof mainCallback === 'function') mainCallback(update.callback_query);   // «✅ Купив (самовивіз)»
+      return HtmlService.createHtmlOutput('ok');
+    }
     const msg = update.message;
     if (!msg || !msg.chat) return HtmlService.createHtmlOutput('ok');
     if (office) {

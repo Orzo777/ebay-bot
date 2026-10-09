@@ -309,8 +309,10 @@ def send_card(text: str, url: str, r: dict, auction: bool = False):
     """→ (message_id, reply_markup) — щоб потім дописати рядок «📷 …». Аукціон — лише кнопка «відкрити» (ставку робиш сам)."""
     import requests
     kb = {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": url}]]} if auction else keyboard(url, r)
+    import quiet   # 09.10: уночі «можна» — без звуку; «бери» і аукціони — зі звуком
     data = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": "true",
-            "reply_markup": json.dumps(kb, ensure_ascii=False)}
+            "reply_markup": json.dumps(kb, ensure_ascii=False),
+            "disable_notification": "true" if not auction and quiet.silent(r.get("verdict")) else "false"}
     api = f"{config.TELEGRAM_API_BASE}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     resp = requests.post(api, data=data, timeout=15)
     if resp.status_code == 400:   # старий клієнт без copy_text — картка важливіша за кнопку
