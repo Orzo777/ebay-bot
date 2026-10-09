@@ -51,7 +51,37 @@ def money(rows: list[dict], today: date) -> list[str]:
            f"• Усього продано: {len(sold)} шт, прибуток <b>{_eur(profit_all)}</b>"
            + (f" (віддача {100 * profit_all / spent_sold:.0f}% на вкладене)" if spent_sold else ""),
            f"• На руках: {len(open_)} шт, у них {_eur(sum(r['spent'] or 0 for r in open_))}"]
+    out += month_lines(sold, today)
+    out += tax_lines(sold, today)
     return out
+
+
+def month_lines(sold: list[dict], today: date) -> list[str]:
+    """09.10: підсумок за 30 днів — прибуток, скільки днів товар лежав, які категорії приносять гроші."""
+    m = [r for r in sold if (_d(r["sdate"]) or date.min) >= today - timedelta(days=29)]
+    if not m:
+        return []
+    days = [(_d(r["sdate"]) - _d(r["date"])).days for r in m if _d(r["date"]) and _d(r["sdate"])]
+    cats: dict = {}
+    for r in m:
+        cats[r.get("cat") or "Інше"] = cats.get(r.get("cat") or "Інше", 0) + (r["profit"] or 0)
+    return [f"• За 30 днів: продано {len(m)} шт, прибуток <b>{_eur(sum(r['profit'] or 0 for r in m))}</b>"
+            + (f", товар лежав у середньому {sum(days) / len(days):.0f} дн." if days else ""),
+            "  по категоріях: " + ", ".join(f"{c} {_eur(v)}" for c, v in sorted(cats.items(), key=lambda kv: -kv[1]))]
+
+
+# 09.10: податкові пороги — пасивний лічильник, нічого не вирішує. DAC7: eBay повідомляє податковій про продавця від
+# 30 продажів АБО 2 000 € обороту за календарний рік; приватні продажі (§ 23 EStG) — прибуток понад 1 000 €/рік оподатковується.
+DAC7_SALES, DAC7_TURNOVER, PRIVATE_PROFIT = 30, 2000.0, 1000.0
+
+
+def tax_lines(sold: list[dict], today: date) -> list[str]:
+    year = [r for r in sold if (_d(r["sdate"]) or date.min).year == today.year]
+    n, turnover, profit = len(year), sum(r["sprice"] or 0 for r in year), sum(r["profit"] or 0 for r in year)
+    line = (f"• Податкові пороги {today.year}: продажів {n}/{DAC7_SALES}, оборот {_eur(turnover)} / {_eur(DAC7_TURNOVER)} (DAC7), "
+            f"прибуток {_eur(profit)} / {_eur(PRIVATE_PROFIT)}")
+    near = n >= 0.8 * DAC7_SALES or turnover >= 0.8 * DAC7_TURNOVER or profit >= 0.8 * PRIVATE_PROFIT
+    return [line] + (["  ⚠️ Близько до порогу — варто порадитися зі Steuerberater (це не податкова порада)."] if near else [])
 
 
 def accuracy(rows: list[dict], today: date) -> tuple[list[str], float | None]:

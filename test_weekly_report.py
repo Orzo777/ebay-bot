@@ -85,3 +85,30 @@ class WeeklyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TaxLinesTest(unittest.TestCase):
+    def test_counter_and_warning(self):
+        from datetime import date
+        import weekly_report as wr
+        sold = [{"sdate": "2026-03-01", "sprice": 100.0, "profit": 30.0, "status": "Продано"} for _ in range(10)]
+        sold.append({"sdate": "2025-12-30", "sprice": 999.0, "profit": 500.0, "status": "Продано"})   # минулий рік — не рахуємо
+        lines = wr.tax_lines(sold, date(2026, 10, 9))
+        self.assertIn("продажів 10/30", lines[0])
+        self.assertEqual(len(lines), 1)
+        many = sold + [{"sdate": "2026-09-01", "sprice": 100.0, "profit": 10.0, "status": "Продано"} for _ in range(15)]
+        self.assertIn("Steuerberater", "\n".join(wr.tax_lines(many, date(2026, 10, 9))))   # 25/30 → попередження
+
+
+class MonthLinesTest(unittest.TestCase):
+    def test_month(self):
+        from datetime import date
+        import weekly_report as wr
+        sold = [{"sdate": "2026-10-05", "date": "2026-09-30", "sprice": 164.0, "profit": 75.0, "cat": "RAM", "status": "Продано"},
+                {"sdate": "2026-10-01", "date": "2026-09-21", "sprice": 420.0, "profit": 95.0, "cat": "Консоль", "status": "Продано"},
+                {"sdate": "2026-08-01", "date": "2026-07-21", "sprice": 99.0, "profit": 9.0, "cat": "RAM", "status": "Продано"}]
+        lines = wr.month_lines(sold, date(2026, 10, 9))
+        self.assertIn("продано 2 шт", lines[0])
+        self.assertIn("лежав у середньому 8 дн.", lines[0])
+        self.assertTrue(lines[1].strip().startswith("по категоріях: Консоль"))
+        self.assertEqual(wr.month_lines([], date(2026, 10, 9)), [])

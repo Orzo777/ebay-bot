@@ -91,5 +91,14 @@ mails = [msg('x1', 'Ihre Anfrage zu eBay Plus', 'Werbung')];
 gemini = [{ kind: 'other' }];
 ctx.processEbayMail_(log, done);
 check('other → silent, logged', [sent.length, log.rows.some((r) => r[0] === 'x1')], [n0, true]);
+// етикетка доставки → «Моя пересилка покупцю» останнього проданого без неї
+mails = [msg('l1', 'Ihr Versandetikett', 'DHL Paket. Betrag: EUR 5,49')];
+gemini = [{ kind: 'label', role: 'seller', amount: 5.49 }];
+ctx.processEbayMail_(log, done);
+check('label → sship of latest sale', [deals.cells['5:15'], /5\.49 € — записав у №1/.test(sent[sent.length - 1][0])], [5.49, true]);
+mails = [msg('l2', 'Versandetikett gekauft', 'Betrag: EUR 6,19')];
+gemini = [];
+ctx.processEbayMail_(log, done);
+check('second label → next sale (fallback w/o Gemini)', deals.cells['6:15'], 6.19);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

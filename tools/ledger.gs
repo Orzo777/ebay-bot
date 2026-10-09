@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-09b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-09c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1481,7 +1481,7 @@ function mainCallback(cq) {
 // тож тип і суть визначає Gemini (як для відповідей продавців KA); для питання — ще й чернетка відповіді німецькою
 // (надсилаєш сам). Виплата → нотатка в обліку й реальна комісія eBay (чи справді 6,5%, чи 0% для приватних).
 const EBAY_MAIL_QUERY = 'from:ebay newer_than:3d subject:(frage OR nachricht OR preisvorschlag OR gegenangebot OR rückgabe OR ' +
-  'zurückgeben OR rücksendung OR fall OR anfrage OR auszahlung OR garantie OR "nicht erhalten") -subject:bestellbestätigung';
+  'zurückgeben OR rücksendung OR fall OR anfrage OR auszahlung OR garantie OR "nicht erhalten" OR versandetikett) -subject:bestellbestätigung';
 const EBAY_KINDS = {
   question: '❓ <b>Питання покупця</b>', offer: '🤝 <b>Пропозиція ціни</b>', counter: '🔁 <b>Зустрічна пропозиція</b>',
   return: '↩️ <b>Повернення</b>', case: '⚠️ <b>Запит / суперечка</b>', payout: '💶 <b>Виплата eBay</b>' };
@@ -1492,10 +1492,10 @@ function ebayMailGemini_(subject, body) {
   const prompt = 'Лист від eBay.de користувачу (він купує і продає вживану техніку як приватна особа). Тема: "' + subject + '".\n' +
     'Поверни JSON: {"kind": "question" (покупець питає про товар) | "offer" (пропозиція ціни, Preisvorschlag) | "counter" ' +
     '(зустрічна пропозиція, Gegenangebot) | "return" (повернення, Rückgabe) | "case" (запит/суперечка: nicht erhalten, eBay-Garantie, ' +
-    'Fall) | "payout" (виплата, Auszahlung) | "other", "role": "seller" якщо користувач тут продавець, "buyer" якщо покупець, ' +
+    'Fall) | "payout" (виплата, Auszahlung) | "label" (користувач купив етикетку доставки, Versandetikett) | "other", "role": "seller" якщо користувач тут продавець, "buyer" якщо покупець, ' +
     '"item": назва товару або "", "who": ім\'я іншої сторони або "", "message": текст іншої сторони мовою оригіналу або "", ' +
     '"uk": суть українською в 1–2 реченнях, "amount": сума в євро (пропозиція / виплата) або null, "deadline": строк відповіді ' +
-    'текстом або "", "reply_de": для question — коротка ввічлива відповідь німецькою від продавця (по суті питання; якщо ' +
+    'текстом або "", (для label — "amount": ціна етикетки), "reply_de": для question — коротка ввічлива відповідь німецькою від продавця (по суті питання; якщо ' +
     'відповіді не знаєш — попроси уточнити), інакше ""}.\n\nЛист:\n' + String(body).slice(0, 6000);
   const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
   for (let i = 0; i < models.length; i++) {
@@ -1553,9 +1553,23 @@ function processEbayMail_(log, done) {
       const subject = m.getSubject() || '', body = m.getPlainBody() || '', html = m.getBody() || '';
       const g = ebayMailGemini_(subject, body) || { kind: /auszahlung/i.test(subject) ? 'payout' : /preisvorschlag/i.test(subject) ? 'offer'
         : /gegenangebot/i.test(subject) ? 'counter' : /rückgabe|zurückgeben|rücksendung/i.test(subject) ? 'return'
-        : /fall|garantie|nicht erhalten/i.test(subject) ? 'case' : /frage|nachricht/i.test(subject) ? 'question' : 'other' };
+        : /fall|garantie|nicht erhalten/i.test(subject) ? 'case' : /versandetikett/i.test(subject) ? 'label'
+        : /frage|nachricht/i.test(subject) ? 'question' : 'other' };
       let what = 'eBay: ' + g.kind;
       if (g.kind === 'other') { log.appendRow([m.getId(), m.getDate(), m.getFrom(), subject, what + ' (без повідомлення)', '', '']); return; }
+      if (g.kind === 'label') {   // етикетка → «Моя пересилка покупцю» останнього проданого без неї (точний прибуток)
+        const amount = Number(g.amount) || money_(((body.match(/(?:betrag|preis|gesamt|summe)[^\d]{0,40}?([\d.]{1,7},\d{2})/i) || [])[1]) || '');
+        const sold = ledgerRows_().filter(function (r) { return r.status === 'Продано'; })
+          .sort(function (a, b) { return String(b.sdate).localeCompare(String(a.sdate)); });
+        const sh = ledger_().getSheetByName('Угоди');
+        const r = sold.filter(function (x) { return sh.getRange(x.n + LEDGER_FIRST - 1, COL.sship).getValue() === ''; })[0];
+        if (r && amount) sh.getRange(r.n + LEDGER_FIRST - 1, COL.sship).setValue(amount);
+        notify_('🏷 Етикетка доставки: ' + (amount ? amount.toFixed(2) + ' €' : 'суму не прочитав') +
+                (r && amount ? ' — записав у №' + r.n + ' «' + String(r.title).slice(0, 50) + '» (колонка «Моя пересилка покупцю»).' : ''));
+        log.appendRow([m.getId(), m.getDate(), m.getFrom(), subject, 'eBay: етикетка ' + (amount || '?'), r ? r.n + LEDGER_FIRST - 1 : '', '']);
+        n++;
+        return;
+      }
       if (g.kind === 'payout') {
         const amount = Number(g.amount) || money_(((body.match(/auszahlung[^\d]{0,120}?([\d.]{1,7},\d{2})/i) || [])[1]) || '');
         const p = payoutToSale_(amount);
