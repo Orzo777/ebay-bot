@@ -27,7 +27,9 @@ GPU_PART = {"gtx 1060": 49, "gtx 1650": 70, "gtx 1070": 72, "rx 580": 55, "rtx 2
             "rtx 2060 super": 129, "rtx 2070": 122, "rtx 2070 super": 121, "rtx 2080": 135, "rtx 2080 super": 166,
             "rtx 2080 ti": 214, "rtx 3050": 134, "rtx 3060 ti": 167, "rtx 3070": 200, "rtx 3070 ti": 238, "rtx 3080": 297,
             "rtx 4060": 232, "rtx 4060 ti": 273, "rtx 4070": 394, "rtx 4070 ti": 520, "rx 5700 xt": 114, "rx 6600": 128,
-            "rx 6600 xt": 160, "rx 6700 xt": 232, "rx 6800 xt": 295}
+            "rx 6600 xt": 160, "rx 6700 xt": 232, "rx 6800 xt": 295,
+            # 09.10: 0.65 × p25 вживаних на eBay.de (1050 Ti 4 ГБ: 131 оголошення, p25 75 €; 1050 2 ГБ: 56, p25 50 €)
+            "gtx 1050 ti": 49, "gtx 1050": 32}
 # Процесор окремо: 0.7 × p25 оголошень eBay.de 03.10 за типовою моделлю покоління (i5-10400, i7-11700, Ryzen 5 5600…)
 CPU_PART = {("i5", 8): 24, ("i5", 9): 34, ("i5", 10): 54, ("i5", 11): 67, ("i5", 12): 92, ("i5", 13): 120,
             ("i7", 8): 52, ("i7", 9): 73, ("i7", 10): 98, ("i7", 11): 130, ("i7", 12): 140, ("i7", 13): 173,
@@ -66,7 +68,17 @@ OLD_HW = re.compile(r"core\s?2|\bduo\b|\bquad\b|phenom|athlon|\bamd\s*a\d{1,2}\b
                     r"esprimo\s*p\s?-?(?:5[0-2]0|7[0-2]0)\b|\bfx[\s-]?\d{4}\b", re.I)
 
 
+# «max. 64 GB», «bis zu 64 GB», «erweiterbar auf 32 GB» — скільки плата підтримує, а не скільки стоїть (09.10:
+# «20 GB DDR4-2666 (4 Slots belegt, max. 64 GB)» пішло як 64 ГБ за 269 €)
+_RAM_MAX_BEFORE = re.compile(r"(?:max(?:imal)?\.?|bis\s+(?:zu\s+)?|erweiterbar\s+(?:auf|bis)?\s*|aufrüstbar\s+(?:auf|bis)?\s*|"
+                             r"unterstützt\s*|support(?:s|ed)?\s*|up\s+to\s*)$", re.I)
+_RAM_TOTALS = (4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 128)
+
+
 def _parse_ram(text: str) -> int | None:
+    def is_max(start: int) -> bool:
+        return bool(_RAM_MAX_BEFORE.search(text[max(0, start - 22):start].rstrip(" :(")))
+
     def vram(start: int, end: int, total: int) -> bool:   # «RTX 3060 Ti 64GB DDR4» — RAM: одразу DDR/RAM або >24 ГБ
         if total > 24 or re.match(r"\s?(?:ddr\d|ram\b|arbeitsspeicher)", text[end:end + 8], re.I):
             return False
@@ -75,12 +87,12 @@ def _parse_ram(text: str) -> int | None:
     for m in _RAM_TAGGED.finditer(text):
         n, gb = (m.group(1), m.group(2)) if m.group(2) else (m.group(3), m.group(4))
         total = int(n) * int(gb) if n else int(gb)
-        if total in (4, 8, 16, 32, 64, 128) and (m.group(4) or not vram(m.start(), m.end(), total)):
+        if total in _RAM_TOTALS and not is_max(m.start()) and (m.group(4) or not vram(m.start(), m.end(), total)):
             return total
     for x in _RAM.finditer(text):   # «i5 16GB 256GB SSD» — без слова RAM
         gb = int(x.group(1))
         if gb in (4, 8, 16, 32, 64) and not re.match(r"\s?gb\s?(?:ssd|hdd|nvme)", text[x.end(1):x.end(1) + 8], re.I) \
-                and not vram(x.start(), x.end(), gb):
+                and not is_max(x.start()) and not vram(x.start(), x.end(), gb):
             return gb
     return None
 
@@ -129,6 +141,10 @@ def _ram_sale(gb: int | None, ddr5: bool) -> float | None:
     """Кіт пам'яті з ПК (зазвичай 2 планки): щоденна ціна сторожа (ram_alert.REAL, p25), інакше запасна таблиця."""
     if not gb:
         return None
+    if gb not in (8, 16, 32, 64, 128):   # 20 = 16 + 4, 12 = 8 + 4: різні планки — рахуємо як найближчий менший набір
+        gb = max((k for k in (8, 16, 32, 64) if k <= gb), default=None)
+        if not gb:
+            return None
     try:
         from ram_alert import REAL
         real = REAL.get(("ddr5" if ddr5 else "ddr4", "udimm", False, gb, 2 if gb >= 16 else 1))

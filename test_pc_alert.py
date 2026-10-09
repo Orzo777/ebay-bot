@@ -74,3 +74,24 @@ class TestPass4Pc(unittest.TestCase):
         for t in ["PC Rechner AMD PHENOM 2 X4 945, 4Gb", "Lenovo Desktoprechner mit Core2 Duo 3 GHz", "Intel Core i5‑4460",
                   "HP ProDesk 400 G1 SFF i3", "Computer PC AMD FX 6300 8 Gb Ram"]:
             self.assertEqual(evaluate_pc(t, 30)["verdict"], "SKIP", t)
+
+
+class TestRamMaxAndOddTotals0910(unittest.TestCase):
+    """09.10: «20 GB DDR4-2666 (4 Slots belegt, max. 64 GB)» пішло як 64 ГБ за 269 € → хибне «МОЖНА, +96 €»."""
+
+    def test_board_maximum_is_not_installed_ram(self):
+        from pc_alert import _parse_ram
+        self.assertEqual(_parse_ram("RAM: 20 GB DDR4-2666 (4 Slots belegt, max. 64 GB)"), 20)
+        self.assertEqual(_parse_ram("16GB RAM, erweiterbar auf 64 GB"), 16)
+        self.assertEqual(_parse_ram("Mainboard unterstützt bis zu 64GB, verbaut 2x8GB DDR4"), 16)
+        self.assertEqual(_parse_ram("RTX 3060 Ti (8 GB) * 64 GB DDR4"), 64)   # справжні 64 — як і раніше
+
+    def test_real_listing(self):
+        from pc_alert import evaluate_pc
+        t = ("PC i5-9500 | GTX 1050 Ti 4GB | 20GB DDR4 | 500+256GB NVMe | - CPU: Intel Core i5-9500 - Grafik: NVIDIA "
+             "GeForce GTX 1050 Ti 4 GB - RAM: 20 GB DDR4-2666 (4 Slots belegt, max. 64 GB)")
+        ev = evaluate_pc(t, 200)
+        self.assertEqual(ev["parsed"]["ram"], 20)
+        self.assertIn("GTX 1050 TI €49", ev["how"])
+        self.assertIn("RAM 20 ГБ €", ev["how"])   # 20 = 16 + 4 — ціна як за 16 ГБ, обережно (щоденна ціна сторожа)
+        self.assertEqual(ev["verdict"], "SKIP")
