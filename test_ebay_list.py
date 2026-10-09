@@ -144,6 +144,22 @@ class ItemXmlTest(unittest.TestCase):
         self.assertIn("притримати", ua[1])
         self.assertEqual(ua[2], "Other [1]")
 
+    def test_dry_fee_variants(self):
+        p = sell.prepare("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 70, 1, lambda r: [])
+        ip = sell.item_prices(p["pr"], p["tx"]["ship"])
+        calls = []
+
+        def post(url, headers=None, data=None, **k):
+            body = data.decode()
+            calls.append(body)
+            fee = "0.0" if "Days_30" in body else "0.5"
+            return xml_resp("VerifyAddFixedPriceItem", f"<Fees><Fee><Name>ListingFee</Name><Fee>{fee}</Fee></Fee></Fees>")
+        res = el.verify_and_add("ram", p["tx"], ip, ["https://i/1.jpg"], "ledger-1", "AT", post, dry=True)
+        self.assertEqual(res["fee"], 0.5)
+        self.assertEqual(res["variants"], {"30 днів замість безстрокового": 0.0, "без Preisvorschlag": 0.5, "30 днів і без Preisvorschlag": 0.0})
+        self.assertNotIn("BestOfferDetails", calls[2])
+        self.assertFalse(any("AddFixedPriceItemRequest" in c and "Verify" not in c for c in calls))   # нічого не опубліковано
+
     def test_token_errors_raise_auth(self):
         with self.assertRaises(el.AuthError):
             el.trading("VerifyAddFixedPriceItem", "<Item/>", "AT", lambda *a, **k: xml_resp("VerifyAddFixedPriceItem", err("Invalid token", "931"), "Failure"))

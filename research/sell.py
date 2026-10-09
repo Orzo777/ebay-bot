@@ -554,8 +554,11 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
     if not res["ok"]:
         return send(f"⚠️ eBay не прийняв оголошення {what}:\n{_short(res['errors'])}\nНічого не опубліковано. Перешли це Claude." + warn, None)
     if dry:
+        var = "".join(f"\n• {k}: " + ("eBay не прийняв" if v is None else f"{money_de(v)} €")
+                      for k, v in (res.get("variants") or {}).items())
         return send(f"🧪 Перевірка {what}: eBay прийняв би оголошення ✅ ({fee}, фото: {len(pics)}). Нічого не опубліковано.\n"
-                    f"<i>{html.escape(tx['title'])}</i> — {ip['item']} € + {money_de(tx['ship'])} € доставка" + warn, None)
+                    f"<i>{html.escape(tx['title'])}</i> — {ip['item']} € + {money_de(tx['ship'])} € доставка" +
+                    (f"\n💸 Комісія за виставлення з іншими налаштуваннями:{var}" if var else "") + warn, None)
     link = f"https://www.ebay.de/itm/{res['item_id']}"
     back({"kind": "listed", "row": row, "price": ip["item"], "item_id": res["item_id"]}, key)
     return send(f"🚀 <b>{what} виставлено на eBay</b>\n<i>{html.escape(tx['title'])}</i>\n"

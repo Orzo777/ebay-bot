@@ -161,12 +161,12 @@ def specifics(tx: dict) -> list[tuple[str, str]]:
     return out
 
 
-def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str) -> str:
+def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, duration: str = "GTC", offers: bool = True) -> str:
     """prices: item (ціна товару без доставки), accept (автоприйняти від), decline (відхиляти нижче) — як у картці."""
     eur = lambda tag, v: f'<{tag} currencyID="EUR">{float(v):.2f}</{tag}>'   # noqa: E731
     spec = "".join(f"<NameValueList><Name>{_x(k)}</Name><Value>{_x(v)}</Value></NameValueList>" for k, v in specifics(tx))
     best = ""
-    if prices.get("accept") and prices.get("decline") and prices["decline"] < prices["accept"] < prices["item"]:
+    if offers and prices.get("accept") and prices.get("decline") and prices["decline"] < prices["accept"] < prices["item"]:
         best = ("<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>"
                 f"<ListingDetails>{eur('BestOfferAutoAcceptPrice', prices['accept'])}{eur('MinimumBestOfferPrice', prices['decline'])}</ListingDetails>")
     return ("<Item>"
@@ -176,7 +176,7 @@ def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str) -> st
             f"{eur('StartPrice', prices['item'])}"
             f"<ConditionID>{CONDITION_USED}</ConditionID><ConditionDescription>{_x(tx['cond'][:1000])}</ConditionDescription>"
             f"<Country>DE</Country><Currency>EUR</Currency><Location>{LOCATION}</Location><Site>Germany</Site>"
-            "<DispatchTimeMax>2</DispatchTimeMax><ListingDuration>GTC</ListingDuration><ListingType>FixedPriceItem</ListingType>"
+            f"<DispatchTimeMax>2</DispatchTimeMax><ListingDuration>{duration}</ListingDuration><ListingType>FixedPriceItem</ListingType>"
             f"<Quantity>1</Quantity><SKU>{_x(sku)}</SKU>"
             "<PictureDetails>" + "".join(f"<PictureURL>{_x(u)}</PictureURL>" for u in pics[:MAX_PHOTOS]) + "</PictureDetails>"
             f"<ItemSpecifics>{spec}</ItemSpecifics>{best}"
@@ -225,13 +225,28 @@ def explain(warns: list[str]) -> list[str]:
     return out
 
 
+VARIANTS = [("30 днів замість безстрокового", {"duration": "Days_30"}), ("без Preisvorschlag", {"offers": False}),
+            ("30 днів і без Preisvorschlag", {"duration": "Days_30", "offers": False})]
+
+
 def verify_and_add(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, token: str, post, dry: bool) -> dict:
     """→ {ok, errors, warnings, fee, item_id}. Спершу Verify; Add — лише якщо Verify без помилок і не dry."""
     body = item_xml(kind, tx, prices, pics, sku)
     root = trading("VerifyAddFixedPriceItem", body, token, post)
     errs, warns = problems(root)
     res = {"ok": not errs, "errors": errs, "warnings": warns, "fee": listing_fee(root), "fees": fee_parts(root), "item_id": None}
-    if errs or dry:
+    if errs:
+        return res
+    if dry:
+        if res["fee"]:   # 09.10: InsertionFee 0,50 € — від чого залежить (Verify безкоштовний, нічого не публікує)
+            res["variants"] = {}
+            for label, kw in VARIANTS:
+                try:
+                    r2 = trading("VerifyAddFixedPriceItem", item_xml(kind, tx, prices, pics, sku, **kw), token, post)
+                except EbayError:
+                    continue
+                e2, _ = problems(r2)
+                res["variants"][label] = None if e2 else listing_fee(r2)
         return res
     root = trading("AddFixedPriceItem", body, token, post)
     errs, warns2 = problems(root)
