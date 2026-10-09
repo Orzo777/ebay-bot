@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-06a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-09a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -142,6 +142,39 @@ function wdKaMail_(st, now, msgs) {
 }
 
 // check() щохвилини пише LAST_CHECK_OK після пошуку в Gmail; давно не писав — Gmail відмовляє або тригер мертвий
+// 09.10: облік (processLedger, кожні 15 хв) — якщо давно не завершувався, покупки й продажі з листів не записуються
+function wdLedger_(st, now, msgs) {
+  const ok = Number(PropertiesService.getScriptProperties().getProperty('LEDGER_OK')) || 0;
+  if (!ok) return;   // ще не було жодного запуску нової версії
+  const min = Math.round((now.getTime() - ok) / 60000);
+  if (min > 60 && !st.ledgerDown) {
+    st.ledgerDown = true;
+    msgs.push('⛔ Облік не оновлювався ' + min + ' хв: processLedger падає. Покупки й продажі з листів не записуються. ' +
+              'Apps Script → «Виконання» — там текст помилки; або напиши Claude.');
+  } else if (min <= 60 && st.ledgerDown) {
+    st.ledgerDown = false;
+    msgs.push('✅ Облік знову оновлюється.');
+  }
+}
+
+// 09.10: вебхуки обох ботів — щогодини; зламаний вебзастосунок = боти мовчки не відповідають
+function wdWebhooks_(st, now, msgs) {
+  if (st.hookAt && now.getTime() - st.hookAt < 60 * 60000) return;
+  st.hookAt = now.getTime();
+  const props = PropertiesService.getScriptProperties();
+  [['основний бот', props.getProperty('TELEGRAM_BOT_TOKEN')], ['бот «Облік і продаж»', props.getProperty('OFFICE_BOT_TOKEN')]]
+    .forEach(function (b) {
+      if (!b[1]) return;
+      const info = (JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + b[1] + '/getWebhookInfo', { muteHttpExceptions: true })
+        .getContentText() || '{}') || {}).result || {};
+      const err = info.last_error_date && now.getTime() / 1000 - info.last_error_date < 3600 ? String(info.last_error_message || '') : '';
+      const problem = !info.url ? 'вебхук не встановлений — бот не отримує повідомлень'
+        : (info.pending_update_count || 0) > 10 ? 'у черзі ' + info.pending_update_count + ' повідомлень — вебзастосунок не відповідає'
+        : err ? 'помилка вебзастосунку: ' + err.slice(0, 120) : '';
+      if (problem) wdOnce_(st, 'hook_' + b[0], 6, '⚠️ ' + b[0] + ': ' + problem + '. Напиши Claude.', msgs, now);
+    });
+}
+
 function wdCheckAlive_(st, now, msgs) {
   const ok = Number(PropertiesService.getScriptProperties().getProperty('LAST_CHECK_OK')) || 0;
   if (!ok) return;   // стара версія Code.gs — ще не пише
@@ -177,7 +210,7 @@ function watchdog() {
   const st = JSON.parse(props.getProperty('WD_STATE') || '{}');
   const now = new Date();
   const msgs = [];
-  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_].forEach(function (f) {
+  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_, wdLedger_, wdWebhooks_].forEach(function (f) {
     try { f(st, now, msgs); } catch (e) {
       if (/GH_AUTH/.test(String(e))) {
         wdOnce_(st, 'gh_auth', 12, (/GH_AUTH немає/.test(String(e))

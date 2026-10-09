@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-09a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-09b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -369,10 +369,12 @@ function processLedger() {
     log.appendRow([m.getId(), m.getDate(), p.from || m.getFrom(), m.getSubject(), what, row || '', p.snippet || '']);
   });
   try { processCarriers_(log, done); } catch (e) { console.log('перевізники: ' + e); }
+  try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
   if (!props.getProperty('EXPENSES_V1')) { expensesSheet_(ss); props.setProperty('EXPENSES_V1', '1'); }   // аркуш одразу видно
+  props.setProperty('LEDGER_OK', String(Date.now()));   // 09.10: сторож бачить, що облік живий (раніше падав би мовчки)
   weeklyIfDue_(props, new Date());
   remindersIfDue_(props, new Date());
 }
@@ -416,11 +418,12 @@ function officeToken_(props) {
   return props.getProperty('OFFICE_BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
 }
 
-function notify_(text, markup) {
+function notify_(text, markup, mode) {
   const props = PropertiesService.getScriptProperties();
   const tok = officeToken_(props), chat = props.getProperty('TELEGRAM_CHAT_ID');
   if (!tok || !chat) return null;
   const payload = { chat_id: chat, text: text, disable_web_page_preview: 'true' };
+  if (mode) payload.parse_mode = mode;
   if (markup) payload.reply_markup = JSON.stringify(markup);
   return UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', {
     method: 'post', payload: payload, muteHttpExceptions: true });
@@ -1470,4 +1473,108 @@ function mainCallback(cq) {
   tgMain_('answerCallbackQuery', { callback_query_id: cq.id, text: '📒 Записав №' + n });
   notify_('📒 Записав покупку №' + n + ' (самовивіз): ' + title + ' — ' + m[2] + ' €. Заплатив інакше — виправ ціну в таблиці.\n' +
           '🧪 Протестуй: ' + testTip_(category_(title)) + '.', btns_([['перевірив', n], ['проблема', n]]));
+}
+
+
+// ------------------------------------------------------------------ листи eBay про продаж → бот (09.10)
+// Питання покупця, пропозиції ціни й зустрічні, повернення / запити «не отримав», виплати. Формулювання eBay різні,
+// тож тип і суть визначає Gemini (як для відповідей продавців KA); для питання — ще й чернетка відповіді німецькою
+// (надсилаєш сам). Виплата → нотатка в обліку й реальна комісія eBay (чи справді 6,5%, чи 0% для приватних).
+const EBAY_MAIL_QUERY = 'from:ebay newer_than:3d subject:(frage OR nachricht OR preisvorschlag OR gegenangebot OR rückgabe OR ' +
+  'zurückgeben OR rücksendung OR fall OR anfrage OR auszahlung OR garantie OR "nicht erhalten") -subject:bestellbestätigung';
+const EBAY_KINDS = {
+  question: '❓ <b>Питання покупця</b>', offer: '🤝 <b>Пропозиція ціни</b>', counter: '🔁 <b>Зустрічна пропозиція</b>',
+  return: '↩️ <b>Повернення</b>', case: '⚠️ <b>Запит / суперечка</b>', payout: '💶 <b>Виплата eBay</b>' };
+
+function ebayMailGemini_(subject, body) {
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return null;
+  const prompt = 'Лист від eBay.de користувачу (він купує і продає вживану техніку як приватна особа). Тема: "' + subject + '".\n' +
+    'Поверни JSON: {"kind": "question" (покупець питає про товар) | "offer" (пропозиція ціни, Preisvorschlag) | "counter" ' +
+    '(зустрічна пропозиція, Gegenangebot) | "return" (повернення, Rückgabe) | "case" (запит/суперечка: nicht erhalten, eBay-Garantie, ' +
+    'Fall) | "payout" (виплата, Auszahlung) | "other", "role": "seller" якщо користувач тут продавець, "buyer" якщо покупець, ' +
+    '"item": назва товару або "", "who": ім\'я іншої сторони або "", "message": текст іншої сторони мовою оригіналу або "", ' +
+    '"uk": суть українською в 1–2 реченнях, "amount": сума в євро (пропозиція / виплата) або null, "deadline": строк відповіді ' +
+    'текстом або "", "reply_de": для question — коротка ввічлива відповідь німецькою від продавця (по суті питання; якщо ' +
+    'відповіді не знаєш — попроси уточнити), інакше ""}.\n\nЛист:\n' + String(body).slice(0, 6000);
+  const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+  for (let i = 0; i < models.length; i++) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[i] + ':generateContent', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': key },
+      payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } }) });
+    if (r.getResponseCode() !== 200) continue;
+    try { return JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text.replace(/^```(?:json)?|```$/g, '')); }
+    catch (e) { console.log('Gemini eBay: не JSON'); }
+  }
+  return null;
+}
+
+/** Виплата → до останнього проданого без виплати; → {n, sale, fee} або null. */
+function payoutToSale_(amount) {
+  const ev = events_();
+  const sold = ledgerRows_().filter(function (r) { return r.status === 'Продано' && r.sprice && !(ev[r.n] || {}).payout; })
+    .sort(function (a, b) { return String(b.sdate).localeCompare(String(a.sdate)); });
+  if (!sold.length || !amount) return null;
+  const r = sold[0];
+  setEvents_(r.n, { payout: amount });
+  const sh = ledger_().getSheetByName('Угоди'), row = r.n + LEDGER_FIRST - 1;
+  const note = String(sh.getRange(row, COL.note).getValue() || '');
+  sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'виплата eBay ' + amount.toFixed(2) + ' €');
+  return { n: r.n, title: r.title, sale: r.sprice, fee: r.sprice > 0 ? (r.sprice - amount) / r.sprice : null };
+}
+
+function ebayMailText_(g, subject, link) {
+  const kindText = EBAY_KINDS[g.kind] || '📨 <b>Лист eBay</b>';
+  const lines = [kindText + (g.item ? ' · <i>' + esc_(String(g.item).slice(0, 70)) + '</i>' : '')];
+  if (g.who || g.message) lines.push((g.who ? esc_(g.who) + ': ' : '') + (g.message ? '«' + esc_(String(g.message).slice(0, 500)) + '»' : ''));
+  if (g.uk) lines.push('🇺🇦 ' + esc_(g.uk));
+  if (g.amount && (g.kind === 'offer' || g.kind === 'counter')) {
+    lines.push('💶 Сума: <b>' + Number(g.amount).toFixed(2) + ' €</b>' + (g.role === 'seller'
+      ? ' — якщо в оголошенні стоять пороги, eBay прийме / відхилить сам; інакше — «Annehmen», «Ablehnen» або «Gegenangebot» в eBay.'
+      : ' — відповідай в eBay (прийняти / відхилити).'));
+  }
+  if (g.deadline) lines.push('⏰ Строк: ' + esc_(g.deadline));
+  if (g.kind === 'return' || g.kind === 'case') {
+    lines.push('Що робити: відповісти в eBay протягом 3 робочих днів, інакше eBay вирішить сам на користь покупця. ' +
+      'Товар справний (ти тестував, є фото MemTest86) — напиши це й додай фото; «передумав» у приватного продавця — повернення ' +
+      'можна не приймати. Не впевнений — напиши Claude.');
+  }
+  if (g.kind === 'question' && g.reply_de) lines.push('✍️ Відповідь (натисни — скопіюється):\n<code>' + esc_(g.reply_de) + '</code>');
+  if (!g.uk && !g.message) lines.push(esc_(subject));
+  return { text: lines.filter(Boolean).join('\n'), markup: link ? { inline_keyboard: [[{ text: '🔗 Відкрити в eBay', url: link }]] } : null };
+}
+
+function processEbayMail_(log, done) {
+  let n = 0;
+  GmailApp.search(EBAY_MAIL_QUERY, 0, 15).forEach(function (th) {
+    th.getMessages().forEach(function (m) {
+      if (done[m.getId()] || !/ebay/i.test(m.getFrom())) return;
+      done[m.getId()] = 1;
+      const subject = m.getSubject() || '', body = m.getPlainBody() || '', html = m.getBody() || '';
+      const g = ebayMailGemini_(subject, body) || { kind: /auszahlung/i.test(subject) ? 'payout' : /preisvorschlag/i.test(subject) ? 'offer'
+        : /gegenangebot/i.test(subject) ? 'counter' : /rückgabe|zurückgeben|rücksendung/i.test(subject) ? 'return'
+        : /fall|garantie|nicht erhalten/i.test(subject) ? 'case' : /frage|nachricht/i.test(subject) ? 'question' : 'other' };
+      let what = 'eBay: ' + g.kind;
+      if (g.kind === 'other') { log.appendRow([m.getId(), m.getDate(), m.getFrom(), subject, what + ' (без повідомлення)', '', '']); return; }
+      if (g.kind === 'payout') {
+        const amount = Number(g.amount) || money_(((body.match(/auszahlung[^\d]{0,120}?([\d.]{1,7},\d{2})/i) || [])[1]) || '');
+        const p = payoutToSale_(amount);
+        notify_('💶 <b>Виплата eBay</b>: ' + (amount ? amount.toFixed(2) + ' €' : 'суму не прочитав') +
+          (p ? ' — за №' + p.n + ' «' + esc_(String(p.title).slice(0, 50)) + '» (продано за ' + Number(p.sale).toFixed(2) + ' €)' +
+            (p.fee != null ? '\nРеальна комісія eBay ≈ <b>' + (p.fee * 100).toFixed(1) + '%</b>' + (p.fee < 0.02
+              ? ' — комісії фактично немає (приватний продавець). Скажи Claude — прибуток у боті й обліку рахуватиметься точніше.'
+              : '') : '') : ''), null, 'HTML');
+        log.appendRow([m.getId(), m.getDate(), m.getFrom(), subject, 'eBay: виплата ' + (amount || '?'), p ? p.n + LEDGER_FIRST - 1 : '', '']);
+        n++;
+        return;
+      }
+      const link = ((html.match(/https:\/\/[a-z.]*ebay\.de\/[^"'\s<>]*(?:mesg|msg|contact|return|rueckgabe|casemanagement|resolution)[^"'\s<>]*/i) || [])[0] || '')
+        .replace(/&amp;/g, '&');
+      const t = ebayMailText_(g, subject, link);
+      notify_(t.text, t.markup, 'HTML');
+      log.appendRow([m.getId(), m.getDate(), m.getFrom(), subject, what, '', '']);
+      n++;
+    });
+  });
+  return n;
 }

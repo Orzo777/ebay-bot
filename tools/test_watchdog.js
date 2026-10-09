@@ -19,6 +19,8 @@ function setup(o) {
     ScriptApp: { getProjectTriggers: () => (o.triggers || ['check', 'kaFilter', 'processLedger']).map((f) => ({ getHandlerFunction: () => f })) },
     UrlFetchApp: { fetch: (u, opt) => {
       calls.push([opt && opt.method || 'get', u.replace(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+/, '')]);
+      if (/getWebhookInfo/.test(u)) return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ ok: true,
+        result: (o.hook || ((t) => ({ url: 'https://x/exec', pending_update_count: 0 })))(u) }) };
       if (/telegram/.test(u)) { sent.push(opt.payload); return { getResponseCode: () => 200 }; }
       if (/raw\.githubusercontent/.test(u)) return { getResponseCode: () => 200, getContentText: () => (o.raw ? o.raw(u) : '') };
       if (o.auth) return { getResponseCode: () => 401, getContentText: () => '' };
@@ -153,6 +155,26 @@ check('3 tries, then the user is told', [deploys(), /автооновлення 
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { WD_STATE: JSON.stringify({ deployTries: 2 }) } }, okMail));
 w.run();
 check('caught up → counter reset, nothing sent', [st().deployTries, deploys(), w.sent.length], [0, 0, 0]);
+
+// 09.10: облік давно не оновлювався → тривога; знову живий → «✅»
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { LEDGER_OK: String(NOW.getTime() - 90 * 60000) } }, okMail));
+w.run();
+check('ledger stale → alarm', /Облік не оновлювався 90 хв/.test(w.text()), true);
+w.store.LEDGER_OK = String(NOW.getTime() - 5 * 60000);
+const st2 = JSON.parse(w.store.WD_STATE); st2.hookAt = NOW.getTime(); w.store.WD_STATE = JSON.stringify(st2);
+w.run();
+check('ledger back → ok message', /Облік знову оновлюється/.test(w.text()), true);
+// вебхуки: черга / помилка / не встановлений → одне повідомлення на бот; все гаразд — тиша
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { TELEGRAM_BOT_TOKEN: 'M' },
+  hook: (u) => (/botM\//.test(u) ? { url: 'https://x/exec', pending_update_count: 37 }
+    : { url: 'https://x/exec?bot=office', pending_update_count: 0, last_error_date: NOW.getTime() / 1000 - 600, last_error_message: 'Wrong response from the webhook: 500' }) }, okMail));
+w.run();
+check('webhook problems reported per bot', [/основний бот: у черзі 37/.test(w.text()), /«Облік і продаж»: помилка вебзастосунку: Wrong response/.test(w.text())], [true, true]);
+w.run();
+check('not again within the hour', (w.text().match(/у черзі 37/g) || []).length, 1);
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { TELEGRAM_BOT_TOKEN: 'M' } }, okMail));
+w.run();
+check('healthy webhooks → silence', w.sent.length, 0);
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
