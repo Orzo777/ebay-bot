@@ -112,7 +112,7 @@ class TestProcess(unittest.TestCase):
         self.assertEqual(self.hints, [])
 
     def test_public_search_urls(self):
-        self.assertIn("preis:20:256/ddr5-32gb/k0c225",
+        self.assertIn("preis:20:276/ddr5-32gb/k0c225",
                       rmc.public_search_url("Neue Treffer zu deiner Suche „PC-Zubehör & Software - ddr5 32gb in Ganz Deutschland“"))
         self.assertIn("model_s:switch_2", rmc.public_search_url("Neue Treffer zu deiner Suche „Konsolen - switch 2 in Ganz Deutschland“"))
         self.assertIsNone(rmc.public_search_url("Neue Treffer zu deiner Suche „щось нове“"))
