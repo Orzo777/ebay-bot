@@ -196,16 +196,45 @@ def listing_fee(root: ET.Element) -> float:
     return 0.0
 
 
+def fee_parts(root: ET.Element) -> dict:
+    """Ненульові складові комісій (ListingFee — їхня сума, тому без неї)."""
+    out = {}
+    for f in root.iter(NS + "Fee"):
+        name = f.findtext(NS + "Name") or ""
+        try:
+            v = float(f.findtext(NS + "Fee") or 0)
+        except ValueError:
+            continue
+        if v and name != "ListingFee":
+            out[name] = v
+    return out
+
+
+# відомі попередження eBay → коротко українською (решта — як є)
+KNOWN_WARN = [(r"\[21920376\]|Final Value Fee waived", "✅ комісія з продажу (Verkaufsprovision) — 0 €: eBay її знімає"),
+              (r"einbehalten|pending", "ℹ️ гроші за перші продажі eBay може притримати, поки покупець не отримає товар "
+                                         "(звично для нових продавців)")]
+
+
+def explain(warns: list[str]) -> list[str]:
+    out = []
+    for w in warns:
+        hit = next((ua for rx, ua in KNOWN_WARN if re.search(rx, w, re.I)), None)
+        if (hit or w) not in out:
+            out.append(hit or w)
+    return out
+
+
 def verify_and_add(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, token: str, post, dry: bool) -> dict:
     """→ {ok, errors, warnings, fee, item_id}. Спершу Verify; Add — лише якщо Verify без помилок і не dry."""
     body = item_xml(kind, tx, prices, pics, sku)
     root = trading("VerifyAddFixedPriceItem", body, token, post)
     errs, warns = problems(root)
-    res = {"ok": not errs, "errors": errs, "warnings": warns, "fee": listing_fee(root), "item_id": None}
+    res = {"ok": not errs, "errors": errs, "warnings": warns, "fee": listing_fee(root), "fees": fee_parts(root), "item_id": None}
     if errs or dry:
         return res
     root = trading("AddFixedPriceItem", body, token, post)
     errs, warns2 = problems(root)
     res.update(ok=not errs and bool(root.findtext(NS + "ItemID")), errors=errs, warnings=warns + warns2,
-               item_id=root.findtext(NS + "ItemID"), fee=listing_fee(root) or res["fee"])
+               item_id=root.findtext(NS + "ItemID"), fee=listing_fee(root) or res["fee"], fees=fee_parts(root) or res["fees"])
     return res

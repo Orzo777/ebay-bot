@@ -135,6 +135,15 @@ class ItemXmlTest(unittest.TestCase):
         self.assertIn("Marke is missing", res["errors"][0])
         self.assertEqual(len(res["warnings"]), 1)
 
+    def test_fee_parts_and_known_warnings(self):
+        root = ET.fromstring(f'<R xmlns="{NS}"><Fees><Fee><Name>InsertionFee</Name><Fee>0.5</Fee></Fee>'
+                             '<Fee><Name>ListingFee</Name><Fee>0.5</Fee></Fee><Fee><Name>GalleryFee</Name><Fee>0.0</Fee></Fee></Fees></R>')
+        self.assertEqual(el.fee_parts(root), {"InsertionFee": 0.5})
+        ua = el.explain(["Final Value Fee waived. [21920376]", "Geldbeträge … werden als einbehalten angezeigt. []", "Other [1]"])
+        self.assertIn("0 €", ua[0])
+        self.assertIn("притримати", ua[1])
+        self.assertEqual(ua[2], "Other [1]")
+
     def test_token_errors_raise_auth(self):
         with self.assertRaises(el.AuthError):
             el.trading("VerifyAddFixedPriceItem", "<Item/>", "AT", lambda *a, **k: xml_resp("VerifyAddFixedPriceItem", err("Invalid token", "931"), "Failure"))

@@ -548,8 +548,9 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід» — підключимо знову.", None)
     except el.EbayError as e:
         return send(f"⚠️ Не вийшло виставити {what}: {html.escape(str(e)[:300])}\nНічого не опубліковано. Перешли це Claude.", None)
-    warn = ("\n⚠️ Попередження eBay:\n" + _short(res["warnings"], 3)) if res["warnings"] else ""
-    fee = f"комісія за виставлення {money_de(res['fee'])} €" if res["fee"] else "без комісії за виставлення"
+    warn = ("\nℹ️ eBay каже:\n" + _short(el.explain(res["warnings"]), 4)) if res["warnings"] else ""
+    parts = ", ".join(f"{k} {money_de(v)} €" for k, v in (res.get("fees") or {}).items())
+    fee = (f"комісія за виставлення {money_de(res['fee'])} €" + (f": {parts}" if parts else "")) if res["fee"] else "без комісії за виставлення"
     if not res["ok"]:
         return send(f"⚠️ eBay не прийняв оголошення {what}:\n{_short(res['errors'])}\nНічого не опубліковано. Перешли це Claude." + warn, None)
     if dry:
