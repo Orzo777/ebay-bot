@@ -95,3 +95,20 @@ class TestRamMaxAndOddTotals0910(unittest.TestCase):
         self.assertIn("GTX 1050 TI €49", ev["how"])
         self.assertIn("RAM 20 ГБ €", ev["how"])   # 20 = 16 + 4 — ціна як за 16 ГБ, обережно (щоденна ціна сторожа)
         self.assertEqual(ev["verdict"], "SKIP")
+
+
+class TestWholePcByGpu0910(unittest.TestCase):
+    """09.10: «Ryzen 5 5600X + GTX 1060» за 350 € → було «торгуйся до 270» (ціна «ПК з R5 5-го» = ПК з RTX 3060)."""
+
+    def test_gpu_decides_whole_pc_price(self):
+        from pc_alert import evaluate_pc
+        ev = evaluate_pc("Gaming-PC | Ryzen 5 5600X | GTX 1060 6GB | 16GB RAM | 500GB NVMe", 350)
+        self.assertEqual(ev["verdict"], "SKIP")
+        self.assertIn("ігровий ПК з GTX 1060", ev["how"])
+        self.assertNotIn("R5 5-го покоління цілим", ev["how"])
+        self.assertLess(evaluate_pc("Gaming-PC | Ryzen 5 5600X | GTX 1060 6GB | 16GB RAM", 160)["profit"],
+                        evaluate_pc("Gaming-PC | Ryzen 5 5600X | GTX 1060 6GB | 16GB RAM", 140)["profit"])
+
+    def test_ryzen_apu_office_pc_not_overvalued(self):
+        from pc_alert import evaluate_pc
+        self.assertEqual(evaluate_pc("PC Ryzen 5 5600G 16GB 512GB SSD", 200)["verdict"], "SKIP")   # було BUY-GOOD +153 €
