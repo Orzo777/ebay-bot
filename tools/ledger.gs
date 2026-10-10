@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-10a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-10b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -388,6 +388,7 @@ function processLedger() {
   try { processCarriers_(log, done); } catch (e) { console.log('перевізники: ' + e); }
   try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
+  try { fixAlbum1010_(); } catch (e) { console.log('fixAlbum1010_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
   if (!props.getProperty('EXPENSES_V1')) { expensesSheet_(ss); props.setProperty('EXPENSES_V1', '1'); }   // аркуш одразу видно
@@ -432,7 +433,7 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '• трек 3 00340… — трек-номер посилки №3 (купівля чи продаж), якщо його не було в листі\n' +
   '• нагадай 20.10 текст — нагадаю того дня; нагадування — що заплановано\n' +
   '• фото з підписом 3 — фото товару №3 (наклейки, екран MemTest86): збережу, звірю наклейку з покупкою, MemTest86 без ' +
-  'помилок → «Перевірено»; «продати 3» пришле їх альбомом; «фото 3» — показати\n' +
+  'помилок → «Перевірено»; «продати 3» пришле їх альбомом; «фото 3» — показати; «перенеси фото 1 2» — якщо потрапили не туди\n' +
   'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення. Щодня о 10:00 — що треба зробити ' +
   '(посилка не йде, не перевірено, не відправлено, заплановане).';
 
@@ -455,7 +456,8 @@ function notify_(text, markup, mode) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
-  if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || onHandCommand_(msg)) return;
+  if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
+      onHandCommand_(msg)) return;
   if (ebayCommand_(msg) || boundsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
@@ -1384,10 +1386,54 @@ function flushPending_(n, mg) {
   mine.forEach(function (p) { attachPhoto_(n, p.f, p.m); });
 }
 
-/** Із processLedger: альбом без жодного підпису — питаємо, коли сусід із підписом так і не прийшов (≥ 2 хв). */
+/** Із processLedger: альбом без жодного підпису (сусід із підписом за 2 хв так і не прийшов) → єдиний товар на руках,
+ *  інакше питаємо «до якого товару?». */
 function photoPendingCheck_() {
-  const pend = JSON.parse(PropertiesService.getScriptProperties().getProperty('PH_PENDING') || '[]');
-  if (pend.some(function (p) { return Date.now() - (p.ts || 0) > 2 * 60000; })) askPhotoNumber_();
+  const props = PropertiesService.getScriptProperties();
+  const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');
+  if (!pend.some(function (p) { return Date.now() - (p.ts || 0) > 2 * 60000; })) return;
+  const open = openRows_();
+  if (open.length === 1 && pend.every(function (p) { return p.mg; })) {
+    props.deleteProperty('PH_PENDING');
+    dropPhotoAsk_();
+    pend.forEach(function (p) { props.setProperty(p.mg, String(open[0].n)); attachPhoto_(open[0].n, p.f, p.m); });
+    return;
+  }
+  askPhotoNumber_();
+}
+
+/** «перенеси фото 1 2 [k]» — останні k (або всі) фото з №1 до №2: якщо фото потрапили не до того товару. */
+function photoMoveCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?перенеси\s+фото\s+(\d{1,4})\s+(?:в|до|->|→)?\s*(\d{1,4})(?:\s+(\d{1,2}))?$/i);
+  if (!m) return false;
+  const a = Number(m[1]), b = Number(m[2]);
+  if (!rowByN_(a) || !rowByN_(b) || a === b) { notify_('Напиши так: «перенеси фото 1 2» (усі) або «перенеси фото 1 2 3» (останні 3).'); return true; }
+  const moved = movePhotos_(a, b, m[3] ? Number(m[3]) : null);
+  notify_(moved ? '📸 Переніс ' + moved + ' фото з №' + a + ' до №' + b + '.' : 'У №' + a + ' немає фото.');
+  return true;
+}
+
+function movePhotos_(a, b, k) {
+  const from = cleanPhotos_(a), take = k ? from.slice(-k) : from.slice();
+  if (!take.length) return 0;
+  savePhotos_(a, from.slice(0, from.length - take.length));
+  const to = cleanPhotos_(b);
+  take.forEach(function (f) { if (!to.some(function (x) { return samePhoto_(f, x); })) to.push(f); });
+  savePhotos_(b, to);
+  photoSummary_(a, null, photosOf_(a).length);
+  photoSummary_(b, null, to.length);
+  return take.length;
+}
+
+/** 10.10, один раз: два фото альбому «2» (упаковка проданого) потрапили до №1 — переносимо назад. */
+function fixAlbum1010_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('FIX_ALBUM_1010') === '1') return;
+  props.setProperty('FIX_ALBUM_1010', '1');
+  const r1 = rowByN_(1), r2 = rowByN_(2);
+  if (!r1 || !r2 || ['Продано', 'Виставлено'].indexOf(r2.status) < 0 || photosOf_(1).length < 2) return;
+  if (movePhotos_(1, 2, 2)) notify_('📸 Два фото з альбому «2» (упаковка) помилково потрапили до №1 — переніс до №2. ' +
+    'Альбоми тепер завжди йдуть за підписом, навіть якщо фото з підписом приходить останнім.');
 }
 
 function openRows_() {
@@ -1404,7 +1450,7 @@ function photoMessage_(msg) {
   if (n && mg) props.setProperty(mg, String(n));
   if (!n && mg) n = Number(props.getProperty(mg) || 0);
   if (n && mg && rowByN_(n)) flushPending_(n, mg);
-  if (!n) { const open = openRows_(); if (open.length === 1) n = open[0].n; }
+  if (!n && !mg) { const open = openRows_(); if (open.length === 1) n = open[0].n; }   // альбом — лише за підписом сусіда
   if (n && !rowByN_(n)) { notify_('У таблиці немає №' + n + ' — фото не зберіг.'); return true; }
   if (!n) {   // фото полежить до номера; альбом — тихо чекає сусіда з підписом (він може прийти пізніше)
     const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');

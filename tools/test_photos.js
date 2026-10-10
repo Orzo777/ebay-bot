@@ -168,6 +168,36 @@ ctx.photoPendingCheck_(); ctx.photoPendingCheck_();
 check('after 2 min → asks once', asks(), asks1 + 1);
 delete store.PH_PENDING; delete store.PH_ASK;
 
+// 14. 10.10: на руках ОДИН товар, альбом із підписом іншого (проданого) — фото без підпису приходять першими:
+// не до єдиного товару на руках, а чекають підпис
+const keep = {}; [5, 6, 7, 8].forEach((r) => { keep[r] = deals.cells[r + ':11']; deals.cells[r + ':11'] = 'Продано'; });
+deals.cells['5:11'] = 'Отримано';   // №1 — єдиний на руках
+const n1 = JSON.parse(store.PH_1 || '[]').length;
+gemini = [{ kind: 'other' }, { kind: 'other' }, { kind: 'other' }];
+say(photo('E2', 50, { media_group_id: 'E' }));
+say(photo('E3', 51, { media_group_id: 'E' }));
+check('album siblings do not go to the only open row', [JSON.parse(store.PH_1 || '[]').length, JSON.parse(store.PH_PENDING).length], [n1, 2]);
+say(photo('E1', 52, { caption: '2', media_group_id: 'E' }));
+check('all three go to the captioned sold row', ['E1', 'E2', 'E3'].every((id) => JSON.parse(store.PH_2).some((x) => x.id === id)), true);
+// альбом зовсім без підпису і один товар на руках → через 2 хв до нього, без питання
+const asks2 = asks();
+gemini = [{ kind: 'other' }, { kind: 'other' }];
+say(photo('G1', 53, { media_group_id: 'G' }));
+say(photo('G2', 54, { media_group_id: 'G' }));
+const pend2 = JSON.parse(store.PH_PENDING); pend2.forEach((x) => { x.ts -= 3 * 60000; }); store.PH_PENDING = JSON.stringify(pend2);
+ctx.photoPendingCheck_();
+check('uncaptioned album → only open row after 2 min', [JSON.parse(store.PH_1).slice(-2).map((x) => x.id), asks(), store.PH_PENDING], [['G1', 'G2'], asks2, undefined]);
+// «перенеси фото 1 2 2» — останні два з №1 до №2
+say({ message_id: 55, text: 'перенеси фото 1 2 2' });
+check('move last 2', [JSON.parse(store.PH_1).some((x) => x.id === 'G1'), JSON.parse(store.PH_2).slice(-2).map((x) => x.id)], [false, ['G1', 'G2']]);
+// разовий перенос 10.10: не повторюється
+store.PH_1 = JSON.stringify([{ id: 'W1', t: 'photo', u: 'w1' }, { id: 'W2', t: 'photo', u: 'w2' }, { id: 'W3', t: 'photo', u: 'w3' }]);
+deals.cells['6:11'] = 'Продано';
+ctx.fixAlbum1010_(); ctx.fixAlbum1010_();
+check('one-time fix moves last 2 once', [JSON.parse(store.PH_1).map((x) => x.id), JSON.parse(store.PH_2).slice(-2).map((x) => x.id)], [['W1'], ['W2', 'W3']]);
+Object.keys(keep).forEach((r) => { deals.cells[r + ':11'] = keep[r]; });
+gemini = [];
+
 // 9. не своє — не перехоплюємо: текст «3» без фото, що чекають, іде далі як звичайно
 check('bare number without pending → not a photo answer', vm.runInContext('photoNumber_(__m)', Object.assign(ctx, { __m: { text: '3', chat: { id: 7 } } })), false);
 // 09.10: звіт MemTest86 файлом (HTML з флешки)
