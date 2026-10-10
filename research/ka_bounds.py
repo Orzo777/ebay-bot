@@ -27,9 +27,10 @@ RAM_TITLES = {   # підписка → типове оголошення, за 
     "arbeitsspeicher ddr5": "DDR5 16GB 6000 RAM", "ddr5 16gb": "DDR5 16GB 6000 RAM",
     "ddr5 sodimm 16gb": "DDR5 SO-DIMM 16GB 5600 Laptop RAM", "ddr5 sodimm 32gb": "DDR5 SO-DIMM 32GB (2x16GB) 5600 Laptop",
     "ddr5 2x16gb": "DDR5 32GB (2x16GB) 6000 RAM", "ddr5 32gb": "DDR5 32GB (2x16GB) 6000 RAM",
-    "ddr5 2x32gb": "DDR5 64GB (2x32GB) 6000 RAM", "ddr5 64gb": "DDR5 64GB (2x32GB) 6000 RAM",
+    "ddr5 2x32gb": "DDR5 64GB (2x32GB) 6000 RAM", "ddr5 64gb": ["DDR5 64GB (2x32GB) 6000 RAM", "DDR5 64GB (4x16GB) 6000 RAM"],
     "ddr4 2x16gb": "DDR4 32GB (2x16GB) 3200 RAM", "ddr4 32gb": "DDR4 32GB (2x16GB) 3200 RAM",
-    "ddr4 sodimm 32gb": "DDR4 SO-DIMM 32GB (2x16GB) 3200 Laptop", "ddr4 64gb": "DDR4 64GB (2x32GB) 3200 RAM",
+    "ddr4 sodimm 32gb": "DDR4 SO-DIMM 32GB (2x16GB) 3200 Laptop",
+    "ddr4 64gb": ["DDR4 64GB (2x32GB) 3200 RAM", "DDR4 64GB (4x16GB) 3200 RAM"],   # 10.10: і набори 4×16
     "ddr5 48gb": "DDR5 48GB (2x24GB) 6000 RAM"}
 CONSOLE_TITLES = {"xbox series x": "Xbox Series X 1TB Konsole", "xbox series": "Xbox Series X 1TB Konsole",
                   "ps5": "Sony PS5 Disc Edition Konsole", "playstation 5": "Sony PS5 Disc Edition Konsole",
@@ -51,7 +52,8 @@ def _pickup(p25: float, costs: float) -> int:   # те саме, що test_hambu
 
 def recommended() -> dict:
     cur = current()
-    ram = {k: _top(lambda p, t=t: ra.evaluate(t, p, vb=True), 10, int(cur["ram"].get(k, 300) * 1.6) + 60) for k, t in RAM_TITLES.items()}
+    ram = {k: max((_top(lambda p, t=t: ra.evaluate(t, p, vb=True), 10, int(cur["ram"].get(k, 300) * 1.6) + 60) or 0)
+                  for t in (ts if isinstance(ts, list) else [ts])) or None for k, ts in RAM_TITLES.items()}
     con = {k: _top(lambda p, t=t: ca.evaluate_console(t, p, vb=True), 150, int(cur["console"].get(k, 400) * 1.6) + 60)
            for k, t in CONSOLE_TITLES.items()}
     ham = {g: max(_pickup(v["p25"], ra.costs(v["p25"])) for k, v in ra.REAL.items() if k[0] == g) for g in ("ddr5", "ddr4")}

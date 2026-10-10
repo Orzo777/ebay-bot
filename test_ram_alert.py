@@ -13,7 +13,9 @@ from ram_mail_check import _ad_key, build_keyboard
 
 class TestModuleCount(unittest.TestCase):
     def test_4x16_not_mixed_with_2x32(self):
-        self.assertEqual(evaluate("Crucial 4x16GB DDR4 2666 RAM Kit 64GB", 65)["verdict"], "SKIP")
+        q = evaluate("Crucial 4x16GB DDR4 2666 RAM Kit 64GB", 65)   # 10.10: дві пари 2×16, а не 2×32
+        self.assertIn("4×16", q["type"])
+        self.assertNotEqual(q["quick_sale"], evaluate("Crucial 2x32GB DDR4 2666 RAM Kit 64GB", 65)["quick_sale"])
         self.assertEqual(evaluate("Crucial 2x32GB DDR4 2666 RAM Kit 64GB", 65)["verdict"], "BUY-EXCELLENT")
 
     def test_4x8_sodimm_is_skip(self):
@@ -242,3 +244,22 @@ class TestPass3Parse(unittest.TestCase):
             self.assertEqual((p["total"], p["modules"]), exp, t)
         self.assertIsNone(parse_title("Corsair Light Enhancement Kit DDR4")[0])
         self.assertEqual(parse_title("Samsung M425R2GA3BB0-CQK 16GB DDR5")[0]["form"], "sodimm")
+
+
+
+class TestQuadKits1010(unittest.TestCase):
+    """10.10: набори 4×16 / 4×32 — як дві пари 2× (5% знижки), а не «тип, що не купуємо»."""
+
+    def test_quad_is_two_pairs(self):
+        from ram_alert import QUAD_SHARE, REAL, costs, evaluate
+        pair = REAL[("ddr4", "udimm", False, 32, 2)]
+        r = evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 150)
+        self.assertNotEqual(r["verdict"], "SKIP")
+        self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (pair["p25"] - costs(pair["p25"])))
+        self.assertIn("4×16", r["type"])
+        self.assertIn("2 пари", r["type"])
+        self.assertEqual(r["quick_sale"], 2 * pair["p25"])
+        self.assertEqual(evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 400)["verdict"], "SKIP")   # дорожче двох пар
+        self.assertIn("2 пари", evaluate("64GB DDR4 Quad-Kit G.Skill Trident Z 3200", 150)["type"])
+        self.assertNotEqual(evaluate("Crucial Pro DDR5-5600 64GB (4x16GB) UDIMM", 300)["verdict"], "SKIP")
+        self.assertEqual(evaluate("Corsair Vengeance LPX 32GB (4x8GB) DDR4", 20)["verdict"], "SKIP")   # пара 2×8 — не наш тип

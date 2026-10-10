@@ -130,6 +130,9 @@ def apply_pickup(r: dict) -> dict:
 
 # Ціна-заглушка (28.09: «RAM 1x32Gb 2x16Gb DDR 4» за 1 € → «ВІДМІННО»): дешевше 10 € або 15% ринку — не ціна.
 PLACEHOLDER_MIN, PLACEHOLDER_SHARE = 10.0, 0.15
+# 10.10 (рішення користувача): набір з 4 планок (4×16, 4×32) — продаємо як дві пари 2×; 5% знижки за дві окремі продажі
+# (довше, дві пересилки й пакування рахуються окремо). Раніше «4 планки — тип, що не купуємо» → такі набори пропускали.
+QUAD_SHARE = 0.95
 
 
 def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict:
@@ -146,7 +149,17 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
         return dict(verdict="SKIP", reason="дві різні планки (різні бренди) — не заводський кіт, продається дешевше",
                     title=title, price=total_price, wrong_type=True)
     key = (p["gen"], p["form"], False if ecc_udimm else p["ecc"], p["total"], p["modules"])
+    if p["modules"] == 1 and p.get("kit_word") and re.search(r"quad", title, re.I) and p["total"] % 4 == 0:
+        p = dict(p, modules=4)   # «64GB DDR4 Quad-Kit» — 4 планки
+        key = key[:4] + (4,)
     real = REAL.get(key)
+    quad = None
+    if not real and p["modules"] == 4 and p["total"] % 4 == 0:
+        quad = REAL.get(key[:3] + (p["total"] // 2, 2))
+        if quad:
+            real = dict(quad, p25=2 * quad["p25"], med=2 * quad["med"], st=quad["st"] / 2,
+                        name=f"{quad['name'].split(' (')[0].replace(str(p['total'] // 2), str(p['total']), 1)} (4×{p['total'] // 4}) "
+                             f"— продаси як 2 пари 2×{p['total'] // 4}")
     kit_unknown = False
     # Кількість планок не вказана: «32GB DDR5 Corsair» / «64GB Kit» майже завжди 2 планки (28.09: 7 з ~60 оголошень DDR5
     # на KA писали лише «32GB» і бот їх відкидав як «тип, що не купуємо»). «(1x64GB)» — точно одна, не вгадуємо.
@@ -167,7 +180,8 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     if price < max(PLACEHOLDER_MIN, PLACEHOLDER_SHARE * real["p25"]):
         return dict(verdict="SKIP", reason=f"ціна {price:.0f} € — заглушка («1 €», «VB»), а не справжня ціна",
                     title=title, price=total_price, wrong_type=False)
-    net_q = real["p25"] - costs(real["p25"])
+    net_q = (QUAD_SHARE * 2 * (quad["p25"] - costs(quad["p25"])) if quad   # дві продажі пар — кожна зі своїми витратами
+             else real["p25"] - costs(real["p25"]))
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
     cost = buy_cost(price, ship_in)
     profit_est = net_q - cost

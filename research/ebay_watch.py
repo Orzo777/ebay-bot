@@ -38,8 +38,8 @@ from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, c
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 # (запит, категорія, мін. ціна, макс. ціна). Верх — трохи вище найбільшої стелі «торгуйся» серед типів групи.
 QUERIES = [
-    ("ddr5", RAM_CAT, 15, 480),
-    ("ddr4", RAM_CAT, 15, 240),
+    ("ddr5", RAM_CAT, 15, 540),   # 10.10: набори 4×16 DDR5 (дві пари) вигідні до ~490 €
+    ("ddr4", RAM_CAT, 15, 420),   # 10.10: 4×32 DDR4 — до ~380 €
     ("xbox series x", CONSOLE_CAT, 150, 420),
     ("(ps5, playstation 5)", CONSOLE_CAT, 150, 360),
     ("switch 2", CONSOLE_CAT, 100, 320),
@@ -52,7 +52,7 @@ HAMBURG_ZIP = re.compile(r"^(?:20|21|22)")   # API маскує індекс: «
 # Окремі 2 запити (консолі разом, RAM разом) — через раз, щоб тримати квоту (~2 900 викликів/добу).
 PICKUP_QUERIES = [
     ("(xbox series x, ps5, playstation 5, switch 2)", CONSOLE_CAT, 100, 430),
-    ("(ddr5, ddr4)", RAM_CAT, 15, 440),
+    ("(ddr5, ddr4)", RAM_CAT, 15, 540),
 ]
 PICKUP_FILTER = ("deliveryOptions:{SELLER_ARRANGED_LOCAL_PICKUP},pickupCountry:DE,pickupPostalCode:20095,"
                  "pickupRadius:30,pickupRadiusUnit:km")
@@ -547,7 +547,7 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
 # торг (конкуренти не встигають перебити). Вікно 20 хв > інтервал аукціонних запитів (~6 хв, через коло) + пауза між запусками Actions (1–3 хв):
 # гарантовано встигаємо хоча б раз. Раніше 2 хв — уже пізно (Telegram + відкрити eBay + поставити ставку).
 # Усі наші категорії: RAM DDR4/DDR5, Xbox Series X, PS5, Switch 2 (першу Switch не купуємо з 04.10).
-AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 480),
+AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 540),
                    ("(xbox series x, ps5, playstation 5, switch 2)", CONSOLE_CAT, 1, 420)]
 AUCTION_MINUTES = (2, 20)
 
