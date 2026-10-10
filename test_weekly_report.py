@@ -37,7 +37,7 @@ class WeeklyTest(unittest.TestCase):
     def test_accuracy_flags_optimistic_ceilings(self):
         lines, mean = wr.accuracy(ROWS, TODAY)
         t = "\n".join(lines)
-        self.assertLess(mean, 0.95)          # 100/108, 120/134, 118/134
+        self.assertLess(mean, 0.93)          # 10.10: від медіани (OWC SO-DIMM, фірмові DDR4 2×16)
         self.assertIn("стелі купівлі завищені", t)
         self.assertIn("№1 OWC", t)
         self.assertIn("RAM: 3 шт", t)

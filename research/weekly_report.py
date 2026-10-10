@@ -85,7 +85,8 @@ def tax_lines(sold: list[dict], today: date) -> list[str]:
 
 
 def accuracy(rows: list[dict], today: date) -> tuple[list[str], float | None]:
-    """Продано за 90 днів: фактична ціна проти «швидкої» ціни продажу (p25), на якій стоять стелі купівлі."""
+    """Продано за 90 днів: фактична ціна проти медіани типу (з 10.10 стелі купівлі рахуються від неї, з урахуванням
+    сегмента фірмовий / звичайні). Розкид у межах типу великий — тому дивимось і на кожен продаж, і на середнє."""
     recent = [r for r in rows if r["status"] == "Продано" and r.get("sprice") and (_d(r["sdate"]) or date.min) >= today - timedelta(days=90)]
     lines, ratios, cats = [], [], {}
     for r in sorted(recent, key=lambda r: r["sdate"], reverse=True):
@@ -98,19 +99,19 @@ def accuracy(rows: list[dict], today: date) -> tuple[list[str], float | None]:
         if days is not None:
             c["days"].append(days)
         if ident:
-            ratio = r["sprice"] / ident["quick_sale"]
+            ratio = r["sprice"] / ident["median_sale"]
             ratios.append(ratio)
             if len(lines) < 5:
-                lines.append(f"• №{r['n']} {html.escape(r['title'][:32])}: продано {_eur(r['sprice'])}, бот рахував "
-                             f"{ident['quick_sale']} € ({100 * (ratio - 1):+.0f}%)" + (f", за {days} дн." if days is not None else ""))
+                lines.append(f"• №{r['n']} {html.escape(r['title'][:32])}: продано {_eur(r['sprice'])}, медіана бота "
+                             f"{ident['median_sale']} € ({100 * (ratio - 1):+.0f}%)" + (f", за {days} дн." if days is not None else ""))
     out = ["🎯 <b>Точність прогнозу</b> (продане за 90 днів)"]
     if not recent:
         return out + ["• Продажів ще не було — порівнювати нема з чим."], None
     out += lines
     mean = sum(ratios) / len(ratios) if ratios else None
     if mean is not None:
-        out.append(f"• У середньому продаємо за {100 * mean:.0f}% від «швидкої» ціни бота ({len(ratios)} продажів)")
-        if len(ratios) >= 3 and mean < 0.95:
+        out.append(f"• У середньому продаємо за {100 * mean:.0f}% від медіани бота ({len(ratios)} продажів)")
+        if len(ratios) >= 3 and mean < 0.93:
             out.append(f"⚠️ Продаємо дешевше, ніж бот рахує, — стелі купівлі завищені приблизно на {100 * (1 - mean):.0f}%. "
                        "Скажи Claude — підкоригує.")
         elif len(ratios) >= 3 and mean > 1.08:
