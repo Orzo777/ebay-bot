@@ -64,7 +64,24 @@ check('not twice', ctx.processEbayMail_(log, done), 0);
 mails = [msg('o1', 'Sie haben einen Preisvorschlag erhalten', 'Preisvorschlag: EUR 140,00 für Corsair ...')];
 gemini = [{ kind: 'offer', role: 'seller', item: 'Corsair Vengeance LPX 32GB', amount: 140, uk: 'Покупець пропонує 140 €.' }];
 ctx.processEbayMail_(log, done);
-check('offer card', /🤝 <b>Пропозиція ціни<\/b>[\s\S]*140\.00 €[\s\S]*eBay прийме \/ відхилить сам/.test(sent[sent.length - 1][0]), true);
+check('offer card', /🤝 <b>Пропозиція ціни<\/b>[\s\S]*Пропозиція покупця: <b>140 €<\/b>[\s\S]*eBay прийме \/ відхилить сам/.test(sent[sent.length - 1][0]), true);
+
+// 10.10: користувач — покупець; продавець відповів зустрічною 110 на 90: обидві суми, без переказу свого листа
+mails = [msg('o2', 'Der Verkäufer hat Ihnen ein Gegenangebot gemacht', 'Ihr Preisvorschlag: EUR 90,00. Gegenangebot: EUR 110,00')];
+gemini = [{ kind: 'counter', role: 'buyer', item: 'Crucial 32GB Kit - 2 x 16GB DDR4', who: 'd-flipflop', message_from: 'me',
+  message: 'Hallo! Ich nehme den RAM für 90 €', uk: 'Ви надіслали продавцю цінову пропозицію 90 €.', my_amount: 90, their_amount: 110,
+  listing_price: 119, deadline: 'So, 11. Okt 13:45' }];
+ctx.processEbayMail_(log, done);
+t = sent[sent.length - 1][0];
+check('buyer counter: both amounts, listing price', [/Твоя пропозиція: <b>90 €<\/b>/.test(t), /Відповідь продавця: <b>110 €<\/b> \(\+20 € до твоєї\)/.test(t),
+  /Ціна в оголошенні: 119 €/.test(t), /⏰ Строк: So, 11/.test(t)], [true, true, true, true]);
+check('buyer counter: no own message, no recap', [/Ich nehme/.test(t), /🇺🇦/.test(t)], [false, false]);
+// покупець, продавець ще не відповів
+mails = [msg('o3', 'Ihr Preisvorschlag wurde gesendet', 'Preisvorschlag EUR 90,00')];
+gemini = [{ kind: 'offer', role: 'buyer', item: 'Crucial 32GB', amount: 90, uk: 'Ви надіслали пропозицію 90 €.' }];
+ctx.processEbayMail_(log, done);
+t = sent[sent.length - 1][0];
+check('buyer offer pending', [/Твоя пропозиція: <b>90 €<\/b>/.test(t), /ще не відповів/.test(t), /🇺🇦/.test(t)], [true, true, false]);
 
 // повернення → що робити й строк
 mails = [msg('r1', 'Der Käufer möchte einen Artikel zurückgeben', 'Grund: Artikel defekt. Bitte innerhalb von 3 Werktagen antworten.')];
