@@ -77,13 +77,13 @@ mails = [msg('p1', 'Ihre Auszahlung wurde gesendet', 'Wir haben Ihre Auszahlung 
 gemini = [{ kind: 'payout', role: 'seller', amount: 164.49, uk: 'Виплата 164,49 €.' }];
 ctx.processEbayMail_(log, done);
 t = sent[sent.length - 1][0];
-check('payout matched to latest sale', [/164\.49 € — за №1 «Corsair/.test(t), /≈ <b>0\.0%<\/b>[\s\S]*комісії фактично немає/.test(t)], [true, true]);
+check('payout matched to latest sale', [/164\.49 € — за №1 «Corsair/.test(t), /≈ <b>0\.0%<\/b>[\s\S]*комісії немає/.test(t)], [true, true]);
 check('note written + event', [/виплата eBay 164\.49/.test(deals.cells['5:22']), JSON.parse(store.LEDGER_EVENTS)[1].payout], [true, 164.49]);
 // друга виплата → наступний продаж (OWC), реальна комісія 6,5%
 mails = [msg('p2', 'Auszahlung', 'Auszahlung EUR 112,20')];
 gemini = [];   // Gemini недоступний — сума з тексту, тип з теми
 ctx.processEbayMail_(log, done);
-check('fallback payout w/o Gemini → next sale, fee shown', /112\.20 € — за №2 «OWC[\s\S]*≈ <b>6\.5%<\/b>/.test(sent[sent.length - 1][0]), true);
+check('fallback payout w/o Gemini → next sale, fee shown', /112\.20 € — за №2 «OWC[\s\S]*≈ <b>6\.5%<\/b>[\s\S]*повернемо/.test(sent[sent.length - 1][0]), true);
 
 // не наше (реклама з «Anfrage» у темі, Gemini каже other) — без повідомлення, але в лог
 const n0 = sent.length;
@@ -100,5 +100,12 @@ mails = [msg('l2', 'Versandetikett gekauft', 'Betrag: EUR 6,19')];
 gemini = [];
 ctx.processEbayMail_(log, done);
 check('second label → next sale (fallback w/o Gemini)', deals.cells['6:15'], 6.19);
+// 10.10: виплата за мінусом етикетки (eBay віднімає її з виплати) — це не комісія: 120 − 6,19 = 113,81 → 0%
+const ev = JSON.parse(store.LEDGER_EVENTS); delete ev[2].payout; store.LEDGER_EVENTS = JSON.stringify(ev);
+mails = [msg('p3', 'Ihre Auszahlung wurde gesendet', 'Auszahlung EUR 113,81')];
+gemini = [{ kind: 'payout', role: 'seller', amount: 113.81 }];
+ctx.processEbayMail_(log, done);
+t = sent[sent.length - 1][0];
+check('payout minus label → 0% fee', [/мінус етикетка 6\.19 €/.test(t), /≈ <b>0\.0%<\/b>/.test(t)], [true, true]);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

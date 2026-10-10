@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-10b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-10c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1777,7 +1777,9 @@ function payoutToSale_(amount) {
   const sh = ledger_().getSheetByName('Угоди'), row = r.n + LEDGER_FIRST - 1;
   const note = String(sh.getRange(row, COL.note).getValue() || '');
   sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'виплата eBay ' + amount.toFixed(2) + ' €');
-  return { n: r.n, title: r.title, sale: r.sprice, fee: r.sprice > 0 ? (r.sprice - amount) / r.sprice : null };
+  // 10.10: етикетку, куплену в eBay, eBay віднімає з виплати (155,49 − 6,19 = 149,30 при Transaktionsgebühren 0,00) — це не комісія
+  const label = Number(sh.getRange(row, COL.sship).getValue()) || 0;
+  return { n: r.n, title: r.title, sale: r.sprice, label: label, fee: r.sprice > 0 ? Math.max(0, r.sprice - label - amount) / r.sprice : null };
 }
 
 function ebayMailText_(g, subject, link) {
@@ -1832,9 +1834,10 @@ function processEbayMail_(log, done) {
         const p = payoutToSale_(amount);
         notify_('💶 <b>Виплата eBay</b>: ' + (amount ? amount.toFixed(2) + ' €' : 'суму не прочитав') +
           (p ? ' — за №' + p.n + ' «' + esc_(String(p.title).slice(0, 50)) + '» (продано за ' + Number(p.sale).toFixed(2) + ' €)' +
+            (p.label ? ', мінус етикетка ' + p.label.toFixed(2) + ' €' : '') +
             (p.fee != null ? '\nРеальна комісія eBay ≈ <b>' + (p.fee * 100).toFixed(1) + '%</b>' + (p.fee < 0.02
-              ? ' — комісії фактично немає (приватний продавець). Скажи Claude — прибуток у боті й обліку рахуватиметься точніше.'
-              : '') : '') : ''), null, 'HTML');
+              ? ' — комісії немає, як і закладено в розрахунки бота.'
+              : ' — бот рахує без комісії (з 09.10). Скажи Claude — повернемо її в розрахунки.') : '') : ''), null, 'HTML');
         log.appendRow([m.getId(), m.getDate(), m.getFrom(), subject, 'eBay: виплата ' + (amount || '?'), p ? p.n + LEDGER_FIRST - 1 : '', '']);
         n++;
         return;
