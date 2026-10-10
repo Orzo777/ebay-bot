@@ -130,7 +130,9 @@ def auction_eval(lst: dict) -> dict:
     r = evaluate_ebay(lst)
     if "net_q" not in r and (r.get("wrong_type") is False or "заглушка" in (r.get("reason") or "")):
         probe = evaluate_ebay(dict(lst, price=999.0))
-        if "net_q" in probe:
+        # 10.10: гру / підставку «[PlayStation 5]» за 12–40 € консоль від гри відрізняє зокрема ціна — за умовною ціною
+        # пропускаємо лише назви з сильним доказом консолі (Konsole, Slim, Disc, 1TB…)
+        if "net_q" in probe and not probe.get("needs_console_proof"):
             cost = (lst["price"] or 0) + probe["ship_in"]
             r = dict(probe, price=lst["price"] or 0, buy_cost=cost, profit_est=probe["net_q"] - cost, verdict="BUY")
     return r

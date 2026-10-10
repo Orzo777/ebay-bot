@@ -408,3 +408,15 @@ class ShareAuctionTest(unittest.TestCase):
         self.assertIsNone(bin_offer(r, {"bidCount": 2, "itemEndDate": end}, NOW))   # є ставки — eBay не дозволить
         soon = (NOW + timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
         self.assertIsNone(bin_offer(r, {"bidCount": 0, "itemEndDate": soon}, NOW))
+
+
+
+class AuctionGameTest(unittest.TestCase):
+    def test_cheap_game_auction_is_not_a_console(self):
+        import ebay_watch as ew
+        for t in ["Captain Tsubasa II - World Fighters [PlayStation 5", "Playstation 5 Standfuß",
+                  "Assassin's Creed: Valhalla Sony PlayStation 5, PS5"]:
+            r = ew.auction_eval(dict(item(t, 12, ship="4.99"), price=12.0))
+            self.assertNotIn("net_q", r, t)
+        r = ew.auction_eval(dict(item("Sony PlayStation 5 Slim Disc 1TB Konsole", 120, ship="9.99"), price=120.0))
+        self.assertIn("net_q", r)
