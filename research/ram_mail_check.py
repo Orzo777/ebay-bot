@@ -259,18 +259,19 @@ _RAM_SEARCH = {  # назва підписки → межі ціни (як у KA
     "ddr4 32gb": (15, 101), "ddr5 48gb": (20, 334),
 }
 _KA = "https://www.kleinanzeigen.de"
+CONSOLE_MAX = {"xbox series x": 432, "ps5": 347, "switch 2": 307, "xbox series": 432, "playstation 5": 347}   # «Preis bis» у KA
 _CONSOLE_SEARCH = {
-    "xbox series x": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:150:432/xbox-series-x/"
+    "xbox series x": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:150:{xbox series x}/xbox-series-x/"
                      "k0c279+konsolen.art_s:xbox+konsolen.model_s:series_x+konsolen.versand_s:ja",
-    "ps5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:150:347/ps5/"
+    "ps5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:150:{ps5}/ps5/"
            "k0c279+konsolen.art_s:playstation+konsolen.versand_s:ja",
-    "switch 2": "/s-konsolen/nintendo/anbieter:privat/anzeige:angebote/preis:150:307/switch-2/"
+    "switch 2": "/s-konsolen/nintendo/anbieter:privat/anzeige:angebote/preis:150:{switch 2}/switch-2/"
                 "k0c279+konsolen.art_s:nintendo+konsolen.model_s:switch_2+konsolen.versand_s:ja",
     # 28.09: ~20% консолей продавці публікують без фільтра моделі — дублюємо підписки за назвою (KA ігнорує «x», «2», «5»,
     # тож нижня межа €230 відсікає Series S / Switch OLED / PS4, а решту відсіює бот)
-    "xbox series": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:230:432/xbox-series/"
+    "xbox series": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:230:{xbox series}/xbox-series/"
                    "k0c279+konsolen.art_s:xbox+konsolen.versand_s:ja",
-    "playstation 5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:230:347/playstation-5/"
+    "playstation 5": "/s-konsolen/playstation/anbieter:privat/anzeige:angebote/preis:230:{playstation 5}/playstation-5/"
                      "k0c279+konsolen.art_s:playstation+konsolen.versand_s:ja",
 }
 
@@ -293,6 +294,27 @@ _HAMBURG_SEARCH = {
                      + "+konsolen.art_s:playstation",
 }
 HAMBURG_MAX = dict(ddr5=462, ddr4=223, xbox=457, ps5=368, switch2=311)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
+
+
+def _load_bounds():
+    """10.10: межі, які користувач підтвердив кнопкою «✅ Межі оновив» (research/ka_bounds.py → ka_bounds.json).
+    У тестах (RAM_PRICES_OFF) — лише значення з коду."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ka_bounds.json")
+    if os.getenv("RAM_PRICES_OFF") or not os.path.exists(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            b = json.load(f)
+    except (OSError, ValueError):
+        return
+    for k, hi in (b.get("ram") or {}).items():
+        if k in _RAM_SEARCH:
+            _RAM_SEARCH[k] = (_RAM_SEARCH[k][0], int(hi))
+    CONSOLE_MAX.update({k: int(v) for k, v in (b.get("console") or {}).items() if k in CONSOLE_MAX})
+    HAMBURG_MAX.update({k: int(v) for k, v in (b.get("hamburg") or {}).items() if k in HAMBURG_MAX})
+
+
+_load_bounds()
 _PICKUP_SUBJECT = re.compile(r"\bin Hamburg\b", re.I)
 _NO_PICKUP = re.compile(r"nur\s+(?:per\s+)?versand|keine\s+abholung|kein(?:e)?\s+selbstabholung", re.I)
 
@@ -314,7 +336,7 @@ def public_search_url(subject: str) -> str | None:
         lo, hi = _RAM_SEARCH[name]
         return (f"{_KA}/s-pc-zubehoer-software/anbieter:privat/anzeige:angebote/preis:{lo}:{hi}/"
                 f"{name.replace(' ', '-')}/k0c225+pc_zubehoer_software.versand_s:ja")
-    return _KA + _CONSOLE_SEARCH[name] if name in _CONSOLE_SEARCH else None
+    return _KA + _CONSOLE_SEARCH[name].replace("{" + name + "}", str(CONSOLE_MAX[name])) if name in _CONSOLE_SEARCH else None
 
 
 def search_name(subject: str) -> str:

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-09f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-10a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -421,7 +421,10 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '• продати 3 — готове оголошення для eBay: ціна, пороги Preisvorschlag, назва й опис німецькою ' +
   '(3 — номер у таблиці; «продати» без номера — список того, що на руках)\n' +
   '• ebay вхід — один раз підключити eBay; тоді на картці «продати 3» кнопка «🚀 Виставити на eBay автоматично» ' +
-  '(з фото, ціною й порогами; eBay спершу перевіряє). ebay тест 3 — лише перевірка, без публікації\n' +
+  '(з фото, ціною й порогами; eBay спершу перевіряє). ebay тест 3 — лише перевірка, без публікації. Далі теж кнопками: ' +
+  'трек з «відправив 3 трек» іде в eBay сам, «📨 Надіслати» під питанням покупця, «Прийняти / Зустрічна / Відхилити» під ' +
+  'пропозицією, «⬇️ Знизити» в тижневому звіті\n' +
+  '• межі — які «Preis bis» поставити в підписках KA за сьогоднішніми цінами (і кнопка «✅ Межі оновив»)\n' +
   '• виставив 3 [124] — товар №3 уже на eBay (статус «Виставлено», ціну — в нотатки), щоб звіт не нагадував\n' +
   '• звіт — тижневий звіт: прибуток, точність прогнозів, залежаний товар, що дають підписки (сам приходить щопонеділка)\n' +
   '• отримав 3 / перевірив 3 / проблема 3 — посилка №3 прийшла / протестована / щось не так (покажу, як заявити)\n' +
@@ -453,7 +456,7 @@ function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || onHandCommand_(msg)) return;
-  if (ebayCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
+  if (ebayCommand_(msg) || boundsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
@@ -652,6 +655,94 @@ function ebayCommand_(msg) {
   return false;
 }
 
+// ------------------------------------------------------------------ дії в eBay кнопками (10.10)
+// Трек у замовлення, нова ціна, відповідь покупцю, відповідь на пропозицію — research/ebay_actions.py. Дані для кнопки
+// (чернетка відповіді, сума пропозиції) — у EBAY_ACT за коротким номером: callback_data Telegram — до 64 байт.
+function actPut_(obj) {
+  const props = PropertiesService.getScriptProperties(), all = JSON.parse(props.getProperty('EBAY_ACT') || '{}');
+  const id = String((Number(props.getProperty('EBAY_ACT_N')) || 0) + 1);
+  props.setProperty('EBAY_ACT_N', id);
+  all[id] = obj;
+  Object.keys(all).sort(function (a, b) { return Number(a) - Number(b); }).slice(0, -30).forEach(function (k) { delete all[k]; });
+  props.setProperty('EBAY_ACT', JSON.stringify(all));
+  return id;
+}
+
+function ebayAct_(data) {
+  const rt = PropertiesService.getScriptProperties().getProperty('EBAY_RT');
+  if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return 0; }
+  return sellDispatch_(Object.assign({ mode: 'ebay', rt: rt }, data));
+}
+
+function itemIdOf_(n) {
+  const note = String(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.note).getValue() || '');
+  return ((note.match(/eBay (\d{9,15})/) || [])[1]) || '';
+}
+
+/** Трек проданого на eBay → у замовлення eBay (якщо eBay підключено). → рядок для повідомлення. */
+function shipToEbay_(n, title, t) {
+  if (!t || !PropertiesService.getScriptProperties().getProperty('EBAY_RT')) return '';
+  const sto = String(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.sto).getValue() || '');
+  if (sto && !/ebay/i.test(sto)) return '';
+  return ebayAct_({ action: 'ship', row: n, title: String(title), track: t.num, carrier: t.carrier || 'DHL', item_id: itemIdOf_(n) }) === 204
+    ? '\n⏳ Передаю трек в eBay — покупець побачить відстеження.' : '';
+}
+
+/** e|id|send/acc/cnt/dec — питання і пропозиції з листів eBay; p|N|ціна — «⬇️ Знизити» з тижневого звіту. */
+function ebayCallback_(cq, chat) {
+  const data = String(cq.data || ''), from = cq.message && cq.message.chat ? cq.message.chat.id : '';
+  const ex = data.match(/^e\|(\d{1,6})\|(send|acc|cnt|dec)$/), pc = data.match(/^p\|(\d{1,4})\|(\d{1,5})$/);
+  if (!ex && !pc) return false;
+  const label = ex ? { send: '📨 Надсилаю', acc: '✅ Приймаю', cnt: '🔁 Зустрічна', dec: '✖️ Відхиляю' }[ex[2]] : '⬇️ Знижую';
+  tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: label });
+  if (!chat || String(from) !== String(chat)) return true;
+  if (ex) {   // відповідь — одна: кнопки з картки прибираємо (посилання лишаємо)
+    const kb = ((cq.message.reply_markup || {}).inline_keyboard || [])
+      .map(function (row) { return row.filter(function (b) { return !b.callback_data; }); }).filter(function (row) { return row.length; });
+    tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: kb }) });
+    const a = JSON.parse(PropertiesService.getScriptProperties().getProperty('EBAY_ACT') || '{}')[ex[1]];
+    if (!a) { notify_('Ця кнопка застаріла — відповідай в eBay.'); return true; }
+    const code = ebayAct_(Object.assign({}, a, { op: ex[2] }));
+    if (code) notify_(code === 204 ? label + ' в eBay — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+    return true;
+  }
+  const n = Number(pc[1]), r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
+  const code = ebayAct_({ action: 'revise', row: n, title: r.title, price: Number(pc[2]), item_id: itemIdOf_(n) });
+  if (code) notify_(code === 204 ? '⬇️ Знижую ціну №' + n + ' до ' + pc[2] + ' € на eBay — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+  return true;
+}
+
+/** Кнопки під листом eBay: питання → «📨 Надіслати відповідь»; пропозиція покупця → прийняти / зустрічна / відхилити. */
+function ebayMailButtons_(g, markup) {
+  if (!PropertiesService.getScriptProperties().getProperty('EBAY_RT') || g.role === 'buyer') return markup;
+  let rows = [];
+  if (g.kind === 'question' && g.reply_de) {
+    rows = [[{ text: '📨 Надіслати відповідь (як вище)', callback_data: 'e|' + actPut_({ action: 'answer', text: String(g.reply_de).slice(0, 1500),
+      question: String(g.message || '').slice(0, 400), title: String(g.item || '').slice(0, 120) }) + '|send' }]];
+  } else if ((g.kind === 'offer' || g.kind === 'counter') && Number(g.amount) > 0) {
+    const id = actPut_({ action: 'offer', amount: Number(g.amount), title: String(g.item || '').slice(0, 120) });
+    rows = [[{ text: '✅ Прийняти ' + Number(g.amount).toFixed(0) + ' €', callback_data: 'e|' + id + '|acc' },
+             { text: '🔁 Зустрічна', callback_data: 'e|' + id + '|cnt' }, { text: '✖️ Відхилити', callback_data: 'e|' + id + '|dec' }]];
+  }
+  if (!rows.length) return markup;
+  return { inline_keyboard: rows.concat((markup || {}).inline_keyboard || []) };
+}
+
+/** «✅ Межі оновив» з тижневого звіту → GitHub записує рекомендовані межі підписок KA як поточні. */
+function boundsCommand_(msg) {
+  const mm = String(msg.text || '').trim().match(/^\/?межі(?:\s+(1))?$/i);   // «межі» — показати; «межі 1» (кнопка) — записати
+  if (!mm) return false;
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_bounds.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: 'main', inputs: { mode: mm[1] ? 'accept' : 'show' } }) });
+  notify_(r.getResponseCode() !== 204 ? '⚠️ Не зміг запустити (GitHub ' + r.getResponseCode() + ').'
+    : mm[1] ? '⏳ Записую нові межі підписок KA — до хвилини.' : '⏳ Рахую межі підписок KA за сьогоднішніми цінами — до хвилини.');
+  return true;
+}
+
 function publishCommand_(n, dry) {
   const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
   if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
@@ -685,6 +776,11 @@ function sealedPost(s) {
     notify_('✅ eBay підключено (ключ діє ~18 місяців).\nТепер на картці «продати N» є кнопка «🚀 Виставити на eBay автоматично».' +
             (ready ? '\n🧪 Для перевірки проганяю №' + ready.n + ' через eBay без публікації.' : ''));
     if (ready) publishCommand_(ready.n, true);
+  } else if (d.kind === 'repriced' && d.row) {
+    const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
+    const note = String(sh.getRange(row, COL.note).getValue() || '');
+    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'ціна знижена до ' + d.price + ' € ' +
+      Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (d.item_id && note.indexOf(d.item_id) < 0 ? ' (eBay ' + d.item_id + ')' : ''));
   } else if (d.kind === 'ebay_bad') {
     props.deleteProperty('EBAY_RT');
   } else if (d.kind === 'listed' && d.row) {
@@ -723,7 +819,8 @@ function weeklyReport() {
     if (i < 0) break;
     rows.splice(i, 1);
   }
-  const sealed = seal_({ rows: rows, today: iso_(new Date()) }, officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
+  const sealed = seal_({ rows: rows, today: iso_(new Date()), ebay: !!props.getProperty('EBAY_RT') }, officeToken_(props),
+    Utilities.getUuid().replace(/-/g, ''));
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/weekly_report.yml/dispatches', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -918,14 +1015,15 @@ function statusCommand_(msg) {
     if (r.status !== 'Продано') { notify_(name + ' — статус «' + r.status + '», а «відправив» — для проданого.'); return true; }
     setEvents_(n, t ? { sent: today, outTrack: t.num, outCarrier: t.carrier } : { sent: today });
     notify_('📮 ' + name + ' — відправлено, більше не нагадую.' + (t ? ' Коли покупець отримає — напишу.'
-      : ' Додай трек — «трек ' + n + ' номер», і я скажу, коли покупець отримає.'), t ? trackButton_(t) : null);
+      : ' Додай трек — «трек ' + n + ' номер», і я скажу, коли покупець отримає.') + shipToEbay_(n, r.title, t), t ? trackButton_(t) : null);
     return true;
   }
   if (cmd === 'трек') {
     if (!t) { notify_('Не бачу трек-номера. Напиши так: «трек ' + n + ' 00340434…» (можна з перевізником: «трек ' + n + ' hermes H100…»).'); return true; }
     if (r.status === 'Продано') {
       setEvents_(n, { outTrack: t.num, outCarrier: t.carrier, sent: e.sent || today });
-      notify_('📮 ' + name + ' — трек посилки покупцю: ' + (t.carrier || '') + ' ' + t.num + '. Коли покупець отримає — напишу.', trackButton_(t));
+      notify_('📮 ' + name + ' — трек посилки покупцю: ' + (t.carrier || '') + ' ' + t.num + '. Коли покупець отримає — напишу.' +
+              shipToEbay_(n, r.title, t), trackButton_(t));
       return true;
     }
     if (['Повернено', 'Скасовано'].indexOf(r.status) >= 0) { notify_(name + ' — статус «' + r.status + '», не змінюю.'); return true; }
@@ -1475,7 +1573,7 @@ function sendAlbum_(list, caption) {
 // ------------------------------------------------------------------ кнопки в боті «Облік і продаж» (09.10)
 // Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
-  'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю' };
+  'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {
@@ -1503,6 +1601,7 @@ function digestButtons_(marks) {
 /** Натискання кнопки (doPost, ?bot=office): виконати команду, кнопки з повідомлення прибрати. */
 function officeCallback(cq) {
   const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  if (ebayCallback_(cq, chat)) return;
   const m = String(cq.data || '').match(/^c\|([^|]+)\|(\d{1,4})$/);
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + ' №' + m[2] : '' });
@@ -1697,7 +1796,7 @@ function processEbayMail_(log, done) {
       const link = ((html.match(/https:\/\/[a-z.]*ebay\.de\/[^"'\s<>]*(?:mesg|msg|contact|return|rueckgabe|casemanagement|resolution)[^"'\s<>]*/i) || [])[0] || '')
         .replace(/&amp;/g, '&');
       const t = ebayMailText_(g, subject, link);
-      notify_(t.text, t.markup, 'HTML');
+      notify_(t.text, ebayMailButtons_(g, t.markup), 'HTML');
       log.appendRow([m.getId(), m.getDate(), m.getFrom(), subject, what, '', '']);
       n++;
     });

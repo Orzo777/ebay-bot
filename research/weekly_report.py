@@ -122,7 +122,8 @@ def accuracy(rows: list[dict], today: date) -> tuple[list[str], float | None]:
     return out, mean
 
 
-def stale(rows: list[dict], today: date, market=sell.competitors) -> list[str]:
+def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | None = None) -> list[str]:
+    """cuts — сюди (№, нова ціна товару) для кнопок «⬇️ Знизити» (10.10, якщо eBay підключено)."""
     out, calls = [], 0
     for r in rows:
         if r["status"] in CLOSED:
@@ -147,7 +148,12 @@ def stale(rows: list[dict], today: date, market=sell.competitors) -> list[str]:
                 except Exception as e:
                     print(f"ринок: {e.__class__.__name__}")
             pr = sell.plan_price(ident, r.get("spent"), comp, undercut=True)   # залежалося — під найдешевших
-            out.append(f"• {name} — {age} дн. і не продано → постав <b>{pr['list']} €</b>"
+            # 10.10: ціна товару + доставка окремо (як в оголошенні з 09.10), а не «разом»
+            ship = sell.SHIP_CHARGE_RAM if ident["kind"] == "ram" else (ident.get("ship_out") or sell.console_alert.SHIP)
+            item = sell.item_prices(pr, ship)["item"]
+            if cuts is not None and r["status"] == "Виставлено":
+                cuts.append((r["n"], item))
+            out.append(f"• {name} — {age} дн. і не продано → постав <b>{item} €</b> + доставка {sell.money_de(ship)} €"
                        + (f" (3 найдешевші зараз {', '.join(f'{c:.0f}' for c in comp[:3])} €)" if comp else "")
                        + (f", прибуток ще ≈ {pr['profit_list']:.0f} €" if pr.get("profit_list") is not None else ""))
     return (["📦 <b>Що зробити з товаром</b>"] + out) if out else ["📦 <b>Товар</b>: залежаного немає ✓"]
@@ -198,10 +204,30 @@ def search(ebay: dict, ka: dict, rows: list[dict], today: date) -> list[str]:
     return out
 
 
-def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.competitors) -> str:
+def bounds() -> list[str]:
+    """10.10: межі «Preis bis» підписок KA, що відстали від ринку (research/ka_bounds.py)."""
+    try:
+        import ka_bounds
+        return ka_bounds.lines()
+    except Exception as e:   # звіт важливіший за цей рядок
+        print(f"межі KA: {e.__class__.__name__}")
+        return []
+
+
+def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.competitors, kb: list | None = None,
+          ebay_on: bool = False, bounds_fn=bounds) -> str:
+    """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»."""
     acc, _ = accuracy(rows, today)
+    cuts, bl = [], bounds_fn()
     parts = [[f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}"],
-             money(rows, today), acc, stale(rows, today, market), search(ebay, ka, rows, today) + auctions(ebay, today)]
+             money(rows, today), acc, stale(rows, today, market, cuts), search(ebay, ka, rows, today) + auctions(ebay, today)]
+    if bl:
+        parts.append(bl)
+    if kb is not None:
+        if ebay_on:
+            kb += [[{"text": f"⬇️ №{n} → {item} €", "callback_data": f"p|{n}|{item}"}] for n, item in cuts[:6]]
+        if bl:
+            kb.append([{"text": "✅ Межі в KA оновив", "callback_data": "c|межі|1"}])
     return "\n\n".join("\n".join(p) for p in parts)
 
 
@@ -240,11 +266,13 @@ def main():
         raise SystemExit(1)
     today = _d(d.get("today")) or date.today()
     try:
-        text = build(d.get("rows") or [], today, _load(a.ebay), _load(a.ka))
+        kb = []
+        text = build(d.get("rows") or [], today, _load(a.ebay), _load(a.ka), kb=kb, ebay_on=bool(d.get("ebay")))
     except Exception as e:
         sell.office_send_html(f"⚠️ Тижневий звіт не склався: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise
-    ok = all(sell.office_send_html(part, None) for part in chunks(text))
+    parts = chunks(text)
+    ok = all(sell.office_send_html(part, {"inline_keyboard": kb} if kb and i == len(parts) - 1 else None) for i, part in enumerate(parts))
     print(f"звіт надіслано: {ok}, рядків обліку: {len(d.get('rows') or [])}")
     if not ok:
         raise SystemExit(1)

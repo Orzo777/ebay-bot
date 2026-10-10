@@ -519,6 +519,17 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             return send("⚠️ Ключ eBay отримав, але не зміг зберегти в Apps Script — напиши Claude.", None)
         print("ключ eBay передано в Apps Script")
         return True
+    if mode == "ebay":   # 10.10: трек, ціна, відповідь покупцю, пропозиції — кнопками (research/ebay_actions.py)
+        import ebay_actions
+        if not d.get("rt"):
+            return send("🔑 eBay ще не підключено — напиши «ebay вхід».", None)
+        try:
+            return ebay_actions.run(d, el.access_token(d["rt"], app, cert, post), post, send, back, key)
+        except el.AuthError as e:
+            back({"kind": "ebay_bad"}, key)
+            return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід» — підключимо знову.", None)
+        except el.EbayError as e:
+            return send(f"⚠️ eBay: {html.escape(str(e)[:300])} — перешли це Claude.", None)
     if mode != "publish":
         return send(f"⚠️ Невідомий режим «{html.escape(str(mode))}» — напиши Claude.", None)
 

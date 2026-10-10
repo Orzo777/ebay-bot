@@ -48,7 +48,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Self-check (unit tests)
-        run: python -m unittest test_sell test_ebay_list
+        run: python -m unittest test_sell test_ebay_list test_ebay_actions
 
       - name: Prepare listing
         env:

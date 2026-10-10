@@ -43,7 +43,7 @@ const okMail = { mail: ago(30), mailRuns: [run('completed', 'success', ago(29), 
 // 1. eBay-сторож іде — тиша
 let w = setup(Object.assign({ ebay: [run('in_progress', null, ago(30))] }, okMail));
 w.run();
-check('all quiet', [w.sent.length, w.calls.filter((c) => c[0] === 'post' && /dispatches/.test(c[1])).length], [0, 0]);
+check('all quiet', [w.sent.length, w.calls.filter((c) => c[0] === 'post' && /dispatches/.test(c[1]) && !/ka_reply/.test(c[1])).length], [0, 0]);
 
 // 2. стоїть 45 хв після успіху → перезапуск + одне повідомлення; через 10 хв (той самий стан) — без повтору
 w = setup(Object.assign({ ebay: [run('completed', 'success', ago(45)), run('completed', 'success', ago(100))] }, okMail));
@@ -51,25 +51,25 @@ w.run();
 check('restart dispatched', w.calls.some((c) => c[0] === 'post' && c[1] === '/actions/workflows/ebay_watch.yml/dispatches'), true);
 check('restart told', /перезапустив/.test(w.text()), true);
 w.run();
-check('no second restart within 30 min', w.calls.filter((c) => c[0] === 'post' && /dispatches/.test(c[1])).length, 1);
+check('no second restart within 30 min', w.calls.filter((c) => c[0] === 'post' && /dispatches/.test(c[1]) && !/ka_reply/.test(c[1])).length, 1);
 
 // 3. двічі поспіль startup_failure → не перезапускає, повідомляє
 w = setup(Object.assign({ ebay: [run('completed', 'startup_failure', ago(40)), run('completed', 'failure', ago(90))] }, okMail));
 w.run();
-check('crash loop: no restart', w.calls.some((c) => c[0] === 'post' && /dispatches/.test(c[1])), false);
+check('crash loop: no restart', w.calls.some((c) => c[0] === 'post' && /dispatches/.test(c[1]) && !/ka_reply/.test(c[1])), false);
 check('crash loop told', /падає/.test(w.text()), true);
 
 // 3б. 05.10: двічі поспіль «GitHub не дав машину» (інцидент GitHub, наш код не стартував) → перезапуск, як завжди
 w = setup(Object.assign({ ebay: [run('completed', 'failure', ago(40)), run('completed', 'failure', ago(90))],
                           jobs: [{ runner_id: 0, steps: [] }] }, okMail));
 w.run();
-check('infra failure: restart', w.calls.some((c) => c[0] === 'post' && /ebay_watch.yml\/dispatches/.test(c[1])), true);
+check('infra failure: restart', w.calls.some((c) => c[0] === 'post' && /ebay_watch.yml\/dispatches/.test(c[1]) && !/ka_reply/.test(c[1])), true);
 check('infra failure: no crash alarm', /падає/.test(w.text()), false);
 // а якщо машина була і кроки йшли — це наш код: як і раніше, не перезапускає
 w = setup(Object.assign({ ebay: [run('completed', 'failure', ago(40)), run('completed', 'failure', ago(90))],
                           jobs: [{ runner_id: 5, steps: [{ name: 'watch', conclusion: 'failure' }] }] }, okMail));
 w.run();
-check('real crash: no restart', w.calls.some((c) => c[0] === 'post' && /dispatches/.test(c[1])), false);
+check('real crash: no restart', w.calls.some((c) => c[0] === 'post' && /dispatches/.test(c[1]) && !/ka_reply/.test(c[1])), false);
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], jobs: [{ runner_id: 0, steps: [] }], all: [
   run('completed', 'failure', ago(20), { id: 5, name: 'ka-share', html_url: 'https://gh/5' })] }, okMail));
 w.run();
@@ -144,7 +144,7 @@ check('far expiry silent', w.sent.length, 0);
 // автооновлення щогодини, до 3 спроб, і лише потім пише; коли наздогнав — лічильник скидається
 const newer = (u) => (/watchdog\.gs$/.test(u) ? "const VER_WATCHDOG = '2099-01-01';" : '');
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], raw: newer }, okMail));
-const deploys = () => w.calls.filter((c) => c[0] === 'post' && /deploy_apps_script\.yml\/dispatches/.test(c[1])).length;
+const deploys = () => w.calls.filter((c) => c[0] === 'post' && /deploy_apps_script\.yml\/dispatches/.test(c[1]) && !/ka_reply/.test(c[1])).length;
 w.run();
 check('behind → deploy dispatched', [deploys(), w.sent.length], [1, 0]);
 w.run();
@@ -176,5 +176,9 @@ w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { TEL
 w.run();
 check('healthy webhooks → silence', w.sent.length, 0);
 
+// 10.10: прибирання відповідей KA — щогодини звідси (cron GitHub спрацьовує раз на 6–7 год)
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(30))] }, okMail));
+w.run(); w.run();
+check('ka sweep dispatched once per hour', w.calls.filter((c) => c[0] === 'post' && c[1] === '/actions/workflows/ka_reply.yml/dispatches').length, 1);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

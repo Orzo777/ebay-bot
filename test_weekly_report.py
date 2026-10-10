@@ -51,7 +51,8 @@ class WeeklyTest(unittest.TestCase):
         calls = []
         t = "\n".join(wr.stale(ROWS, TODAY, lambda r: calls.append(r) or [520, 530, 540]))
         self.assertIn("№4 Sony PS5 Slim Disc 1TB — 7 дн. на руках і ще не виставлено → «продати 4»", t)
-        self.assertIn("№5 Xbox Series X 1TB — 15 дн. і не продано → постав <b>539 €</b>", t)   # третій найдешевший 540 → 539
+        # третій найдешевший 540 → 539 разом; 10.10: ціна товару без доставки 10,49 → 529
+        self.assertIn("№5 Xbox Series X 1TB — 15 дн. і не продано → постав <b>529 €</b> + доставка 10,49 €", t)
         self.assertIn("№6 Nintendo Switch OLED — куплено 13 дн. тому, досі «В дорозі»", t)
         self.assertNotIn("№7", t)
         self.assertEqual(len(calls), 1)
@@ -125,3 +126,65 @@ class AuctionsTest(unittest.TestCase):
         self.assertIn("3 з картками, у 1 фінал", line)
         self.assertIn("дорожче на 25%", line)   # медіана з 21% і 25%
         self.assertEqual(wr.auctions({}, date(2026, 10, 9)), [])
+
+
+
+class ButtonsTest(unittest.TestCase):
+    """10.10: «⬇️ Знизити» (лише виставлене і лише з підключеним eBay) і «✅ Межі оновив», якщо межі KA відстали."""
+
+    def test_cut_and_bounds_buttons(self):
+        import weekly_report as wr
+        kb = []
+        text = wr.build(ROWS, TODAY, {}, {}, lambda r: [520, 530, 540], kb=kb, ebay_on=True,
+                        bounds_fn=lambda: ["🔎 <b>Межі підписок KA</b>", "• ddr5 2x16gb: 276 → <b>300 €</b>"])
+        datas = [b["callback_data"] for row in kb for b in row]
+        self.assertIn("c|межі|1", datas)
+        self.assertIn("Межі підписок KA", text)
+        cuts = [d for d in datas if d.startswith("p|")]
+        self.assertTrue(cuts)
+        for d in cuts:
+            n = int(d.split("|")[1])
+            self.assertEqual(next(r for r in ROWS if r["n"] == n)["status"], "Виставлено")
+        kb2 = []
+        wr.build(ROWS, TODAY, {}, {}, lambda r: [520, 530, 540], kb=kb2, ebay_on=False, bounds_fn=lambda: [])
+        self.assertEqual(kb2, [])
+
+
+class KaBoundsTest(unittest.TestCase):
+    def test_drift_and_accept(self):
+        import json
+        import tempfile
+        import ka_bounds as kb
+        rec = {"ram": {"ddr5 2x16gb": 300, "ddr4 2x16gb": 95}, "console": {"ps5": 347}, "hamburg": {"xbox": 500}}
+        cur = {"ram": {"ddr5 2x16gb": 276, "ddr4 2x16gb": 94}, "console": {"ps5": 347}, "hamburg": {"xbox": 457}}
+        self.assertEqual(kb.drift(rec, cur), [("ram", "ddr5 2x16gb", 276, 300), ("hamburg", "xbox", 457, 500)])
+        ls = kb.lines(rec, cur)
+        self.assertIn("ddr5 2x16gb: 276 → <b>300 €</b>", "\n".join(ls))
+        self.assertIn("xbox series x / xbox series in Hamburg: 457 → <b>500 €</b>", "\n".join(ls))
+        self.assertEqual(kb.lines(cur, cur), [])
+        old = kb.PATH
+        with tempfile.TemporaryDirectory() as d:
+            kb.PATH = d + "/b.json"
+            try:
+                kb.accept(rec)
+                with open(kb.PATH, encoding="utf-8") as f:
+                    self.assertEqual(json.load(f)["hamburg"]["xbox"], 500)
+            finally:
+                kb.PATH = old
+
+    def test_show_text(self):
+        import ka_bounds as kb
+        rec = {"ram": {"ddr5 2x16gb": 300, "ddr4 2x16gb": 95}, "console": {}, "hamburg": {}}
+        text, markup = kb.show_text(rec, {"ram": {"ddr5 2x16gb": 276, "ddr4 2x16gb": 94}, "console": {}, "hamburg": {}})
+        self.assertIn("ddr5 2x16gb: 276 → <b>300 €</b>", text)
+        self.assertIn("ddr4 2x16gb: 95 € ✓", text)
+        self.assertEqual(markup["inline_keyboard"][0][0]["callback_data"], "c|межі|1")
+        self.assertIsNone(kb.show_text(rec, rec)[1])
+
+    def test_recommended_matches_code_bounds_with_static_prices(self):
+        # статичні ціни (RAM_PRICES_OFF): рекомендовані межі консолей і Гамбурга = значенням у коді (порахованим 09.10)
+        import ka_bounds as kb
+        rec = kb.recommended()
+        self.assertEqual(rec["console"]["xbox series x"], 432)
+        self.assertEqual(rec["console"]["ps5"], 347)
+        self.assertEqual(rec["hamburg"], {"ddr5": 462, "ddr4": 223, "xbox": 457, "ps5": 368, "switch2": 311})

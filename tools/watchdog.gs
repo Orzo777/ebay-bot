@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-09a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-10a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -175,6 +175,14 @@ function wdWebhooks_(st, now, msgs) {
     });
 }
 
+// 10.10: прибирання відповідей продавців KA (ka_reply.yml, mode=sweep) — щогодини звідси: cron «17 * * * *» на
+// GitHub для публічного репозиторію спрацьовував раз на 6–7 годин
+function wdKaSweep_(st, now) {
+  if (st.sweepAt && now.getTime() - st.sweepAt < 60 * 60000) return;
+  st.sweepAt = now.getTime();
+  wdGh_('/actions/workflows/ka_reply.yml/dispatches', 'post', { ref: 'main', inputs: { mode: 'sweep' } });
+}
+
 function wdCheckAlive_(st, now, msgs) {
   const ok = Number(PropertiesService.getScriptProperties().getProperty('LAST_CHECK_OK')) || 0;
   if (!ok) return;   // стара версія Code.gs — ще не пише
@@ -210,7 +218,7 @@ function watchdog() {
   const st = JSON.parse(props.getProperty('WD_STATE') || '{}');
   const now = new Date();
   const msgs = [];
-  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_, wdLedger_, wdWebhooks_].forEach(function (f) {
+  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_, wdLedger_, wdWebhooks_, wdKaSweep_].forEach(function (f) {
     try { f(st, now, msgs); } catch (e) {
       if (/GH_AUTH/.test(String(e))) {
         wdOnce_(st, 'gh_auth', 12, (/GH_AUTH немає/.test(String(e))
