@@ -222,7 +222,8 @@ def main(text: str):
         elif res and res.get("verdict") == "AUCTION" and lst:   # аукціон: лише «відкрити», ставку робиш сам
             rows = [[{"text": "🔗 Відкрити на eBay", "url": lst["url"]}]]
             if res.get("bin_text"):   # 10.10: аукціон без ставок — попросити продавця додати «Sofort-Kaufen»
-                rows.append([{"text": f"📋 Текст продавцю: Sofort-Kaufen за {res['bin_offer']} €", "copy_text": {"text": res["bin_text"]}}])
+                rows.append([{"text": res.get("bin_label") or f"📋 Текст продавцю: {res['bin_offer']} €",
+                              "copy_text": {"text": res["bin_text"][:256]}}])
             mid, kb_json = _send(msg, {"inline_keyboard": rows}) or (None, None)
             add_to_card(mid, msg, kb_json, res, lst["title"], lst.get("images") or [])
         else:   # «не бери» — лише причина, без кнопок (29.09: посилання в тебе вже є, текст продавцю не потрібен)

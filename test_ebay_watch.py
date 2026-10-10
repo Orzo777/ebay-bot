@@ -378,6 +378,28 @@ class ShareAuctionTest(unittest.TestCase):
         self.assertIn(f"für {r['bin_offer']} €", r["bin_text"])
         self.assertLessEqual(len(r["bin_text"]), 256)
 
+    def test_share_auction_with_best_offer(self):
+        # 10.10: «EUR 1,00 oder Preisvorschlag» — аукціон, де продавець дозволив пропозицію ціни
+        import ebay_watch as ew
+        import main
+        item = {"itemId": "v1|307224749417|0", "title": "32GB DDR4 RAM (2x16GB) für Laptop/Notebook SK Hynix",
+                "currentBidPrice": {"value": "1.00"}, "buyingOptions": ["AUCTION", "BEST_OFFER"], "bidCount": 0,
+                "itemEndDate": (NOW + timedelta(days=9)).isoformat().replace("+00:00", "Z"),
+                "shippingOptions": [{"shippingCost": {"value": "5.49"}}], "itemWebUrl": "https://www.ebay.de/itm/307224749417",
+                "conditionId": "3000", "seller": {"username": "s", "feedbackScore": 626, "feedbackPercentage": "100.0"},
+                "itemLocation": {"country": "DE"}}
+        old_req, old_desc = main._request_with_backoff, ew.fetch_desc
+        main._request_with_backoff = lambda *a, **k: item
+        ew.fetch_desc = lambda client, iid: "Gebraucht, aber super Zustand und voll funktionsfähig."
+        try:
+            msg, r, lst = ew.share_ebay("307224749417", client=type("C", (), {"_headers": lambda self: {}})(), now=NOW)
+        finally:
+            main._request_with_backoff, ew.fetch_desc = old_req, old_desc
+        self.assertIn("є <b>Preisvorschlag</b>", msg)
+        self.assertNotIn("Sofort-Kaufen", msg)
+        self.assertTrue(r["bin_label"].startswith("📋 Текст до Preisvorschlag"))
+        self.assertIn(f"{r['bin_offer']} €", r["bin_text"])
+
     def test_bin_offer_only_without_bids(self):
         from ebay_watch import bin_offer
         r = {"cap": 80.0, "good": 65.0, "ship_in": 5.0, "price": 1.0}

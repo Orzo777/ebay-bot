@@ -520,10 +520,18 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
                 *(["⚠️ Продавець пише, що НЕ тестовано — ставку роби з поправкою на ризик"]
                   if desc and _DESC_UNTESTED.search(desc) else [])]
         b = bin_offer(r, it, now)
-        if b:
+        label = None
+        if b and lst.get("offer"):   # 10.10: аукціон з «oder Preisvorschlag» (продавець дозволив, доки немає ставок)
+            b = (b[0], ebay_message(r, b[0]))
+            label = f"📋 Текст до Preisvorschlag {b[0]} €"
+            head.append(f"🤝 У цього аукціону є <b>Preisvorschlag</b> — запропонуй <b>{b[0]} €</b> зараз, поки немає ставок "
+                        "(«Preisvorschlag senden»; після першої ставки кнопка зникне)")
+        elif b:
+            label = f"📋 Текст продавцю: Sofort-Kaufen за {b[0]} €"
             head.append(f"💡 Ставок ще немає — можна попросити продавця додати «Sofort-Kaufen» за <b>{b[0]} €</b> "
                         "(текст — кнопкою; купуєш на eBay, захист покупця діє)")
-        return "\n".join(head), dict(r, verdict="AUCTION", bin_offer=b[0] if b else None, bin_text=b[1] if b else None), lst
+        return "\n".join(head), dict(r, verdict="AUCTION", bin_offer=b[0] if b else None, bin_text=b[1] if b else None,
+                                      bin_label=label), lst
     if r["verdict"] not in SEND_VERDICTS:
         return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price']:.0f} € + пересилка "
                 f"{lst['ship'] or 0:.2f} €\nВигідно лише до {r['cap']:.0f} € разом з пересилкою "
