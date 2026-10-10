@@ -332,3 +332,13 @@ class TestAuctions(unittest.TestCase):
         self.assertEqual(ebay_item_id("https://www.ebay.de/itm/257771018556?_skw=ddr5&hash=x"), "257771018556")
         self.assertEqual(ebay_item_id("https://www.ebay.de/itm/Corsair-DDR5/168736560292"), "168736560292")
         self.assertIsNone(ebay_item_id("https://www.kleinanzeigen.de/s-anzeige/x/3525219406-279-1"))
+
+
+
+class CleanUrlTest(unittest.TestCase):
+    def test_short_item_link(self):
+        from ebay_watch import clean_url
+        self.assertEqual(clean_url("https://www.ebay.de/itm/336837002037?_skw=ddr4&hash=item4e6:g:abc&amdata=enc%3AAQ"),
+                         "https://www.ebay.de/itm/336837002037")
+        self.assertEqual(clean_url("https://www.ebay.de/itm/Corsair-32GB/336837002037"), "https://www.ebay.de/itm/336837002037")
+        self.assertIsNone(clean_url(None))

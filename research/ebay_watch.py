@@ -69,13 +69,20 @@ def _num(x) -> float | None:
 
 
 # ----------------------------------------------------------------------------- чиста логіка (тестується)
+def clean_url(url: str | None) -> str | None:
+    """10.10: itemWebUrl з API має довгий хвіст (_skw, hash, amdata) — на iPhone у браузері Telegram сторінка eBay
+    почала безкінечно перезавантажуватись при «Preis vorschlagen»; коротке /itm/<номер> ще й відкриває застосунок eBay."""
+    m = re.search(r"ebay\.[a-z.]+/itm/(?:[^/?#]+/)?(\d{9,15})", url or "")
+    return f"https://www.ebay.de/itm/{m.group(1)}" if m else url
+
+
 def listing_of(it: dict) -> dict:
     so = it.get("shippingOptions") or []
     ship = _num(((so[0] if so else {}).get("shippingCost") or {}).get("value"))
     sl = it.get("seller") or {}
     loc = it.get("itemLocation") or {}
     return dict(id=it["itemId"], title=html.unescape(it.get("title", "")), price=_num((it.get("price") or {}).get("value")),
-                ship=ship, url=it.get("itemWebUrl"), created=it.get("itemCreationDate"),
+                ship=ship, url=clean_url(it.get("itemWebUrl")), created=it.get("itemCreationDate"),
                 offer=("BEST_OFFER" in (it.get("buyingOptions") or [])), cond=str(it.get("conditionId") or ""),
                 seller=sl.get("username") or "", fb=int(sl.get("feedbackScore") or 0),
                 pct=_num(sl.get("feedbackPercentage")), zip=str(loc.get("postalCode") or ""),
