@@ -177,7 +177,7 @@ class KaBoundsTest(unittest.TestCase):
         rec = {"ram": {"ddr5 2x16gb": 300, "ddr4 2x16gb": 95}, "console": {}, "hamburg": {}}
         text, markup = kb.show_text(rec, {"ram": {"ddr5 2x16gb": 276, "ddr4 2x16gb": 94}, "console": {}, "hamburg": {}})
         self.assertIn("ddr5 2x16gb: 276 → <b>300 €</b>", text)
-        self.assertIn("ddr4 2x16gb: 95 € ✓", text)
+        self.assertIn("ddr4 2x16gb: 94 € ✓", text)   # як зараз у KA (розбіжність < 5%)
         self.assertEqual(markup["inline_keyboard"][0][0]["callback_data"], "c|межі|1")
         self.assertIsNone(kb.show_text(rec, rec)[1])
 
