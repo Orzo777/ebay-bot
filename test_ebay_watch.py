@@ -3,7 +3,7 @@ import os as _os
 _os.environ.setdefault("RAM_PRICES_OFF", "1")   # цифри Terapeak, а не щоденні ціни сторожа (research/ram_prices.json)
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
@@ -344,3 +344,30 @@ class CleanUrlTest(unittest.TestCase):
                          "https://www.ebay.de/itm/336837002037")
         self.assertEqual(clean_url("https://www.ebay.de/itm/Corsair-32GB/336837002037"), "https://www.ebay.de/itm/336837002037")
         self.assertIsNone(clean_url(None))
+
+
+
+class ShareAuctionTest(unittest.TestCase):
+    """10.10: аукціон, яким поділились, за стартові 1 € — не «заглушка», а порада максимальної ставки."""
+
+    def test_share_auction_one_euro(self):
+        import ebay_watch as ew
+        import main
+        item = {"itemId": "v1|307224749417|0", "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200 CL16",
+                "currentBidPrice": {"value": "1.00", "currency": "EUR"}, "buyingOptions": ["AUCTION"], "bidCount": 0,
+                "itemEndDate": (NOW + timedelta(days=5)).isoformat().replace("+00:00", "Z"),
+                "shippingOptions": [{"shippingCost": {"value": "5.49"}}], "itemWebUrl": "https://www.ebay.de/itm/307224749417?x",
+                "conditionId": "3000", "seller": {"username": "s", "feedbackScore": 50, "feedbackPercentage": "100.0"},
+                "itemLocation": {"country": "DE"}}
+        old_req, old_desc = main._request_with_backoff, ew.fetch_desc
+        main._request_with_backoff = lambda *a, **k: item
+        ew.fetch_desc = lambda client, iid: "Funktioniert einwandfrei, getestet."
+        try:
+            msg, r, lst = ew.share_ebay("307224749417", client=type("C", (), {"_headers": lambda self: {}})(), now=NOW)
+        finally:
+            main._request_with_backoff, ew.fetch_desc = old_req, old_desc
+        self.assertEqual(r["verdict"], "AUCTION")
+        self.assertNotIn("заглушка", msg)
+        self.assertIn("🔨 <b>Аукціон</b>: зараз 1 €", msg)
+        self.assertRegex(msg, r"максимальну ставку \d+ €")
+        self.assertEqual(lst["url"], "https://www.ebay.de/itm/307224749417")

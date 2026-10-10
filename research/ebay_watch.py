@@ -124,6 +124,18 @@ def evaluate_ebay(lst: dict) -> dict:
     return r
 
 
+def auction_eval(lst: dict) -> dict:
+    """Аукціон: поточна ставка — не ціна. «Заглушка 1 €» / «дешевше €150» (захист від шахраїв у фіксованих цінах) не
+    застосовуємо (30.09): межу беремо з оцінки за умовною ціною, а вартість — за реальною ставкою."""
+    r = evaluate_ebay(lst)
+    if "net_q" not in r and (r.get("wrong_type") is False or "заглушка" in (r.get("reason") or "")):
+        probe = evaluate_ebay(dict(lst, price=999.0))
+        if "net_q" in probe:
+            cost = (lst["price"] or 0) + probe["ship_in"]
+            r = dict(probe, price=lst["price"] or 0, buy_cost=cost, profit_est=probe["net_q"] - cost, verdict="BUY")
+    return r
+
+
 def refine_ebay(r: dict, lst: dict, desc: str | None) -> dict:
     """Уточнення за описом (ноутбучна пам'ять, «4x 8GB», ціна за планку, «ich suche») з eBay-вартістю купівлі."""
     new = refine_by_desc(r, lst["title"], lst["price"], lst["offer"], desc,
@@ -455,9 +467,11 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
                                    params={"legacy_item_id": item_id})
     except Exception as e:
         return f"⚫ Оголошення eBay не відкривається ({e.__class__.__name__}) — можливо, його вже зняли.", None, None
-    lst = listing_of(it)
     auction = "AUCTION" in (it.get("buyingOptions") or []) and "FIXED_PRICE" not in (it.get("buyingOptions") or [])
-    r = evaluate_ebay(lst)
+    if auction:   # ціна аукціону — поточна ставка
+        it = dict(it, price=it.get("currentBidPrice") or it.get("price") or {"value": "0"})
+    lst = listing_of(it)
+    r = auction_eval(lst) if auction else evaluate_ebay(lst)
     esc = html.escape
     if "net_q" not in r:
         return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price'] or 0:.0f} €\n"
@@ -466,8 +480,11 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
     r["desc"] = desc
     broken = broken_reason(desc)
     risk = risk_of(lst, desc, r.get("quick_sale", 0))
-    new = refine_ebay(r, lst, desc)
-    if new is not r and new["verdict"] not in SEND_VERDICTS:
+    # аукціон: уточнення за описом (4×8 замість 2×16 тощо) — за умовною ціною; відкидаємо лише інший тип товару
+    new = refine_ebay(r, dict(lst, price=999.0), desc) if auction else refine_ebay(r, lst, desc)
+    if auction and new is not r and not new.get("wrong_type"):
+        new = r
+    if new is not r and (auction or new["verdict"] not in SEND_VERDICTS):
         return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price'] or 0:.0f} €\n"
                 f"За описом: {esc(new.get('refined', ''))} — {esc(new.get('reason') or 'не вигідно')}"), new, lst
     r = new
@@ -525,14 +542,7 @@ def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict]
     lst = listing_of(it)
     if lst["price"] is None or lst["country"] not in (None, "DE"):
         return None
-    r = evaluate_ebay(lst)
-    # Поточна ставка — не ціна: «дешевше €150» / «заглушка 1 €» (захист від шахраїв у фіксованих цінах) до аукціону
-    # не застосовуємо (30.09). Межу беремо з оцінки за умовною ціною, а вартість — за реальною ставкою.
-    if "net_q" not in r and (r.get("wrong_type") is False or "заглушка" in (r.get("reason") or "")):
-        probe = evaluate_ebay(dict(lst, price=999.0))
-        if "net_q" in probe:
-            cost = lst["price"] + probe["ship_in"]
-            r = dict(probe, price=lst["price"], buy_cost=cost, profit_est=probe["net_q"] - cost, verdict="BUY")
+    r = auction_eval(lst)
     # На останніх хвилинах запас не потрібен: максимальна ставка = межа; переб'ють — нічого не втрачаєш (30.09; було 0.9×)
     if "net_q" not in r or lst["price"] + r["ship_in"] >= r["cap"]:
         return None
