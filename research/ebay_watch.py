@@ -348,6 +348,26 @@ except Exception:   # Windows без tzdata
     _BERLIN = timezone(timedelta(hours=2))
 
 
+def bin_offer(r: dict, it: dict, now: datetime) -> tuple[int, str] | None:
+    """10.10 (ідея користувача): на аукціоні без ставок продавець може ДОДАТИ «Sofort-Kaufen» — eBay дозволяє, доки немає
+    жодної ставки. Пропонуємо суму між «вигідно» і нашим максимумом (до 5 €); усе лишається на eBay із захистом покупця.
+    → (сума, текст продавцю ≤256) або None (є ставки / до кінця < 1 год / вже дорожче)."""
+    try:
+        left = datetime.fromisoformat(it["itemEndDate"].replace("Z", "+00:00")) - now
+    except (KeyError, ValueError, TypeError):
+        return None
+    if int(it.get("bidCount") or 0) or left < timedelta(hours=1):
+        return None
+    max_bid, good_bid = int(r["cap"] - r["ship_in"]), int(r["good"] - r["ship_in"])
+    offer = max(5, int((good_bid + max_bid) / 2) // 5 * 5)
+    if r["price"] >= offer:
+        return None
+    what = r.get("item_acc", "den RAM")
+    text = (f"Hallo! Ich würde {what} sofort für {offer} € kaufen. Könnten Sie einen Sofort-Kaufen-Preis von {offer} € "
+            "hinzufügen? Das geht, solange es noch keine Gebote gibt. Bezahlung natürlich über eBay. Danke!")
+    return offer, text[:256]
+
+
 def auction_lines(r: dict, it: dict, now: datetime) -> list[str]:
     """Аукціон: показана ціна — поточна ставка, не кінцева. Радимо максимальну ставку (eBay сам підніматиме до неї)."""
     bids = it.get("bidCount") or 0
@@ -499,7 +519,11 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
                 f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]],
                 *(["⚠️ Продавець пише, що НЕ тестовано — ставку роби з поправкою на ризик"]
                   if desc and _DESC_UNTESTED.search(desc) else [])]
-        return "\n".join(head), dict(r, verdict="AUCTION"), lst
+        b = bin_offer(r, it, now)
+        if b:
+            head.append(f"💡 Ставок ще немає — можна попросити продавця додати «Sofort-Kaufen» за <b>{b[0]} €</b> "
+                        "(текст — кнопкою; купуєш на eBay, захист покупця діє)")
+        return "\n".join(head), dict(r, verdict="AUCTION", bin_offer=b[0] if b else None, bin_text=b[1] if b else None), lst
     if r["verdict"] not in SEND_VERDICTS:
         return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price']:.0f} € + пересилка "
                 f"{lst['ship'] or 0:.2f} €\nВигідно лише до {r['cap']:.0f} € разом з пересилкою "

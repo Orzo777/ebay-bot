@@ -220,7 +220,10 @@ def main(text: str):
             mid, kb_json = _send(msg, keyboard(lst["url"], res)) or (None, None)
             add_to_card(mid, msg, kb_json, res, lst["title"], lst.get("images") or [])
         elif res and res.get("verdict") == "AUCTION" and lst:   # аукціон: лише «відкрити», ставку робиш сам
-            mid, kb_json = _send(msg, {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": lst["url"]}]]}) or (None, None)
+            rows = [[{"text": "🔗 Відкрити на eBay", "url": lst["url"]}]]
+            if res.get("bin_text"):   # 10.10: аукціон без ставок — попросити продавця додати «Sofort-Kaufen»
+                rows.append([{"text": f"📋 Текст продавцю: Sofort-Kaufen за {res['bin_offer']} €", "copy_text": {"text": res["bin_text"]}}])
+            mid, kb_json = _send(msg, {"inline_keyboard": rows}) or (None, None)
             add_to_card(mid, msg, kb_json, res, lst["title"], lst.get("images") or [])
         else:   # «не бери» — лише причина, без кнопок (29.09: посилання в тебе вже є, текст продавцю не потрібен)
             send_telegram_text(msg)

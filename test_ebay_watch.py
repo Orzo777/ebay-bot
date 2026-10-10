@@ -371,3 +371,18 @@ class ShareAuctionTest(unittest.TestCase):
         self.assertIn("🔨 <b>Аукціон</b>: зараз 1 €", msg)
         self.assertRegex(msg, r"максимальну ставку \d+ €")
         self.assertEqual(lst["url"], "https://www.ebay.de/itm/307224749417")
+        # 10.10: ставок немає, до кінця 5 днів → попросити «Sofort-Kaufen» між «вигідно» і максимумом
+        self.assertIn("Sofort-Kaufen", msg)
+        self.assertEqual(r["bin_offer"] % 5, 0)
+        self.assertLess(r["bin_offer"], r["cap"] - r["ship_in"])
+        self.assertIn(f"für {r['bin_offer']} €", r["bin_text"])
+        self.assertLessEqual(len(r["bin_text"]), 256)
+
+    def test_bin_offer_only_without_bids(self):
+        from ebay_watch import bin_offer
+        r = {"cap": 80.0, "good": 65.0, "ship_in": 5.0, "price": 1.0}
+        end = (NOW + timedelta(days=2)).isoformat().replace("+00:00", "Z")
+        self.assertEqual(bin_offer(r, {"bidCount": 0, "itemEndDate": end}, NOW)[0], 65)
+        self.assertIsNone(bin_offer(r, {"bidCount": 2, "itemEndDate": end}, NOW))   # є ставки — eBay не дозволить
+        soon = (NOW + timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+        self.assertIsNone(bin_offer(r, {"bidCount": 0, "itemEndDate": soon}, NOW))
