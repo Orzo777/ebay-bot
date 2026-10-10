@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-10g';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-10h';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1935,7 +1935,9 @@ function ebayMailGemini_(subject, body) {
     '"message_from": "them" якщо "message" написала інша сторона, "me" якщо це текст самого користувача (eBay цитує його лист), ' +
     '"amount": сума в євро (пропозиція покупця, коли користувач продавець / виплата) або null, ' +
     '"my_amount": сума, яку запропонував сам користувач, або null, "their_amount": сума, яку запропонувала / відповіла інша ' +
-    'сторона (зустрічна, Gegenangebot), або null, "listing_price": ціна товару в оголошенні або null, "deadline": строк відповіді ' +
+    'сторона (зустрічна, Gegenangebot), або null, "listing_price": ціна товару в оголошенні або null, ' +
+    '"offer_status": для offer/counter — "pending" (чекає відповіді) | "accepted" (прийнято) | "declined" (відхилено) | ' +
+    '"expired" (прострочено, не відповіли вчасно) | "countered" (зустрічна) | "", "deadline": строк відповіді ' +
     'текстом або "", (для label — "amount": ціна етикетки), "reply_de": для question і message — коротка ввічлива відповідь німецькою від продавця (по суті; якщо ' +
     'відповіді не знаєш — попроси уточнити), інакше ""}.\n\nЛист:\n' + String(body).slice(0, 6000);
   const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
@@ -1966,6 +1968,15 @@ function payoutToSale_(amount) {
   return { n: r.n, title: r.title, sale: r.sprice, label: label, fee: r.sprice > 0 ? Math.max(0, r.sprice - label - amount) / r.sprice : null };
 }
 
+/** Що з пропозицією: з відповіді Gemini, інакше — за словами eBay у темі / тексті. */
+function offerStatus_(g, subject) {
+  const st = String(g.offer_status || '').toLowerCase();
+  if (st) return st;
+  const t = String(subject || '') + ' ' + String(g.message || '') + ' ' + String(g.uk || '');
+  return /nicht rechtzeitig|abgelaufen|прострочен/i.test(t) ? 'expired' : /abgelehnt|відхилен/i.test(t) ? 'declined'
+    : /angenommen|прийнят/i.test(t) ? 'accepted' : /gegenangebot|зустрічн/i.test(t) ? 'countered' : 'pending';
+}
+
 function ebayMailText_(g, subject, link) {
   const kindText = EBAY_KINDS[g.kind] || '📨 <b>Лист eBay</b>';
   const lines = [kindText + (g.item ? ' · <i>' + esc_(String(g.item).slice(0, 70)) + '</i>' : '')];
@@ -1979,11 +1990,19 @@ function ebayMailText_(g, subject, link) {
   if (offerKind && buyer) {
     const mine = Number(g.my_amount) || (Number(g.their_amount) ? null : Number(g.amount)) || null;
     const theirs = Number(g.their_amount) || null;
+    const status = offerStatus_(g, subject);
+    // 10.10: підсумок пропозиції — одним рядком, без «відповідай в eBay» і без ціни-старту аукціону
+    if (status === 'declined' || status === 'expired' || status === 'accepted') {
+      const sum = mine ? eur(mine) : '';
+      return { text: lines[0] + '\n' + (status === 'accepted' ? '✅ Пропозицію ' + sum + ' прийнято — оплати в eBay (Mein eBay → Käufe).'
+        : status === 'expired' ? '⌛ Пропозиція ' + sum + ' прострочена — продавець не відповів вчасно.'
+        : '❌ Пропозицію ' + sum + ' відхилено.'), markup: null };
+    }
     if (mine) lines.push('💶 Твоя пропозиція: <b>' + eur(mine) + '</b>');
     lines.push(theirs ? '🔁 Відповідь продавця: <b>' + eur(theirs) + '</b>' + (mine ? ' (+' + eur(theirs - mine) + ' до твоєї)' : '')
       : '⏳ Продавець ще не відповів.');
-    if (Number(g.listing_price)) lines.push('🏷 Ціна в оголошенні: ' + eur(g.listing_price));
-    lines.push('Відповідай в eBay: прийняти, відхилити або своя зустрічна.');
+    if (Number(g.listing_price) > 5) lines.push('🏷 Ціна в оголошенні: ' + eur(g.listing_price));   // 1 € — лише старт аукціону
+    lines.push(theirs ? 'Відповідай в eBay: прийняти, відхилити або своя зустрічна.' : '');
   } else if (offerKind && (g.amount || g.their_amount)) {
     lines.push('💶 Пропозиція покупця: <b>' + eur(g.amount || g.their_amount) + '</b>' +
       (Number(g.listing_price) ? ' (ціна в оголошенні ' + eur(g.listing_price) + ')' : '') +

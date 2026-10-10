@@ -83,6 +83,23 @@ ctx.processEbayMail_(log, done);
 t = sent[sent.length - 1][0];
 check('buyer offer pending', [/Твоя пропозиція: <b>90 €<\/b>/.test(t), /ще не відповів/.test(t), /🇺🇦/.test(t)], [true, true, false]);
 
+// 10.10: пропозицію відхилено / прострочено / прийнято — одним рядком, без «відповідай» і ціни-старту аукціону
+mails = [msg('o4', 'Ihr Preisvorschlag wurde abgelehnt', 'Anscheinend konnte der Verkäufer Ihnen nicht rechtzeitig antworten.')];
+gemini = [{ kind: 'offer', role: 'buyer', item: '32GB DDR4 RAM (2x16GB) für Laptop', who: 'pulvertoast-man', message_from: 'them',
+  message: 'Ihr Preisvorschlag wurde abgelehnt. Anscheinend konnte der Verkäufer Ihnen nicht rechtzeitig antworten.', my_amount: 65,
+  listing_price: 1, offer_status: 'declined' }];
+ctx.processEbayMail_(log, done);
+t = sent[sent.length - 1][0];
+check('declined offer: one line', [/❌ Пропозицію 65 € відхилено\./.test(t), /ще не відповів|Відповідай|Ціна в оголошенні|Ihr Preisvorschlag/.test(t), t.split('\n').length], [true, false, 2]);
+mails = [msg('o5', 'Ihr Preisvorschlag ist abgelaufen', 'Der Verkäufer hat nicht rechtzeitig geantwortet.')];
+gemini = [{ kind: 'offer', role: 'buyer', item: 'RAM', my_amount: 70 }];   // без offer_status — за словами eBay
+ctx.processEbayMail_(log, done);
+check('expired offer from wording', /⌛ Пропозиція 70 € прострочена/.test(sent[sent.length - 1][0]), true);
+mails = [msg('o6', 'Ihr Preisvorschlag wurde angenommen', 'Bitte bezahlen Sie jetzt.')];
+gemini = [{ kind: 'offer', role: 'buyer', item: 'RAM', my_amount: 60, offer_status: 'accepted' }];
+ctx.processEbayMail_(log, done);
+check('accepted offer', /✅ Пропозицію 60 € прийнято — оплати в eBay/.test(sent[sent.length - 1][0]), true);
+
 // повернення → що робити й строк
 mails = [msg('r1', 'Der Käufer möchte einen Artikel zurückgeben', 'Grund: Artikel defekt. Bitte innerhalb von 3 Werktagen antworten.')];
 gemini = [{ kind: 'return', role: 'seller', item: 'OWC 32GB', uk: 'Покупець каже, що несправна.', deadline: '3 робочі дні' }];
