@@ -238,14 +238,14 @@ def evaluate_pc(title: str, price: float) -> dict:
 
 
 def pc_card_lines(r: dict) -> list[str]:
+    """10.10: рішення першим рядком, далі — з чого заробіток (комісії eBay немає з 09.10)."""
     if r["verdict"] == "UNKNOWN":
         return ["❔ Оцінити не вдалося: " + r["reason"]]
+    how = f"🔧 {r['how']} → чистими ≈ {r['net']:.0f} €"
     if r["verdict"] == "NEGOTIATE":
-        return [f"🤝 <b>ТОРГУЙСЯ</b> · вигідно до <b>~{r['max_price']} €</b> (за поточною ціною заробіток ≈ {r['profit']:.0f} €)",
-                f"💶 Найвигідніше: {r['how']} → після комісії й пересилки ≈ {r['net']:.0f} €"]
-    tag = "🟢 <b>БЕРИ</b>" if r["verdict"] == "BUY-GOOD" else "🟡 <b>МОЖНА</b>" if r["verdict"] == "BUY" else "⏭ не вигідно"
-    return [f"{tag} · заробіток ≈ <b>{r['profit']:.0f} €</b> (з дорогою ≈ {r['cost']:.0f} €)",
-            f"💶 Найвигідніше: {r['how']} → після комісії й пересилки ≈ {r['net']:.0f} €"]
+        return [f"🤝 <b>ТОРГУЙСЯ</b> · бери до <b>{r['max_price']} €</b> · за цією ціною ≈ {r['profit']:.0f} €", how]
+    tag = "🟢 <b>ВИГІДНО</b>" if r["verdict"] == "BUY-GOOD" else "🟡 <b>БЕРИ</b>" if r["verdict"] == "BUY" else "⏭ не вигідно"
+    return [f"{tag} · заробіток ≈ <b>{r['profit']:.0f} €</b> (з дорогою {r['cost']:.0f} €)", how]
 
 
 if __name__ == "__main__":

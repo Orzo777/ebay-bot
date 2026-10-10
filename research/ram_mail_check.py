@@ -455,9 +455,10 @@ def pc_skip_reason(title: str) -> str | None:
 def pc_text(lst: dict) -> str:
     from html import escape
 
-    head = f"🖥 <b>{lst['price']:.0f} €</b>" + (" VB" if lst.get("vb") else "") + f" · {escape(lst['title'][:90])}"
-    lines = [head] + (pc_card_lines(lst["pc_eval"]) if lst.get("pc_eval") else [])
-    return "\n".join(lines + ["Самовивіз у Гамбурзі — глянь фото: відеокарта, скільки планок RAM, блок живлення."])
+    ev = pc_card_lines(lst["pc_eval"]) if lst.get("pc_eval") else []
+    head = f"🖥 <i>{escape(lst['title'][:90])}</i> · <b>{lst['price']:.0f} €</b>" + (" VB" if lst.get("vb") else "")
+    lines = ev[:1] + [head] + ev[1:]   # 10.10: рішення першим рядком, як в інших картках
+    return "\n".join(lines + ["📸 Самовивіз — глянь на фото відеокарту, планки RAM, блок живлення"])
 
 
 def send_pc_card(lst: dict):

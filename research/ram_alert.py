@@ -235,9 +235,8 @@ def too_cheap(r: dict) -> bool:
 
 def cheap_headline(r: dict, ebay: bool = False) -> str:
     pay = "оплата лише через eBay" if ebay else "лише «Sicher bezahlen»"
-    return (f"⚠️ <b>ПІДОЗРІЛО ДЕШЕВО — {100 * r['price'] / r['quick_sale']:.0f}% ринку.</b> Або продавець не знає ціни, "
-            f"або помилка в назві (одна планка, інший тип), або шахрай. Перевір фото етикетки, {pay}."
-            if too_cheap(r) else "")
+    return (f"⚠️ <b>ПІДОЗРІЛО ДЕШЕВО — {100 * r['price'] / r['quick_sale']:.0f}% ринку</b>: помилка в назві чи шахрай? "
+            f"Перевір фото етикетки, {pay}." if too_cheap(r) else "")
 
 
 # Що продавець уже написав в описі (сторінку оголошення бот і так відкриває для перевірки на шахраїв) —
@@ -488,60 +487,54 @@ def _item_cap(r: dict, key: str) -> int:
     return int(item_for(r, r[key]))
 
 
+def verdict_head(r: dict) -> str:
+    """10.10: перший рядок — рішення і заробіток (раніше «МОЖНА — вигода помірна» навіть при +157 €)."""
+    pct = f" (+{100 * r['profit_est'] / r['buy_cost']:.0f}%)" if r.get("buy_cost") else ""
+    if r["verdict"] == "NEGOTIATE":
+        return f"💬 <b>ТОРГУЙСЯ</b> · за цією ціною ≈ {r['profit_est']:.0f} € (менше 30%)"
+    tag = {"BUY-EXCELLENT": "🟢🟢 <b>ДУЖЕ ВИГІДНО</b>", "BUY-GOOD": "🟢 <b>ВИГІДНО</b>", "BUY": "🟡 <b>БЕРИ</b>"}[r["verdict"]]
+    return f"{tag} · заробіток ≈ <b>{r['profit_est']:.0f} €</b>{pct}"
+
+
+def warn_lines(r: dict) -> list[str]:
+    """Попередження, які варто бачити одразу (опис, одна планка / скільки планок, нотатки оцінювача)."""
+    from html import escape
+    out = []
+    if desc_line(r):
+        out.append(escape(desc_line(r)))
+    if desc_facts(r.get("desc"), r)["kit_ok"]:
+        pass   # продавець уже написав в описі, скільки планок
+    elif r.get("single_module_warning"):
+        out.append(f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ")
+    elif r.get("kit_unknown"):
+        out.append(f"⚠️ Скільки планок — не вказано: бери лише <b>2×{r['total'] // 2} ГБ</b> (4×{r['total'] // 4} — дешевше)")
+    out += [f"⚠️ {escape(n)}" for n in r.get("notes", [])]
+    return out
+
+
 def format_html(r: dict) -> str:
-    """Картка для телефона: короткі рядки, найважливіше зверху, текст продавцю — окремим блоком,
-    який копіюється дотиком (тег <code>). Лише для вердиктів BUY*."""
+    """10.10 (прохання користувача): коротка картка — рішення й заробіток, назва, ціна → разом, пропозиція, межі, продаж,
+    попередження. Тексти продавцю — лише в кнопках «📋» під карткою (build_keyboard), не в тексті. Лише для BUY* / NEGOTIATE."""
     from html import escape
 
-    tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — БЕРИ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — БЕРИ</b>",
-           "BUY": "🟡 <b>МОЖНА — вигода помірна</b>",
-           "NEGOTIATE": "💬 <b>ТОРГУЙСЯ — трохи дорожче стелі</b>"}[r["verdict"]]
-    if too_cheap(r):
-        tag = cheap_headline(r)
     offer = offer_price(r)
-    profit = (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" + (f" (+{100 * r['profit_est'] / r['buy_cost']:.0f}% до вкладеного)" if r.get('buy_cost') else "") if r["verdict"] != "NEGOTIATE"
-              else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)")
-    lines = [
-        tag,
-        *(["⚡ <b>Є «Direkt kaufen»</b> — тисни «Kaufen» в оголошенні: лот твій одразу, без чекання відповіді "
-            "(оплата через «Sicher bezahlen», з пересилкою)"] if r.get("buy_now") and r["verdict"] != "NEGOTIATE" else []),
-        *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
-        f"<b>{escape(r['type'])}</b>",
-        f"{escape(r['brand'])} · <b>{r['price']:.0f} €</b>" + (" VB" if r.get("vb") else "")
-        + ((f" 🚶 самовивіз, готівкою (з дорогою ≈ {r['buy_cost']:.0f} €)" if r.get("pickup")
-            else f" (з пересилкою і Sicher bezahlen ≈ {r['buy_cost']:.0f} €)") if r.get("buy_cost") else ""),
-        "",
-        profit,
-        *([f"🤝 Запропонуй <b>{offer} €</b> (разом ≈ {total_for(r, offer):.0f} €) "
-           f"→ заробіток ≈ <b>{r['net_q'] - total_for(r, offer):.0f} €</b>"]
-          if offer is not None and r.get("net_q") else []),
-        f"🛒 Ціна в оголошенні до {_item_cap(r, 'cap')} € (добре ≤ {_item_cap(r, 'good')}, "
-        f"супер ≤ {_item_cap(r, 'excellent')})",
-        f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
-        f"⏱ {_speed_label(r['sell_through'])}",
-    ]
-    if desc_line(r):
-        lines += ["", escape(desc_line(r))]
-    if desc_facts(r.get("desc"), r)["kit_ok"]:
-        pass   # продавець уже написав у описі, скільки планок
-    elif r.get("single_module_warning"):
-        lines += ["", f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ, а не кілька менших."]
-    elif r.get("kit_unknown"):
-        half = r["total"] // 2
-        lines += ["", f"⚠️ Скільки планок — не вказано. Бери лише якщо це <b>2×{half} ГБ</b>; "
-                      f"4×{r['total'] // 4} ГБ коштує набагато менше."]
-    for note in r.get("notes", []):
-        lines += ["", f"⚠️ {escape(note)}"]
-    lines += ["", f"<i>{escape(r['title'][:90])}</i>"]
-    if plain_text_needed(r):
-        lines += ["", (f"✉️ Текст продавцю з пропозицією {offer} € (натисни — скопіюється):"
-                       if offer is not None and r["verdict"] == "NEGOTIATE" else "✉️ Текст продавцю (натисни — скопіюється):"),
-                  f"<code>{escape(seller_template(r))}</code>"]
-        if offer is not None and r["verdict"] != "NEGOTIATE":
-            lines += ["", f"✉️ З пропозицією {offer} €:", f"<code>{escape(offer_template(r))}</code>"]
-    elif offer is not None:   # «Direkt kaufen» + «МОЖНА»: купити кнопкою або спершу запропонувати ціну
-        lines += ["", f"✉️ Хочеш дешевше — текст продавцю з пропозицією {offer} € (натисни — скопіюється):",
-                  f"<code>{escape(offer_template(r))}</code>"]
+    cost = r.get("buy_cost")
+    price = f"<b>{r['price']:.0f} €</b>" + (" VB" if r.get("vb") else "")
+    if cost:
+        price += (f" 🚶 самовивіз → з дорогою {cost:.0f} €" if r.get("pickup") else f" → разом {cost:.0f} €")
+    if r.get("buy_now") and r["verdict"] != "NEGOTIATE":
+        price += " · ⚡ Direkt kaufen"
+    lines = [verdict_head(r)]
+    if too_cheap(r):
+        lines.append(cheap_headline(r))
+    lines += [f"<i>{escape(r['title'][:90])}</i>",
+              f"{escape(r['type'])} · {price}",
+              *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
+              *([f"🤝 Запропонуй <b>{offer} €</b> → заробіток ≈ <b>{r['net_q'] - total_for(r, offer):.0f} €</b>"]
+                if offer is not None and r.get("net_q") else []),
+              f"📏 Бери до {_item_cap(r, 'cap')} € · вигідно ≤ {_item_cap(r, 'good')} €",
+              f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}",
+              *warn_lines(r)]
     return "\n".join(lines)
 
 

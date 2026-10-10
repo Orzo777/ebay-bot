@@ -220,9 +220,9 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
     cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb)
-    notes = ["Перевір: працює привід і контролер, консоль не заблокована. Лише «Sicher bezahlen» або самовивіз."]
+    notes = ["Перевір привід, контролер, блокування · лише «Sicher bezahlen» або самовивіз"]
     if total < SUSPICIOUS_BELOW:
-        notes.insert(0, "Підозріло дешево: частина таких оголошень — шахраї. Жодних переказів наперед.")
+        notes.insert(0, "Підозріло дешево — частина таких оголошень шахраї, жодних переказів наперед")
     return dict(verdict=verdict, type=real["name"], price=total, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
                 brand="Microsoft", title=title, notes=notes, net_q=net_q, needs_console_proof=weak == "",
@@ -307,7 +307,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
     notes = ["Перевір: " + ("" if digital else "працює дисковод, ") + "контролер, немає PSN-блокування. "
              "Лише «Sicher bezahlen» або самовивіз."]
     if price < PS5_SUSPICIOUS_BELOW:
-        notes.insert(0, "Підозріло дешево: частина таких оголошень — шахраї. Жодних переказів наперед.")
+        notes.insert(0, "Підозріло дешево — частина таких оголошень шахраї, жодних переказів наперед")
     return dict(verdict=verdict, type=real["name"], price=price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=net_q - cost,
                 brand="Sony", title=title, notes=notes, net_q=net_q, item_acc="die PS5", needs_console_proof=weak == "",

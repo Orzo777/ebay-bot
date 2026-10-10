@@ -231,7 +231,8 @@ class TestProcess(unittest.TestCase):
         msg.replace_header("Subject", "Neue Treffer zu deiner Suche „Konsolen - xbox series x in Hamburg (+30 km)“")
         rmc._process(msg, 6, False, set(), {})
         self.assertEqual(len(self.cards), 1)
-        self.assertIn("з пересилкою і Sicher bezahlen", self.cards[0][0])
+        self.assertIn("→ разом", self.cards[0][0])   # 10.10: коротка картка; з пересилкою, а не «самовивіз»
+        self.assertNotIn("🚶", self.cards[0][0])
 
 
 if __name__ == "__main__":
@@ -255,13 +256,15 @@ class TestCompactCards0410(unittest.TestCase):
         self.assertNotIn("Текст продавцю", good_txt)
         self.assertEqual(good_kb, ["🔗 Відкрити оголошення"])
         buy_txt, buy_kb = seen["BUY"]
-        self.assertEqual(buy_txt.count("<code>"), 1)
-        self.assertIn("з пропозицією", buy_txt)
+        self.assertEqual(buy_txt.count("<code>"), 0)   # 10.10: текст — лише в кнопці
+        self.assertIn("🤝 Запропонуй", buy_txt)
         self.assertEqual(len(buy_kb), 2)
         self.assertTrue(buy_kb[1].startswith("📋 Текст із пропозицією"))
         r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 75)   # «бери» (09.10: комісія 0 — 67 € тепер «дуже вигідно»)
-        r["buy_now"], r["risk_lines"] = False, []   # самовивіз без «Direkt kaufen» — тексти як раніше
-        self.assertEqual(format_html(r).count("<code>"), 2)
+        r["buy_now"], r["risk_lines"] = False, []   # без «Direkt kaufen» — два тексти, обидва кнопками
+        self.assertEqual(format_html(r).count("<code>"), 0)
+        kb = rmc.build_keyboard("u", card_seller_text(r), None, offer_template(r))["inline_keyboard"]
+        self.assertEqual(sum(1 for row in kb if "copy_text" in row[0]), 2)
 
     def test_auction_lines_compact(self):
         from ebay_watch import auction_lines

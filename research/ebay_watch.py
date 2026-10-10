@@ -56,7 +56,7 @@ PICKUP_QUERIES = [
 ]
 PICKUP_FILTER = ("deliveryOptions:{SELLER_ARRANGED_LOCAL_PICKUP},pickupCountry:DE,pickupPostalCode:20095,"
                  "pickupRadius:30,pickupRadiusUnit:km")
-_SB_NOTE = re.compile(r"\s*Лише «?Sicher bezahlen»?[^.!]*[.!]")   # поради для KA; на eBay оплата і так через eBay
+_SB_NOTE = re.compile(r"\s*(?:·\s*)?[Лл]ише «?Sicher bezahlen»?[^.!·]*[.!]?")   # поради для KA; на eBay оплата і так через eBay
 ITEM_URL = "https://api.ebay.com/buy/browse/v1/item/"
 CALLS = {"n": 0}
 
@@ -218,55 +218,33 @@ def _age_label(lst: dict, now: datetime) -> str:
 
 
 def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
+    """10.10: коротка картка, як на KA; тексти продавцю — лише в кнопках «📋» (keyboard)."""
+    from ram_alert import verdict_head
     esc = html.escape
-    tag = {"BUY-EXCELLENT": "🟢🟢 <b>ВІДМІННО — КУПУЙ</b>", "BUY-GOOD": "🟢 <b>ДОБРЕ — КУПУЙ</b>",
-           "BUY": "🟡 <b>МОЖНА — вигода помірна</b>",
-           "NEGOTIATE": "💬 <b>ЗАПРОПОНУЙ ЦІНУ — трохи дорожче стелі</b>"}[r["verdict"]]
-    if too_cheap(r):
-        tag = cheap_headline(r, ebay=True)
     offer = offer_ebay(r)
     dist = f" ({lst['dist']:.0f} км)" if lst.get("dist") else ""
-    ship_txt = (f"🚶 самовивіз у Гамбурзі{dist}, дорога ≈ {PICKUP_COST:.0f} €" if r.get("pickup") else f"пересилка {r['ship_in']:.2f} €".replace(".", ","))
+    ship_txt = (f"🚶 самовивіз{dist}" if r.get("pickup") else f"+ {r['ship_in']:.2f} €".replace(".", ","))
     seller = f"{esc(lst['seller'])} ({lst['fb']}" + (f", {lst['pct']:.0f}%" if lst["pct"] is not None else "") + ")"
-    lines = [
-        "🛒 <b>eBay</b> · " + tag + (" · 📉 ЗДЕШЕВШАЛО" if why == "drop" else ""),
-        f"<b>{esc(r['type'])}</b>",
-        f"<b>{lst['price']:.0f} €</b> + {ship_txt} = <b>{r['buy_cost']:.0f} €</b>"
-        + (" · Preisvorschlag можна" if lst["offer"] else " · фіксована ціна"),
-        "",
-        (f"💶 Заробіток ≈ <b>{r['profit_est']:.0f} €</b>" + (f" (+{100 * r['profit_est'] / r['buy_cost']:.0f}% до вкладеного)" if r.get('buy_cost') else "") if r["verdict"] != "NEGOTIATE"
-         else f"💶 За поточною ціною ≈ {r['profit_est']:.0f} € (маржа нижча за 30%)"),
-        *([(f"🤝 Preisvorschlag <b>{offer} €</b>" if lst["offer"] else f"🤝 Напиши продавцю: <b>{offer} €</b> "
-            "(Preisvorschlag вимкнений — хай знизить ціну)") + f" (разом ≈ {offer + r['ship_in']:.0f} €) → заробіток ≈ "
-           f"<b>{r['net_q'] - offer - r['ship_in']:.0f} €</b>"] if offer is not None else []),
-        f"🛒 Разом з пересилкою до {r['cap']:.0f} € (добре ≤ {r['good']:.0f}, супер ≤ {r['excellent']:.0f})",
-        f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
-        f"⏱ {_speed_label(r['sell_through'])}",
-        f"👤 Продавець {seller}" + (f" · виставлено {_age_label(lst, now)}" if _age_label(lst, now) else ""),
-    ]
-    for s in risk["soft"]:
-        lines.append(f"⚠️ {esc(s)}")
+    lines = ["🛒 <b>eBay</b> · " + verdict_head(r) + (" · 📉 ЗДЕШЕВШАЛО" if why == "drop" else "")]
+    if too_cheap(r):
+        lines.append(cheap_headline(r, ebay=True))
+    lines += [f"<i>{esc(r['title'][:90])}</i>",
+              f"{esc(r['type'])} · <b>{lst['price']:.0f} €</b> {ship_txt} → разом {r['buy_cost']:.0f} €"
+              + (" · Preisvorschlag ✓" if lst["offer"] else ""),
+              *([(f"🤝 Preisvorschlag <b>{offer} €</b>" if lst["offer"] else f"🤝 Напиши продавцю: <b>{offer} €</b>")
+                 + f" → заробіток ≈ <b>{r['net_q'] - offer - r['ship_in']:.0f} €</b>"] if offer is not None else []),
+              f"📏 Бери до {r['cap']:.0f} € разом · вигідно ≤ {r['good']:.0f} €",
+              f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}",
+              f"👤 {seller}" + (f" · {_age_label(lst, now)}" if _age_label(lst, now) else "")]
+    lines += [f"⚠️ {esc(s)}" for s in risk["soft"]]
     f = desc_facts(r.get("desc"), r)
     if f["works"] is False:
         lines.append("⚠️ В описі: НЕ тестоване або з дефектом")
     if r.get("single_module_warning") and not f["kit_ok"]:
-        lines.append(f"⚠️ Перевір на фото/в описі, що це <b>одна</b> планка на {r['total']} ГБ.")
+        lines.append(f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ")
     elif r.get("kit_unknown") and not f["kit_ok"]:
-        lines.append(f"⚠️ Кількість планок не вказана — бери лише якщо це <b>2×{r['total'] // 2} ГБ</b>.")
-    for n in r.get("notes", []):
-        lines.append(f"⚠️ {esc(n)}")
-    lines += ["", f"<i>{esc(r['title'][:90])}</i>",
-              "Оплата лише через eBay (гарантія повернення грошей). Не пиши продавцю поза eBay.",
-              ""]
-    if offer is not None and r["verdict"] == "NEGOTIATE":   # «торгуйся»: один текст, одразу з пропозицією (29.09)
-        lines += [f"✉️ Текст продавцю з пропозицією {offer} €" + (" (потім «Preisvorschlag senden»):" if lst["offer"]
-                  else " («Frage an den Verkäufer», потім купуй за новою ціною):"), f"<code>{esc(ebay_message(r, offer))}</code>"]
-        return "\n".join(lines)
-    lines += ["✉️ Текст продавцю («Frage an den Verkäufer», натисни — скопіюється):", f"<code>{esc(ebay_message(r))}</code>"]
-    if offer is not None:
-        lines += ["", f"✉️ З пропозицією {offer} €" + (" (потім «Preisvorschlag senden»):" if lst["offer"]
-                                                       else " (питання продавцю, потім купуй за новою ціною):"),
-                  f"<code>{esc(ebay_message(r, offer))}</code>"]
+        lines.append(f"⚠️ Скільки планок — не вказано: бери лише <b>2×{r['total'] // 2} ГБ</b>")
+    lines += [f"⚠️ {esc(n)}" for n in r.get("notes", [])]
     return "\n".join(lines)
 
 

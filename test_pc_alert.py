@@ -48,7 +48,8 @@ class TestEvaluate(unittest.TestCase):
 
     def test_card_shows_profit_and_route(self):
         lines = pc_card_lines(evaluate_pc("Gaming PC Ryzen 5 3600 RTX 3060 16GB", 60))
-        self.assertIn("БЕРИ", lines[0])
+        self.assertRegex(lines[0], r"ВИГІДНО|БЕРИ")
+        self.assertNotIn("комісі", lines[1])   # 09.10: комісії eBay немає
         self.assertIn("RTX 3060", lines[1])
 
 

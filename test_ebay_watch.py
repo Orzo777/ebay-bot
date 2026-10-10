@@ -187,7 +187,9 @@ class TestSellerMessage(unittest.TestCase):
         r = evaluate_ebay(lst)
         r["desc"] = "Läuft einwandfrei, Rechnung vorhanden."
         txt = format_card(r, lst, risk_of(lst, r["desc"], 545), "new", NOW)
-        self.assertIn("Текст продавцю", txt)
+        self.assertNotIn("<code>", txt)   # 10.10: тексти продавцю — лише в кнопках «📋»
+        self.assertTrue(txt.startswith("🛒 <b>eBay</b> · 🟡 <b>БЕРИ</b> · заробіток ≈ <b>"))
+        self.assertLessEqual(txt.count("\n"), 9)   # коротка картка
         msg = ebay_message(r)
         self.assertLessEqual(len(msg), 256)
         self.assertIn("über eBay", msg)
@@ -236,8 +238,8 @@ class TestNegotiateFixedPrice(unittest.TestCase):
         self.assertEqual(len(kb), 2)   # «торгуйся»: одна кнопка, одразу з пропозицією (29.09)
         self.assertIn(f"für {o} €", kb[1][0]["copy_text"]["text"])
         card = format_card(r, lst, risk_of(lst, "", 545), "new", NOW)
-        self.assertIn(f"{o} €", card)
-        self.assertEqual(card.count("<code>"), 1)
+        self.assertIn(f"Напиши продавцю: <b>{o} €</b>", card)
+        self.assertEqual(card.count("<code>"), 0)   # текст із пропозицією — кнопкою (kb[1])
 
     def test_too_cheap_headline(self):
         from ram_alert import evaluate, format_html
