@@ -204,6 +204,21 @@ def search(ebay: dict, ka: dict, rows: list[dict], today: date) -> list[str]:
     return out
 
 
+def headline(rows: list[dict], today: date, todo: list[str], bl: list[str]) -> list[str]:
+    """10.10 (прохання користувача): «Головне» — 3 рядки зверху; деталі нижче."""
+    week = today - timedelta(days=6)
+    sold_w = [r for r in rows if r["status"] == "Продано" and (_d(r["sdate"]) or date.min) >= week]
+    open_ = [r for r in rows if r["status"] not in CLOSED]
+    acts = [x for x in todo[1:] if x.startswith("•")]
+    out = ["⭐ <b>Головне</b>",
+           f"• Тиждень: продано {len(sold_w)} шт, прибуток <b>{_eur(sum(r['profit'] or 0 for r in sold_w))}</b> · "
+           f"на руках {len(open_)} шт на {_eur(sum(r['spent'] or 0 for r in open_))}",
+           f"• Зробити: {len(acts)} " + ("(див. «Що зробити з товаром»)" if acts else "— нічого, усе в русі ✓")]
+    if bl:
+        out.append(f"• Підписки KA: змінити межі в {sum(1 for x in bl if x.startswith('•'))} (внизу)")
+    return out
+
+
 def bounds() -> list[str]:
     """10.10: межі «Preis bis» підписок KA, що відстали від ринку (research/ka_bounds.py)."""
     try:
@@ -219,8 +234,9 @@ def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.compe
     """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»."""
     acc, _ = accuracy(rows, today)
     cuts, bl = [], bounds_fn()
-    parts = [[f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}"],
-             money(rows, today), acc, stale(rows, today, market, cuts), search(ebay, ka, rows, today) + auctions(ebay, today)]
+    todo = stale(rows, today, market, cuts)
+    parts = [[f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}"], headline(rows, today, todo, bl),
+             todo, money(rows, today), acc, search(ebay, ka, rows, today) + auctions(ebay, today)]
     if bl:
         parts.append(bl)
     if kb is not None:

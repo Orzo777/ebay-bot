@@ -94,7 +94,14 @@ def build(ebay: dict, ka: dict, runs: list[dict], now: datetime) -> str:
         problems.append(f"фото-перевірка майже не працює ({photo_fail} збоїв)")
     shares = rs["by"].get("ka-share", [0])[0]
     day = now.astimezone(BERLIN).strftime("%d.%m")
-    lines = [("⚠️ Є що перевірити" if problems else "✅ Все працює") + f" · звіт за добу до {day}", "",
+    if not problems:   # 10.10 (прохання користувача): усе гаразд — один рядок замість повного звіту
+        head = (f"✅ Усе працює · {day}: KA {k.get('ka_mails', 0)} листів → {k.get('ka_cards', 0)} карток"
+                + (f" (+{k['ka_no_buynow']} без «Direkt kaufen»)" if k.get("ka_no_buynow") else "")
+                + f" · eBay {e.get('ebay_cards', 0)} карток" + (f", {e['ebay_auctions']} аукціонів" if e.get("ebay_auctions") else "")
+                + f", працював {up}% часу" + (f" · посилань {shares}" if shares else "") + f" · API {e.get('ebay_calls', 0)}/5000")
+        extra = (["ℹ️ Лічильники ведуться з сьогодні — повна доба буде завтра."] if young else []) + ["ℹ️ " + n for n in notes]
+        return "\n".join([head] + extra)
+    lines = ["⚠️ Є що перевірити" + f" · звіт за добу до {day}", "",
              f"🟢 Kleinanzeigen: листів {k.get('ka_mails', 0)} → карток {k.get('ka_cards', 0)}"
              + (f" (ще {k['ka_no_buynow']} вигідних без «Direkt kaufen» відкинуто)" if k.get("ka_no_buynow") else ""),
              f"🔵 eBay: перевірок {e.get('ebay_rounds', 0)} (працював {up}% часу) → карток {e.get('ebay_cards', 0)}, "

@@ -188,3 +188,16 @@ class KaBoundsTest(unittest.TestCase):
         self.assertEqual(rec["console"]["xbox series x"], 432)
         self.assertEqual(rec["console"]["ps5"], 347)
         self.assertEqual(rec["hamburg"], {"ddr5": 462, "ddr4": 223, "xbox": 457, "ps5": 368, "switch2": 311})
+
+
+
+class HeadlineTest(unittest.TestCase):
+    def test_headline_on_top(self):
+        import weekly_report as wr
+        text = wr.build(ROWS, TODAY, {}, {}, lambda r: [520, 530, 540], bounds_fn=lambda: ["🔎 x", "• ddr5 2x16gb: 276 → <b>300 €</b>"])
+        head = text.split("\n\n")[1]
+        self.assertTrue(head.startswith("⭐ <b>Головне</b>"))
+        self.assertIn("• Тиждень: продано", head)
+        self.assertIn("• Зробити:", head)
+        self.assertIn("змінити межі в 1", head)
+        self.assertLess(text.index("Що зробити з товаром"), text.index("💰 <b>Гроші</b>"))   # дії — одразу під головним

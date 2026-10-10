@@ -109,10 +109,8 @@ class DailyReportTest(unittest.TestCase):
 
     def test_all_good(self):
         t = daily_report.build(self.ebay, self.ka, self.runs, NOW)
-        self.assertTrue(t.startswith("✅ Все працює"), t)
-        self.assertIn("листів 40 → карток 3", t)
-        self.assertIn("перевірок 451 (працював 100% часу) → карток 2", t)
-        self.assertIn("посилань («поділитися»): 1", t)
+        # 10.10: усе гаразд — один рядок
+        self.assertEqual(t, "✅ Усе працює · 30.09: KA 40 листів → 3 карток · eBay 2 карток, працював 100% часу · посилань 1 · API 2300/5000")
 
     def test_single_flaky_ka_failure_is_not_a_problem(self):
         runs = self.runs + [_run("ram-mail-alert", 3, conclusion="failure", url="https://x/9")] +             [_run("ram-mail-alert", h + 0.5) for h in range(5)]
@@ -130,7 +128,7 @@ class DailyReportTest(unittest.TestCase):
         health.bump(ka, "ka_pages", 20, NOW)
         health.bump(ka, "ka_buynow", 4, NOW)
         t = daily_report.build(self.ebay, ka, self.runs, NOW)
-        self.assertIn("ще 9 вигідних без «Direkt kaufen» відкинуто", t)
+        self.assertIn("(+9 без «Direkt kaufen»)", t)
         self.assertTrue(t.startswith("✅"), t)
         ka["stats"][list(ka["stats"])[0]]["ka_buynow"] = 0   # жодного «Direkt kaufen» на 20 сторінках — зламалось
         self.assertIn("не знайшов жодного «Direkt kaufen»", daily_report.build(self.ebay, ka, self.runs, NOW))
