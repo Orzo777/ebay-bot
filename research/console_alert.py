@@ -17,7 +17,7 @@ from ram_alert import buy_cost, tier
 
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.
 # 26.09.2026: 83 продані за 30 днів (класифікація цим же оцінювачем) — p25 545, медіана 571
-XBOX_SERIES_X = dict(p25=545, med=571, st=30, name="Xbox Series X (вживана)")
+XBOX_SERIES_X = dict(p25=538, med=571, st=30, name="Xbox Series X (вживана)")   # Terapeak 10.10: 402 продано / 30 дн.
 # 09.10.2026: комісії з продажу 0 — довідка eBay «Gebühren für private Verkäufer»: продаж у межах Німеччини
 # безкоштовний (320 оголошень на місяць без Angebotsgebühr); Verify при автопублікації: «Final Value Fee waived».
 # Рішення користувача 09.10 — прибрати одразу. Була 6,5% + 0,45 €. Буде виплата не повна — повернути тут.
@@ -234,8 +234,8 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
 # Terapeak eBay.de, SOLD, вживані, 30 днів до 26.09.2026 (див. PS5_* нижче). Slim і перша («товста») модель
 # продаються майже однаково, тому Disc — один тип; Digital — окремий (дешевший); Pro не купуємо (забирає бюджет,
 # на KA вже по ринку).
-PS5_DISC = dict(p25=438, med=460, st=30, name="PS5 з дисководом (вживана)")   # 183 продані / 30 дн.
-PS5_DIGITAL = dict(p25=399, med=419, st=25, name="PS5 Digital (вживана)")   # 102 продані / 30 дн.
+PS5_DISC = dict(p25=450, med=475, st=30, name="PS5 з дисководом (вживана)")   # Terapeak 10.10: 399 продано / 30 дн.
+PS5_DIGITAL = dict(p25=414, med=444, st=25, name="PS5 Digital (вживана)")   # Terapeak 10.10: 129 продано / 30 дн.
 PS5_SUSPICIOUS_BELOW = 280
 
 _PS5 = re.compile(r"\bps\s?-?5\b|play\s?-?station\s*-?5|playst\w*ion\s*5", re.I)   # «Play Station 5», «Playsttstion 5»
@@ -325,7 +325,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
 # моделлю): Switch 2 — 363 шт. (p25 370, медіана 390, ціна росте; активних лише ~60 — розкуповують за дні);
 # OLED — 386 (150/170, −4% за 3 міс.), V1/V2 — 716 (107/125), Lite — 239 (85/98). st — % проданих від (продані + активні):
 # Switch 2 85%, решта 31–37% — продається, якщо ціна на рівні продажів (активні оголошення — на 30–50% дорожчі і висять).
-SWITCH2 = dict(p25=370, med=390, st=85, name="Nintendo Switch 2 (вживана)", ship=7.69, ship_in=7.0, min=150)
+SWITCH2 = dict(p25=381, med=403, st=85, name="Nintendo Switch 2 (вживана)", ship=7.69, ship_in=7.0, min=150)   # Terapeak 10.10: 322 / 30 дн.
 SWITCH_OLED = dict(p25=150, med=170, st=37, name="Nintendo Switch OLED (вживана)", ship=7.69, ship_in=7.0, min=60)
 SWITCH_V2 = dict(p25=107, med=125, st=31, name="Nintendo Switch V1/V2 (вживана)", ship=7.69, ship_in=7.0, min=50)
 SWITCH_LITE = dict(p25=85, med=98, st=35, name="Nintendo Switch Lite (вживана)", ship=6.19, ship_in=5.5, min=30)

@@ -41,8 +41,8 @@ class TestAmbiguousKit(unittest.TestCase):
         self.assertIn("2×32", format_html(r))
 
     def test_real_single_16_gets_single_warning(self):
-        r = evaluate("SK Hynix 16GB DDR5 SODIMM RAM, 5600MHz, PC5-5600B", 50)
-        self.assertEqual(r["verdict"], "BUY-GOOD")   # 50 € + пересилка + Sicher bezahlen ≈ 58 €
+        r = evaluate("SK Hynix 16GB DDR5 SODIMM RAM, 5600MHz, PC5-5600B", 60)
+        self.assertEqual(r["verdict"], "BUY-GOOD")   # 60 € + пересилка + Sicher bezahlen (база Terapeak 10.10: p25 129)
         self.assertTrue(r["single_module_warning"])
         self.assertFalse(r["kit_unknown"])
         self.assertIn("EIN Riegel mit 16 GB", seller_template(r))

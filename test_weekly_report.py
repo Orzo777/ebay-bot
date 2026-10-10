@@ -185,9 +185,10 @@ class KaBoundsTest(unittest.TestCase):
         # статичні ціни (RAM_PRICES_OFF): рекомендовані межі консолей і Гамбурга = значенням у коді (порахованим 09.10)
         import ka_bounds as kb
         rec = kb.recommended()
-        self.assertEqual(rec["console"]["xbox series x"], 432)
-        self.assertEqual(rec["console"]["ps5"], 347)
-        self.assertEqual(rec["hamburg"], {"ddr5": 462, "ddr4": 223, "xbox": 457, "ps5": 368, "switch2": 311})
+        import ram_mail_check as rmc   # 10.10: межі в коді = рекомендованим за базою Terapeak
+        self.assertEqual(rec["console"]["xbox series x"], rmc.CONSOLE_MAX["xbox series x"])
+        self.assertEqual(rec["console"]["ps5"], rmc.CONSOLE_MAX["ps5"])
+        self.assertEqual(rec["hamburg"], rmc.HAMBURG_MAX)
 
 
 
