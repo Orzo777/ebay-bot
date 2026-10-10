@@ -335,18 +335,14 @@ def build_card(row: int | None, title: str, r: dict, pr: dict, comp: list[float]
     """Перше повідомлення — загальне, українською: скільки ставити, скільки лишиться, що на ринку."""
     e = lambda x: html.escape(x, quote=False)   # noqa: E731
     ip = item_prices(pr, tx["ship"])
-    lines = [f"🏷 <b>Продаж{' №' + str(row) if row else ''}</b> · {e(r['type'])}", f"<i>{e(title[:90])}</i>", "",
-             f"💶 Ціна: <b>{ip['item']} €</b> + доставка {money_de(tx['ship'])} € (разом ≈ {pr['list']} €)"]
-    if cost:
-        lines.append(f"   купив за {cost:.0f} € → чистими ≈ {pr['net_list']:.0f} €, прибуток ≈ <b>{pr['profit_list']:.0f} €</b>")
-    lines += [f"🤝 Пропозиції ціни: приймати від <b>{ip['accept']} €</b>"
-              + (f" (прибуток ≈ {pr['profit_accept']:.0f} €)" if cost else "") + f", відхиляти нижче <b>{ip['decline']} €</b>",
-              f"📊 Продано за 30 днів: швидко {r['quick_sale']} €, медіана {r['median_sale']} € · {ram_alert._speed_label(r['sell_through'])}",
-              (f"🔎 Зараз на eBay схожих: {len(comp)}, найдешевше {comp[0]:.0f} € з доставкою" if comp
-               else "🔎 Зараз на eBay схожих не знайшов — ціна за медіаною продажів"),
-              *[f"⚠️ {e(w)}" for w in pr["warn"]], "",
-              "✅ <b>Перед публікацією:</b>", *[f"• {e(b)}" for b in tx["before"]], "",
-              "👇 Далі — покроково, як у формі eBay. Сірі значення натисни — скопіюються."]
+    # 10.10 (прохання користувача): коротко; «перед публікацією» і поля форми — у покрокових (кнопка «📋 Покроково»)
+    lines = [f"🏷 <b>Продаж{' №' + str(row) if row else ''}</b> · <i>{e(title[:80])}</i>",
+             f"💶 <b>{ip['item']} €</b> + доставка {money_de(tx['ship'])} €"
+             + (f" · купив за {cost:.0f} € → прибуток ≈ <b>{pr['profit_list']:.0f} €</b>" if cost else ""),
+             f"🤝 Автоприйняти від {ip['accept']} € · відхиляти нижче {ip['decline']} €",
+             f"📊 Продано за 30 днів {r['quick_sale']}–{r['median_sale']} € · "
+             + (f"зараз схожих {len(comp)}, від {comp[0]:.0f} €" if comp else "схожих зараз немає"),
+             *[f"⚠️ {e(w)}" for w in pr["warn"]]]
     return "\n".join(lines)
 
 
@@ -354,9 +350,10 @@ def build_steps(row: int | None, pr: dict, tx: dict) -> str:
     """Друге повідомлення — покроково в порядку форми eBay «Angebot fertigstellen»; назви полів німецькою, як на сайті."""
     e = lambda x: html.escape(x, quote=False)   # noqa: E731
     ip = item_prices(pr, tx["ship"])
+    before = ["✅ <b>Перед публікацією:</b>", *[f"• {e(b)}" for b in tx["before"]], ""]
     code = lambda v: f"<code>{e(str(v))}</code>"   # noqa: E731
     field = lambda k, v: f"   • {e(k)}: {code(v)}"   # noqa: E731
-    out = ["📋 <b>Покроково на eBay</b> · «Angebot fertigstellen»", "",
+    out = ["📋 <b>Покроково на eBay</b> · «Angebot fertigstellen»", "", *before,
            "1️⃣ <b>FOTOS &amp; VIDEO</b> — Hauptfoto: товар цілком; далі наклейка крупно, екран тесту.", "",
            "2️⃣ <b>TITEL</b> → Angebotstitel:", code(tx["title"]), "",
            f"3️⃣ <b>ARTIKELKATEGORIE</b> → {e(tx['category'])} (eBay підставить сам; інше — «Bearbeiten»)", "",
@@ -385,14 +382,26 @@ def build_steps(row: int | None, pr: dict, tx: dict) -> str:
 
 
 def keyboard(tx: dict, r: dict, row: int | None = None, ebay: bool = False) -> dict:
+    """10.10: під карткою «продати» — дії: автоматично, покроково (вручну), конкуренти."""
     q, cat = competitor_query(r)
-    auto = [[{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}]] if row and ebay else []
+    rows = []
+    if row and ebay:
+        rows.append([{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}])
+    if row:
+        rows.append([{"text": "📋 Покроково (вручну) + фото", "callback_data": f"c|кроки|{row}"}])
+    rows.append([{"text": "🔎 Конкуренти на eBay",
+                  "url": f"https://www.ebay.de/sch/{cat}/i.html?_nkw={quote_plus(q)}&LH_BIN=1&LH_ItemCondition=3000&_sop=15"}])
+    return {"inline_keyboard": rows}
+
+
+def steps_keyboard(tx: dict, r: dict) -> dict:
+    """Під покроковими: скопіювати назву / Herstellernummer, відкрити форму eBay."""
+    q, cat = competitor_query(r)
     return {"inline_keyboard": [
         [{"text": "📋 Скопіювати назву", "copy_text": {"text": tx["title"][:256]}}],
         *([[{"text": "📋 Herstellernummer", "copy_text": {"text": tx["pn"][:256]}}]] if tx.get("pn") else []),
         [{"text": "🔎 Конкуренти на eBay", "url": f"https://www.ebay.de/sch/{cat}/i.html?_nkw={quote_plus(q)}&LH_BIN=1&LH_ItemCondition=3000&_sop=15"}],
-        *auto,
-        [{"text": "➕ Виставити вручну", "url": "https://www.ebay.de/sl/prelist/suggest"}]]}
+        [{"text": "➕ Відкрити форму eBay", "url": "https://www.ebay.de/sl/prelist/suggest"}]]}
 
 
 def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=competitors) -> dict | None:
@@ -419,6 +428,7 @@ def make(title: str, cost: float | None, row: int | None = None, comp_fn=competi
         return (f"🤔 Не впізнав товар «{html.escape(title[:80])}».\nНапиши повніше, наприклад:\n"
                 f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None, "")
     r, pr, comp, tx = p["r"], p["pr"], p["comp"], p["tx"]
+    make.steps_kb = steps_keyboard(tx, r)
     return build_card(row, title, r, pr, comp, tx, cost), keyboard(tx, r, row, ebay), build_steps(row, pr, tx)
 
 
@@ -583,6 +593,31 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
                 {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": link}]]})
 
 
+def plan_line(title: str, cost: float | None, row=None) -> str | None:
+    """«📈 План: продати за ≈ X € + доставка → прибуток ≈ Y €» — без запитів до eBay (ціни продажів з щоденних замірів)."""
+    p = prepare(title, cost, row, comp_fn=lambda r: [])
+    if not p:
+        return None
+    ip = item_prices(p["pr"], p["tx"]["ship"])
+    return (f"📈 План: продати за ≈ {ip['item']} € + доставка" +
+            (f" → прибуток ≈ {p['pr']['profit_list']:.0f} €" if cost and p["pr"].get("profit_list") is not None else ""))
+
+
+def plan_mode(d: dict, key: str, post=None) -> bool:
+    import requests
+    line = plan_line(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, d.get("row"))
+    if not line or not d.get("mid"):
+        print("план: не впізнав товар")
+        return False
+    data = {"chat_id": config.TELEGRAM_CHAT_ID, "message_id": d["mid"], "text": (d.get("text") or "") + "\n" + line,
+            "disable_web_page_preview": "true"}
+    if d.get("markup"):
+        data["reply_markup"] = json.dumps(d["markup"], ensure_ascii=False)
+    r = (post or requests.post)(f"{config.TELEGRAM_API_BASE}/bot{key}/editMessageText", data=data, timeout=15)
+    print(f"план: Telegram {r.status_code}")
+    return r.status_code == 200
+
+
 def _event_inputs() -> dict:
     """Параметри запуску — з файлу події GitHub, а не з env (env видно в журналі кроку; репозиторій публічний)."""
     path = os.getenv("GITHUB_EVENT_PATH")
@@ -607,19 +642,22 @@ def main():
         a.blob, a.mac, a.nonce = ev.get("blob") or None, ev.get("mac"), ev.get("nonce")
         if not a.blob and ev.get("test_title"):
             a.title, a.dry_run = ev["test_title"], True
-    ebay = False
+    ebay, steps_only = False, False
     if a.blob:
         try:
             d = unseal(a.blob, a.mac, os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or "", a.nonce)
         except Exception as e:
             office_send_html(f"⚠️ Не зміг прочитати запит «продати»: {html.escape(str(e))}", None)
             raise SystemExit(1)
+        if d.get("mode") == "plan":   # 10.10: план продажу в повідомлення «📒 Записав покупку»
+            plan_mode(d, os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or "")
+            return
         if d.get("mode"):   # 09.10: підключення eBay / автопублікація
             if not ebay_mode(d, os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or ""):
                 raise SystemExit(1)
             return
         title, cost, row = d.get("title") or "", d.get("cost"), d.get("row")
-        photos, ebay = d.get("photos") or [], bool(d.get("ebay"))
+        photos, ebay, steps_only = d.get("photos") or [], bool(d.get("ebay")), bool(d.get("steps"))
     else:
         title, cost, row, photos = a.title or "", a.cost, None, []
     try:
@@ -628,12 +666,17 @@ def main():
         office_send_html(f"⚠️ Не вийшло підготувати оголошення: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise
     print("готово" + (" (dry-run)" if a.dry_run else ""))
+    want_steps = steps_only or not ebay or not row
     if a.dry_run:
         print(text + "\n\n" + steps)
-    elif not office_send_html(text, None) or (steps and not office_send_html(steps, kb)):
+        return
+    if not steps_only and not office_send_html(text, kb if kb and row else None):
         raise SystemExit(1)
-    elif photos:
-        print(f"фото альбомом: {office_send_album(photos, f'📸 Фото для оголошення №{row}')} з {len(photos)}")
+    if steps and want_steps:
+        if not office_send_html(steps, getattr(make, "steps_kb", None)):
+            raise SystemExit(1)
+        if photos:
+            print(f"фото альбомом: {office_send_album(photos, f'📸 Фото для оголошення №{row}')} з {len(photos)}")
 
 
 if __name__ == "__main__":

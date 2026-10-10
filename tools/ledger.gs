@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-10e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-10f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -345,11 +345,12 @@ function processLedger() {
           what = 'купівля записана';
           const adId = kaAdId_(p.link);
           if (p.src === 'Kleinanzeigen' && adId) kaCloseDispatch_([adId], 'куплено');   // переписку з продавцем — з чату (06.10)
-          notify_('📒 Записав покупку №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.price != null ? ' — ' + p.price + ' €' : '') +
-                  '\nКоли отримаєш і перевіриш — «продати ' + (row - LEDGER_FIRST + 1) + '»' +
+          const pn = row - LEDGER_FIRST + 1;
+          const ptext = '📒 Записав покупку №' + pn + ': ' + p.title + (p.price != null ? ' — ' + p.price + ' €' : '') +
                   (p.price == null ? '\n⚠️ Суму не знайшов у листі — впиши в таблиці.' : '') +
-                  (/ps\s?5|playstation\s?5/i.test(p.title) ? '\n💡 Цю PS5 можна спробувати продати на Amazon (вживане, тариф Einzelanbieter) — ' +
-                   'тест з 03.10: там може бути +40–60 €. Напиши Claude «перевір PS5 на Amazon».' : ''));
+                  (/ps\s?5|playstation\s?5/i.test(p.title) ? '\n💡 PS5 можна спробувати продати на Amazon (+40–60 €) — напиши Claude.' : '');
+          const pkb = btns_([['отримав', pn]]);
+          planAfter_(notify_(ptext, pkb), pn, p.title, p.price, ptext, pkb);
         }
       } else if ((p.kind === 'shipped' || p.kind === 'delivered') && p.track && rowByTrack_(p.track.num, 'outTrack')) {
         const on = rowByTrack_(p.track.num, 'outTrack');   // наша посилка покупцю, а не купівля (06.10)
@@ -377,9 +378,9 @@ function processLedger() {
           if (p.total != null || p.price != null) deals.getRange(row, COL.sprice).setValue(p.total != null ? p.total : p.price);
           deals.getRange(row, COL.status).setValue('Продано');
           what = 'продаж записано';
-          notify_('💰 Продано: ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
-                  '\nПрибуток дорахує таблиця.\n📮 Відправ у строк з лота (зазвичай 1–3 робочі дні) і завантаж трек-номер в eBay. ' +
-                  'Відправив — «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» (або кнопка нижче).', btns_([['відправив', row - LEDGER_FIRST + 1]]));
+          notify_('💰 Продано №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
+                  '\n📮 Відправ за 1–3 робочі дні, потім «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» — трек піде в eBay сам.',
+                  btns_([['відправив', row - LEDGER_FIRST + 1]]));
         } else { what = 'продаж: не знайшов, що це за товар — впиши вручну'; }
       }
     }
@@ -459,7 +460,7 @@ function officeMessage(msg) {
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       onHandCommand_(msg)) return;
-  if (ebayCommand_(msg) || boundsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
+  if (ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
@@ -531,8 +532,10 @@ function ledgerCommand(msg) {
   if (cmd.indexOf('купи') === 0) {
     const r = addPurchase_({ title: title || '(без назви)', src: src, price: amount, fee: src === 'Kleinanzeigen' ? '' : 0,
                              status: src === 'Самовивіз Гамбург' ? 'Отримано' : 'Оплачено', note: 'з Telegram' });
-    notify_('📒 Записав покупку в рядок ' + (r - 4) + ': ' + title + ' — ' + amount + ' €' +
-            (src === 'Kleinanzeigen' ? '\nПересилку й збір Sicher bezahlen допиши в таблиці, якщо були.' : ''));
+    const ctext = '📒 Записав покупку №' + (r - 4) + ': ' + title + ' — ' + amount + ' €' +
+            (src === 'Kleinanzeigen' ? '\nПересилку й збір Sicher bezahlen допиши в таблиці, якщо були.' : '');
+    const ckb = btns_([['отримав', r - 4]]);
+    planAfter_(notify_(ctext, ckb), r - 4, title, amount, ctext, ckb);
   } else {
     const row = findRow_(null, title, true);
     if (!row) { notify_('Не знайшов у обліку непроданий товар зі словами «' + title + '». Уточни назву або впиши вручну.'); return true; }
@@ -602,6 +605,27 @@ function sellCommand_(msg) {
   notify_(code === 204
     ? '⏳ Готую оголошення для №' + (idx + 1) + ' «' + title + '» — приблизно хвилина.'
     : '⚠️ Не зміг запустити підготовку оголошення (GitHub ' + code + ').');
+  return true;
+}
+
+/** 10.10: після «📒 Записав покупку» — GitHub дописує в те саме повідомлення план: за скільки продати й прибуток. */
+function planAfter_(resp, n, title, cost, text, markup) {
+  try {
+    const mid = resp ? ((JSON.parse(resp.getContentText() || '{}') || {}).result || {}).message_id : null;
+    if (mid && title) sellDispatch_({ mode: 'plan', row: n, title: String(title), cost: cost, mid: mid, text: text, markup: markup });
+  } catch (e) { console.log('planAfter_: ' + e); }
+}
+
+/** «📋 Покроково» під карткою «продати N» → покрокова інструкція для форми eBay і фото альбомом. */
+function stepsCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?кроки\s+(\d{1,4})$/i);
+  if (!m) return false;
+  const n = Number(m[1]), r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
+  const props = PropertiesService.getScriptProperties();
+  const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
+  const code = sellDispatch_({ row: n, title: String(title), cost: r.spent, photos: cleanPhotos_(n), steps: true, ebay: !!props.getProperty('EBAY_RT') });
+  if (code !== 204) notify_('⚠️ Не зміг запустити (GitHub ' + code + ').');
   return true;
 }
 
@@ -1730,7 +1754,8 @@ function sendAlbum_(list, caption) {
 // ------------------------------------------------------------------ кнопки в боті «Облік і продаж» (09.10)
 // Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
-  'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую' };
+  'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
+  'кроки': '📋 Покроково' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {
@@ -1763,7 +1788,7 @@ function officeCallback(cq) {
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + ' №' + m[2] : '' });
   if (!m || !chat || String(from) !== String(chat) || !BTN[m[1]]) return;
-  if (['продати', 'фото', 'авто'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
+  if (['продати', 'фото', 'авто', 'кроки'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
     tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
   }
   officeMessage({ text: m[1] + ' ' + m[2], chat: { id: from }, message_id: 0 });
@@ -1839,8 +1864,9 @@ function mainCallback(cq) {
   const n = row - LEDGER_FIRST + 1;
   markEvent_(n, 'got', iso_(new Date()));
   tgMain_('answerCallbackQuery', { callback_query_id: cq.id, text: '📒 Записав №' + n });
-  notify_('📒 Записав покупку №' + n + ' (самовивіз): ' + title + ' — ' + m[2] + ' €. Заплатив інакше — виправ ціну в таблиці.\n' +
-          '🧪 Протестуй: ' + testTip_(category_(title)) + '.', btns_([['перевірив', n], ['проблема', n]]));
+  const stext = '📒 Записав покупку №' + n + ' (самовивіз): ' + title + ' — ' + m[2] + ' €. Заплатив інакше — виправ ціну в таблиці.\n' +
+          '🧪 Протестуй: ' + testTip_(category_(title)) + '.', skb = btns_([['перевірив', n], ['проблема', n]]);
+  planAfter_(notify_(stext, skb), n, title, Number(m[2]) || null, stext, skb);
 }
 
 

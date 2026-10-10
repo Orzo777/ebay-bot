@@ -119,7 +119,11 @@ class StepsTest(unittest.TestCase):
         tx = sell.ram_texts(t, r)
         self.assertIn("CMK32GX4M2B3200C16", tx["title"])
         self.assertLessEqual(len(tx["title"]), 80)
-        self.assertEqual(kb["inline_keyboard"][1][0]["copy_text"]["text"], "CMK32GX4M2B3200C16")   # кнопка Herstellernummer
+        skb = sell.make.steps_kb["inline_keyboard"]   # 10.10: «скопіювати» — під покроковими, під карткою — дії
+        self.assertEqual(skb[1][0]["copy_text"]["text"], "CMK32GX4M2B3200C16")   # кнопка Herstellernummer
+        self.assertEqual([b["callback_data"] for row in kb["inline_keyboard"] for b in row if "callback_data" in b], ["c|кроки|2"])
+        self.assertIn("Перед публікацією", steps)
+        self.assertLessEqual(text.count("\n"), 5)   # коротка картка
         order = ["FOTOS", "TITEL", "ARTIKELKATEGORIE", "ARTIKELMERKMALE", "ZUSTAND", "BESCHREIBUNG", "PREISGESTALTUNG",
                  "DETAILS ZUR LIEFERUNG", "ANGEBOT BEWERBEN", "Angebot einstellen"]
         self.assertEqual([steps.index(x) for x in order], sorted(steps.index(x) for x in order))   # порядок як у формі
@@ -158,13 +162,13 @@ class MakeTest(unittest.TestCase):
         text, kb, steps = sell.make("RAM ddr4 32GB für iMac", 45, 3, lambda r: [])
         self.assertIn("ОДНУ на 32 ГБ", text)
         self.assertIn("продати 3", text)
-        self.assertEqual(kb["inline_keyboard"][0][0]["copy_text"]["text"], "32GB DDR4 SO-DIMM Laptop RAM für iMac – getestet")
+        self.assertEqual(sell.make.steps_kb["inline_keyboard"][0][0]["copy_text"]["text"], "32GB DDR4 SO-DIMM Laptop RAM für iMac – getestet")
 
     def test_competitor_api_failure_still_gives_card(self):
         def boom(r):
             raise RuntimeError("429")
         text, _, _ = sell.make("Xbox Series X 1TB", 380, 5, boom)
-        self.assertIn("схожих не знайшов", text)
+        self.assertIn("схожих зараз немає", text)
 
     def test_competitor_filter(self):
         import main
@@ -204,3 +208,23 @@ class AlbumTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class PlanTest(unittest.TestCase):
+    """10.10: план продажу дописується в повідомлення «📒 Записав покупку» (без запитів до eBay)."""
+
+    def test_plan_line_and_edit(self):
+        line = sell.plan_line("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 70.63, 3)
+        self.assertRegex(line, r"^📈 План: продати за ≈ \d+ € \+ доставка → прибуток ≈ \d+ €$")
+        self.assertIsNone(sell.plan_line("Lampe", 5))
+        sent = []
+        ok = sell.plan_mode({"title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", "cost": 70.63, "row": 3, "mid": 77,
+                             "text": "📒 Записав покупку №3: Corsair — 70.63 €", "markup": {"inline_keyboard": [[{"text": "x", "callback_data": "c|отримав|3"}]]}},
+                            "K", post=lambda url, data=None, timeout=None: (sent.append((url, data)), type("R", (), {"status_code": 200})())[1])
+        self.assertTrue(ok)
+        self.assertTrue(sent[0][0].endswith("/botK/editMessageText"))
+        self.assertEqual(sent[0][1]["message_id"], 77)
+        self.assertIn("📒 Записав покупку №3", sent[0][1]["text"])
+        self.assertIn("📈 План:", sent[0][1]["text"])
+        self.assertIn("c|отримав|3", sent[0][1]["reply_markup"])

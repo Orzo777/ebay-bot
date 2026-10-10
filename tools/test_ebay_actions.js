@@ -126,5 +126,18 @@ check('bounds show', [gh[gh.length - 1].mode, /Рахую межі/.test(last()[
 // тижневий звіт знає, що eBay підключено (кнопки «⬇️»)
 ctx.weeklyReport();
 check('weekly: ebay flag', opened().ebay, true);
+// 10.10: «📋 Покроково» під карткою «продати» → steps:true з фото; кнопки картки лишаються
+store.PH_1 = JSON.stringify([{ id: 'P1', t: 'photo', u: 'u1' }]);
+cb('c|кроки|1', 78);
+p = opened();
+check('steps dispatched', [p.steps, p.row, p.photos.length, p.mode], [true, 1, 1, undefined]);
+check('card buttons kept on steps', tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 78), false);
+// план продажу після «📒 Записав покупку»: id повідомлення → GitHub mode=plan з текстом і кнопками
+ctx.planAfter_({ getContentText: () => JSON.stringify({ ok: true, result: { message_id: 555 } }) }, 3, 'Kingston 16GB DDR4', 20, '📒 Записав покупку №3', { inline_keyboard: [] });
+p = opened();
+check('plan dispatched', [p.mode, p.mid, p.row, p.cost, p.text], ['plan', 555, 3, 20, '📒 Записав покупку №3']);
+const g2 = gh.length;
+ctx.planAfter_(null, 3, 'x', 1, 't', null);
+check('no message id → no plan', gh.length, g2);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
