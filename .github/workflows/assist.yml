@@ -1,0 +1,58 @@
+name: assist
+
+# 10.10: бот «Помічник» — питання з Telegram (Apps Script шифрує) → Claude Code у цьому репозиторії → відповідь у Telegram.
+# Claude Code лише читає код і запускає research/assist_tools.py (оцінювачі бота); правила — docs/assistant.md.
+# Ключ — CLAUDE_CODE_OAUTH_TOKEN (claude setup-token, підписка користувача). У журнал не пишемо ні питань, ні відповідей.
+
+on:
+  workflow_dispatch:
+    inputs:
+      blob:
+        description: "Зашифроване питання (з Apps Script)"
+        required: true
+      mac:
+        description: "Підпис"
+        required: true
+      nonce:
+        description: "Nonce"
+        required: true
+
+concurrency:
+  group: assist
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  assist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && claude --version
+
+      - name: Answer
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ASSIST_BOT_TOKEN: ${{ secrets.ASSIST_BOT_TOKEN }}
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+          EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+          PYTHONIOENCODING: utf-8
+        # параметри — з файлу події, не з env (env видно в журналі кроку)
+        run: python research/assist.py

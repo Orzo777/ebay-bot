@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-10-09b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-10-10a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -80,12 +80,17 @@ function doPost(e) {
     }
     // Другий бот «Облік і продаж» (ledger.gs) приходить сюди ж з адресою …/exec?bot=office; у кожного бота свої update_id
     const office = !!(e.parameter && e.parameter.bot === 'office');
-    const seenKey = office ? 'TG_SEEN_OFFICE' : 'TG_SEEN';
+    const assist = !!(e.parameter && e.parameter.bot === 'assist');   // 10.10: бот «Помічник» (ledger.gs, assistMessage)
+    const seenKey = assist ? 'TG_SEEN_ASSIST' : office ? 'TG_SEEN_OFFICE' : 'TG_SEEN';
     const props = PropertiesService.getScriptProperties();
     const seen = JSON.parse(props.getProperty(seenKey) || '[]');
     if (seen.indexOf(update.update_id) >= 0) return HtmlService.createHtmlOutput('ok');
     seen.push(update.update_id);
     props.setProperty(seenKey, JSON.stringify(seen.slice(-200)));
+    if (assist) {
+      if (update.message && update.message.chat && typeof assistMessage === 'function') assistMessage(update.message);
+      return HtmlService.createHtmlOutput('ok');
+    }
     if (update.callback_query) {   // натискання кнопки (09.10): бот «Облік і продаж»
       if (office && typeof officeCallback === 'function') officeCallback(update.callback_query);
       else if (!office && typeof mainCallback === 'function') mainCallback(update.callback_query);   // «✅ Купив (самовивіз)»

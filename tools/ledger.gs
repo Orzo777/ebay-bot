@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-10c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-10d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -389,6 +389,7 @@ function processLedger() {
   try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
   try { fixAlbum1010_(); } catch (e) { console.log('fixAlbum1010_: ' + e); }
+  try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
   if (!props.getProperty('EXPENSES_V1')) { expensesSheet_(ss); props.setProperty('EXPENSES_V1', '1'); }   // аркуш одразу видно
@@ -745,6 +746,112 @@ function boundsCommand_(msg) {
   return true;
 }
 
+// ------------------------------------------------------------------ бот «Помічник» (10.10)
+// Питання з Telegram (оголошення, фото, «чи вигідно за 160?») → GitHub assist.yml → Claude Code у репозиторії
+// (research/assist.py) → відповідь редагує «🤔 Думаю…». Альбом фото збираємо ~15 с (підпис — на одному з фото).
+const ASSIST_HELP = '🤖 Я помічник з перепродажу — знаю весь проєкт і рахую тими самими оцінювачами, що й картки.\n' +
+  'Кидай посилання на оголошення KA / eBay, текст чи фото з питанням, наприклад:\n' +
+  '«ПК за 160 €: DDR4 2x8 і SSD 250 — дешеві, а процесор хтось купує окремо?»\n' +
+  'Відповідь — за 1–2 хвилини. Пам\'ятаю кілька останніх повідомлень; «нове» — почати розмову спочатку.\n' +
+  'Нічого не змінюю і продавцям не пишу — лише рахую й раджу.';
+
+function tgAssist_(method, payload) {
+  const tok = PropertiesService.getScriptProperties().getProperty('ASSIST_BOT_TOKEN');
+  if (!tok) return { code: 0, json: {} };
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/' + method, { method: 'post', payload: payload, muteHttpExceptions: true });
+  let j = {};
+  try { j = JSON.parse(r.getContentText() || '{}'); } catch (e) { j = {}; }
+  return { code: r.getResponseCode(), json: j };
+}
+
+function assistMessage(msg) {
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  if (!chat || String(msg.chat.id) !== String(chat)) return;   // лише власник
+  const urls = [].concat(msg.entities || [], msg.caption_entities || []).map(function (en) { return en.url || ''; }).filter(Boolean);
+  const text = [msg.text, msg.caption].concat(urls).filter(Boolean).join(' ').trim();
+  if (/^\/?(?:start|допомога|help)$/i.test(text)) { tgAssist_('sendMessage', { chat_id: chat, text: ASSIST_HELP }); return; }
+  if (/^\/?(?:нове|забудь|reset|new)$/i.test(text)) {
+    props.deleteProperty('ASSIST_HIST');
+    tgAssist_('sendMessage', { chat_id: chat, text: '🆕 Почали з чистого аркуша.' });
+    return;
+  }
+  const f = photoFile_(msg);
+  const buf = JSON.parse(props.getProperty('ASSIST_BUF') || '{"photos":[],"q":""}');
+  if (Date.now() - (buf.ts || 0) > 10 * 60000) { buf.photos = []; buf.q = ''; }   // старі фото без питання — забуваємо
+  if (f) buf.photos.push(f.id);
+  if (text) buf.q = (buf.q ? buf.q + '\n' : '') + text;
+  buf.ts = Date.now();
+  if (msg.media_group_id) {   // альбом: зачекати решту фото (підпис може бути на будь-якому)
+    props.setProperty('ASSIST_BUF', JSON.stringify(buf));
+    if (!ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'assistFlush'; })) {
+      ScriptApp.newTrigger('assistFlush').timeBased().after(15000).create();
+    }
+    return;
+  }
+  if (!buf.q) {   // лише фото — чекаємо питання
+    props.setProperty('ASSIST_BUF', JSON.stringify(buf));
+    tgAssist_('sendMessage', { chat_id: chat, text: '📸 Фото є (' + buf.photos.length + '). Напиши питання — або надішли ще фото.' });
+    return;
+  }
+  props.deleteProperty('ASSIST_BUF');
+  assistAsk_(buf.q, buf.photos);
+}
+
+/** Тригер через ~15 с після альбому: є питання — питаємо з усіма фото; немає — просимо написати. */
+function assistFlush() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'assistFlush') ScriptApp.deleteTrigger(t); });
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  const buf = JSON.parse(props.getProperty('ASSIST_BUF') || '{"photos":[],"q":""}');
+  if (!buf.photos.length && !buf.q) return;
+  if (!buf.q) {
+    tgAssist_('sendMessage', { chat_id: chat, text: '📸 Фото є (' + buf.photos.length + '). Напиши питання — або надішли ще фото.' });
+    return;
+  }
+  props.deleteProperty('ASSIST_BUF');
+  assistAsk_(buf.q, buf.photos);
+}
+
+function assistAsk_(q, photos) {
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
+  tgAssist_('sendChatAction', { chat_id: chat, action: 'typing' });
+  const wait = tgAssist_('sendMessage', { chat_id: chat, text: '🤔 Думаю… (1–2 хв)' });
+  const waitId = ((wait.json || {}).result || {}).message_id || null;
+  let rows = [];
+  try {
+    if (props.getProperty('LEDGER_ID')) {
+      rows = ledgerRows_().filter(function (r) { return r.title; }).slice(-25)
+        .map(function (r) { return { n: r.n, title: String(r.title).slice(0, 70), status: r.status, spent: r.spent, sprice: r.sprice, profit: r.profit }; });
+    }
+  } catch (e) { console.log('assist rows: ' + e); }
+  const data = { q: String(q).slice(0, 3500), photos: (photos || []).slice(0, 6), hist: JSON.parse(props.getProperty('ASSIST_HIST') || '[]'),
+    rows: rows, wait: waitId, today: iso_(new Date()) };
+  const sealed = seal_(data, officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
+  const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/assist.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: 'main', inputs: sealed }) });
+  if (r.getResponseCode() !== 204 && waitId) {
+    tgAssist_('editMessageText', { chat_id: chat, message_id: waitId, text: '⚠️ Не зміг запустити помічника (GitHub ' + r.getResponseCode() + ').' });
+  }
+}
+
+/** Із processLedger: з'явився ASSIST_BOT_TOKEN (новий бот) → вебхук на цей же вебзастосунок (?bot=assist) і вітання. */
+function assistConnect_() {
+  const props = PropertiesService.getScriptProperties(), tok = props.getProperty('ASSIST_BOT_TOKEN');
+  if (!tok || props.getProperty('ASSIST_HOOK') === tok.slice(-8)) return;
+  const main = props.getProperty('TELEGRAM_BOT_TOKEN');
+  const info = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + main + '/getWebhookInfo', { muteHttpExceptions: true }).getContentText() || '{}');
+  const base = String(((info || {}).result || {}).url || '').split('?')[0];
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(base)) return;
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/setWebhook', { method: 'post', muteHttpExceptions: true,
+    payload: { url: base + '?bot=assist', allowed_updates: '["message"]', drop_pending_updates: 'true' } });
+  if (r.getResponseCode() !== 200) { console.log('assist webhook: ' + r.getResponseCode()); return; }
+  props.setProperty('ASSIST_HOOK', tok.slice(-8));
+  const hi = tgAssist_('sendMessage', { chat_id: props.getProperty('TELEGRAM_CHAT_ID'), text: '✅ Помічник підключений.\n\n' + ASSIST_HELP });
+  if (hi.code !== 200) notify_('🤖 Бот «Помічник» підключено. Відкрий його в Telegram і натисни «Start» — він не може написати першим.');
+}
+
 function publishCommand_(n, dry) {
   const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
   if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
@@ -783,6 +890,10 @@ function sealedPost(s) {
     const note = String(sh.getRange(row, COL.note).getValue() || '');
     sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'ціна знижена до ' + d.price + ' € ' +
       Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (d.item_id && note.indexOf(d.item_id) < 0 ? ' (eBay ' + d.item_id + ')' : ''));
+  } else if (d.kind === 'assist') {   // відповідь помічника — в історію розмови (6 останніх)
+    const h = JSON.parse(props.getProperty('ASSIST_HIST') || '[]');
+    h.push({ q: String(d.q || '').slice(0, 400), a: String(d.a || '').slice(0, 1200) });
+    props.setProperty('ASSIST_HIST', JSON.stringify(h.slice(-6)));
   } else if (d.kind === 'ebay_bad') {
     props.deleteProperty('EBAY_RT');
   } else if (d.kind === 'listed' && d.row) {

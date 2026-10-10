@@ -1,18 +1,18 @@
 {
  "gmail_trigger.gs": {
-  "ver": "2026-10-09b",
-  "sha": "5ce75cebcb4a30b2"
+  "ver": "2026-10-10a",
+  "sha": "aa1ccfbd226d4b1d"
  },
  "ledger.gs": {
-  "ver": "2026-10-10c",
-  "sha": "0a4e4feaf4c549e3"
+  "ver": "2026-10-10d",
+  "sha": "6694f301f2b5868f"
  },
  "kafilter.gs": {
   "ver": "2026-10-02b",
   "sha": "b7efb32bcec11b11"
  },
  "watchdog.gs": {
-  "ver": "2026-10-10a",
-  "sha": "f49909a6b604d429"
+  "ver": "2026-10-10b",
+  "sha": "4a48bbec354c38c5"
  }
 }
