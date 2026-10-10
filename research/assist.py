@@ -87,6 +87,15 @@ def chunks(text: str, limit: int = 3900) -> list[str]:
     return out + ([cur] if cur else [])
 
 
+def clean_token() -> dict:
+    """10.10: перший запуск — API 401. setup-token друкує ключ з переносом рядка, і при копіюванні в секрет потрапляють
+    пробіли / переноси — прибираємо. У журнал — лише формат (префікс sk-ant-oat, довжина), не сам ключ."""
+    raw = os.getenv("CLAUDE_CODE_OAUTH_TOKEN") or ""
+    tok = re.sub(r"\s+", "", raw)
+    os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = tok
+    return {"len": len(tok), "had_spaces": tok != raw.strip(), "prefix_ok": tok.startswith("sk-ant-oat")}
+
+
 def ask_claude(prompt: str, run=subprocess.run) -> tuple[str, dict]:
     with open(os.path.join(ROOT, "docs", "assistant.md"), encoding="utf-8") as f:
         rules = f.read()
@@ -134,9 +143,14 @@ def main():
         deliver("🔑 Помічник ще не налаштований: немає ключа Claude (CLAUDE_CODE_OAUTH_TOKEN у секретах GitHub). Напиши Claude.",
                 token, chat, d.get("wait"))
         raise SystemExit(1)
+    print(f"ключ: {json.dumps(clean_token())}")
     photos = download(d.get("photos") or [], token)
     answer, meta = ask_claude(build_prompt(d, photos))
     print(f"claude: {json.dumps(meta)}, відповідь {len(answer)} симв., фото {len(photos)}")
+    if meta.get("is_error") and re.search(r"\b401\b|authenticat|invalid.*(?:key|token)", answer, re.I):
+        answer = ("🔑 Claude не прийняв ключ (401). Перегенеруй його: у PowerShell знову "
+                  "«…\\claude-code\\bin\\claude.exe setup-token», скопіюй ключ повністю (він довгий, з переносом рядка) і "
+                  "заміни секрет CLAUDE_CODE_OAUTH_TOKEN на GitHub (Update secret).")
     if not answer:
         answer = ("⏱ Не встиг відповісти за 7 хвилин — спробуй коротше питання." if meta.get("error") == "timeout" else
                   "⚠️ Помічник не відповів (" + str(meta.get("error") or meta.get("subtype") or meta.get("code")) +

@@ -85,3 +85,19 @@ class ToolsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class TokenTest(unittest.TestCase):
+    def test_wrapped_token_cleaned(self):
+        old = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = "  sk-ant-oat01-abc\n def \r\nghi  "
+        try:
+            info = assist.clean_token()
+            self.assertEqual(os.environ["CLAUDE_CODE_OAUTH_TOKEN"], "sk-ant-oat01-abcdefghi")
+            self.assertEqual(info, {"len": 22, "had_spaces": True, "prefix_ok": True})
+        finally:
+            if old is None:
+                del os.environ["CLAUDE_CODE_OAUTH_TOKEN"]
+            else:
+                os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = old
