@@ -16,7 +16,7 @@ sys.path.insert(0, "research")
 import ram_mail_check as rmc
 
 
-def mail(n, title="2x 16GB Samsung DDR4-3200 RAM Desktop (32GB Kit)", price=80):
+def mail(n, title="2x 16GB Corsair Vengeance DDR4-3200 RAM Desktop (32GB Kit)", price=80):   # 10.10: фірмовий (звичайні — дешевші)
     msg = EmailMessage()
     msg["Subject"] = "Neue Treffer zu deiner Suche „ddr4 32gb“"
     msg["Message-ID"] = f"<m{n}@ka>"

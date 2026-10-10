@@ -31,6 +31,8 @@ REAL_BASE = {
     ("ddr5", "udimm", False, 32, 2): dict(p25=327, med=372, st=19, period=30, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
     ("ddr5", "udimm", False, 64, 2): dict(p25=617, med=688, st=9, period=30, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
     ("ddr5", "udimm", False, 16, 1): dict(p25=146, med=175, st=6, period=90, name="DDR5 UDIMM 16 ГБ (одна планка)"),
+    # 10.10.2026, Terapeak: 56 продано / 30 дн. — одна планка 32 ГБ для ПК (рішення користувача додати)
+    ("ddr5", "udimm", False, 32, 1): dict(p25=284, med=333, st=15, period=30, name="DDR5 UDIMM 32 ГБ (одна планка)"),
     ("ddr5", "sodimm", False, 32, 2): dict(p25=238, med=272, st=8, period=90, name="DDR5 SO-DIMM 32 ГБ (2×16) кіт"),
     # 26.09.2026, Terapeak 30 днів: ≥13 проданих вживаних (Crucial/SK hynix/Samsung/Kingston Impact), p25 ~510, медіана ~556
     ("ddr5", "sodimm", False, 64, 2): dict(p25=421, med=567, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
@@ -135,6 +137,27 @@ PLACEHOLDER_MIN, PLACEHOLDER_SHARE = 10.0, 0.15
 # 10.10 (рішення користувача): набір з 4 планок (4×16, 4×32) — продаємо як дві пари 2×; 5% знижки за дві окремі продажі
 # (довше, дві пересилки й пакування рахуються окремо). Раніше «4 планки — тип, що не купуємо» → такі набори пропускали.
 QUAD_SHARE = 0.95
+# 10.10 (рішення користувача): «бери», якщо за МЕДІАНОЮ свого сегмента лишається ≥ 50 € чистими і ≥ 20% на вкладене
+# (раніше — 30% навіть при найдешевшій чверті продажів: з бюджетом ~1 000 € бот пропускав звичайні угоди на 40–60 €).
+# «вигідно» — ≥ 80 €, «дуже вигідно» — ≥ 110 €. Мало карток → MIN_PROFIT 40 (домовились 10.10).
+MIN_PROFIT, GOOD_PROFIT, EXC_PROFIT, MIN_ROI = 50.0, 80.0, 110.0, 0.20
+
+
+def caps_from(net: float) -> tuple[float, float, float]:
+    """Чистими після продажу за медіаною → межі повної вартості купівлі: (бери, вигідно, дуже вигідно)."""
+    return (min(net - MIN_PROFIT, net / (1 + MIN_ROI)), min(net - GOOD_PROFIT, net / 1.35), min(net - EXC_PROFIT, net / 1.5))
+
+
+# 10.10, Terapeak: фірмові набори для ПК продаються значно дорожче за звичайні планки з розібраних ПК (DDR4 2×16:
+# 157/173 € проти 103/113 €), а загальна база їх змішувала. Множники (p25, медіана) до загальної бази типу.
+BRANDED = re.compile(r"corsair|g\.?\s?skill|kingston\s*fury|hyperx|ballistix|teamgroup|t-force|patriot|viper|vengeance|trident|"
+                     r"ripjaws|fury\s*beast|fury\s*renegade|dominator|lexar\s*ares|adata\s*xpg|xpg\s*lancer|flare\s*x|aegis|crucial\s*pro", re.I)
+SEGMENT = {
+    ("ddr4", "udimm", False, 32, 2): {"brand": (157 / 129, 173 / 166), "oem": (103 / 129, 113 / 166)},
+    ("ddr5", "udimm", False, 32, 2): {"brand": (352 / 327, 386 / 372), "oem": (256 / 327, 280 / 372)},
+    ("ddr5", "udimm", False, 64, 2): {"brand": (622 / 617, 688 / 688), "oem": (499 / 617, 514 / 688)},
+    ("ddr5", "udimm", False, 16, 2): {"brand": (204 / 195, 221 / 210), "oem": (174 / 195, 187 / 210)},
+}
 
 
 def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict:
@@ -168,8 +191,10 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     if p["modules"] == 1 and not p.get("explicit_single"):
         two = REAL.get(key[:4] + (2,))
         big = p["total"] > MAX_SINGLE_GB.get(p["gen"], 32) or p["total"] >= 32
-        if two and (p.get("kit_word") or (not real and big)):
+        # 10.10: з новим типом DDR5 1×32 «32GB DDR5» лишається набором 2×16 (так частіше); інші — як раніше
+        if two and (p.get("kit_word") or (big and (not real or key == ("ddr5", "udimm", False, 32, 1)))):
             real, kit_unknown = two, True
+            key = key[:4] + (2,)   # далі (сегмент фірмовий / звичайні) — як для набору
     if not real:
         return dict(verdict="SKIP",
                     reason=f"{p['gen'].upper()} {'ноутбучна' if p['form'] == 'sodimm' else p['form'].upper()} "
@@ -182,9 +207,20 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     if price < max(PLACEHOLDER_MIN, PLACEHOLDER_SHARE * real["p25"]):
         return dict(verdict="SKIP", reason=f"ціна {price:.0f} € — заглушка («1 €», «VB»), а не справжня ціна",
                     title=title, price=total_price, wrong_type=False)
-    net_q = (QUAD_SHARE * 2 * (quad["p25"] - costs(quad["p25"])) if quad   # дві продажі пар — кожна зі своїми витратами
-             else real["p25"] - costs(real["p25"]))
-    cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
+    sg = SEGMENT.get(key[:3] + (p["total"] // 2, 2) if quad else key[:2] + (False,) + key[3:])
+    if sg:   # фірмовий набір чи звичайні планки — свої ціни продажу (ECC UDIMM — від звичайних)
+        seg = "oem" if ecc_udimm else "brand" if BRANDED.search(title) else "oem"
+        fp, fm = sg[seg]
+        if quad:
+            quad = dict(quad, p25=round(quad["p25"] * fp), med=round(quad["med"] * fm))
+            real = dict(real, p25=2 * quad["p25"], med=2 * quad["med"])
+        else:
+            real = dict(real, p25=round(real["p25"] * fp), med=round(real["med"] * fm))
+        if not ecc_udimm:
+            real["name"] = real["name"] + (" · фірмовий" if seg == "brand" else " · звичайні планки")
+    net_q = (QUAD_SHARE * 2 * (quad["med"] - costs(quad["med"])) if quad   # дві продажі пар — кожна зі своїми витратами
+             else real["med"] - costs(real["med"]))
+    cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     profit_est = net_q - cost
     verdict = tier(cost, cap, good, excellent, vb)

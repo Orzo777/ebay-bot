@@ -26,11 +26,12 @@ DRIFT = 0.05
 RAM_TITLES = {   # підписка → типове оголошення, за яким рахуємо межу
     "arbeitsspeicher ddr5": "DDR5 16GB 6000 RAM", "ddr5 16gb": "DDR5 16GB 6000 RAM",
     "ddr5 sodimm 16gb": "DDR5 SO-DIMM 16GB 5600 Laptop RAM", "ddr5 sodimm 32gb": "DDR5 SO-DIMM 32GB (2x16GB) 5600 Laptop",
-    "ddr5 2x16gb": "DDR5 32GB (2x16GB) 6000 RAM", "ddr5 32gb": "DDR5 32GB (2x16GB) 6000 RAM",
-    "ddr5 2x32gb": "DDR5 64GB (2x32GB) 6000 RAM", "ddr5 64gb": ["DDR5 64GB (2x32GB) 6000 RAM", "DDR5 64GB (4x16GB) 6000 RAM"],
-    "ddr4 2x16gb": "DDR4 32GB (2x16GB) 3200 RAM", "ddr4 32gb": "DDR4 32GB (2x16GB) 3200 RAM",
+    "ddr5 2x16gb": "Corsair Vengeance DDR5 32GB (2x16GB) 6000", "ddr5 32gb": "Corsair Vengeance DDR5 32GB (2x16GB) 6000",
+    "ddr5 2x32gb": "Corsair Vengeance DDR5 64GB (2x32GB) 6000",
+    "ddr5 64gb": ["Corsair Vengeance DDR5 64GB (2x32GB) 6000", "Corsair Vengeance DDR5 64GB (4x16GB) 6000"],
+    "ddr4 2x16gb": "Corsair Vengeance DDR4 32GB (2x16GB) 3200", "ddr4 32gb": "Corsair Vengeance DDR4 32GB (2x16GB) 3200",
     "ddr4 sodimm 32gb": "DDR4 SO-DIMM 32GB (2x16GB) 3200 Laptop",
-    "ddr4 64gb": ["DDR4 64GB (2x32GB) 3200 RAM", "DDR4 64GB (4x16GB) 3200 RAM"],   # 10.10: і набори 4×16
+    "ddr4 64gb": ["DDR4 64GB (2x32GB) 3200 RAM", "Corsair Vengeance DDR4 64GB (4x16GB) 3200"],   # 10.10: і набори 4×16
     "ddr5 48gb": "DDR5 48GB (2x24GB) 6000 RAM"}
 CONSOLE_TITLES = {"xbox series x": "Xbox Series X 1TB Konsole", "xbox series": "Xbox Series X 1TB Konsole",
                   "ps5": "Sony PS5 Disc Edition Konsole", "playstation 5": "Sony PS5 Disc Edition Konsole",
@@ -46,8 +47,8 @@ def _top(fn, lo: int, hi: int) -> int | None:
     return best
 
 
-def _pickup(p25: float, costs: float) -> int:   # те саме, що test_hamburg_caps_match_model: стеля «торгуйся» без пересилки
-    return int((p25 - costs) / 1.3 * ra.NEGOTIATE_UP - ra.PICKUP_COST)
+def _pickup(med: float, costs: float) -> int:   # стеля «торгуйся» без пересилки (10.10: від медіани, ra.caps_from)
+    return int(ra.caps_from(med - costs)[0] * ra.NEGOTIATE_UP - ra.PICKUP_COST)
 
 
 def recommended() -> dict:
@@ -56,10 +57,13 @@ def recommended() -> dict:
                   for t in (ts if isinstance(ts, list) else [ts])) or None for k, ts in RAM_TITLES.items()}
     con = {k: _top(lambda p, t=t: ca.evaluate_console(t, p, vb=True), 150, int(cur["console"].get(k, 400) * 1.6) + 60)
            for k, t in CONSOLE_TITLES.items()}
-    ham = {g: max(_pickup(v["p25"], ra.costs(v["p25"])) for k, v in ra.REAL.items() if k[0] == g) for g in ("ddr5", "ddr4")}
-    ham.update(xbox=_pickup(ca.XBOX_SERIES_X["p25"], ca.costs(ca.XBOX_SERIES_X["p25"])),
-               ps5=_pickup(ca.PS5_DISC["p25"], ca.costs(ca.PS5_DISC["p25"])),
-               switch2=_pickup(ca.SWITCH2["p25"], ca.costs(ca.SWITCH2["p25"], ca.SHIP_SWITCH)))
+    def med(k, v):   # фірмовий сегмент (вищий) — межа підписки не має відрізати фірмові набори
+        sg = ra.SEGMENT.get(k)
+        return v["med"] * (sg["brand"][1] if sg else 1)
+    ham = {g: max(_pickup(med(k, v), ra.costs(med(k, v))) for k, v in ra.REAL.items() if k[0] == g) for g in ("ddr5", "ddr4")}
+    ham.update(xbox=_pickup(ca.XBOX_SERIES_X["med"], ca.costs(ca.XBOX_SERIES_X["med"])),
+               ps5=_pickup(ca.PS5_DISC["med"], ca.costs(ca.PS5_DISC["med"])),
+               switch2=_pickup(ca.SWITCH2["med"], ca.costs(ca.SWITCH2["med"], ca.SHIP_SWITCH)))
     return {"ram": {k: v for k, v in ram.items() if v}, "console": {k: v for k, v in con.items() if v}, "hamburg": ham}
 
 

@@ -179,7 +179,7 @@ class TestProcess(unittest.TestCase):
         self.assertEqual((sent, len(self.hints)), (0, 0))
 
     def test_negotiate_card_has_offer_button(self):
-        rmc._process(ka_mail("Xbox Series X 1TB", 340), 6, False, set(), {})
+        rmc._process(ka_mail("Xbox Series X 1TB", 410), 6, False, set(), {})   # «бери» з пропозицією (10.10: межі вищі)
         self.assertEqual(len(self.cards), 1)
         offer_text = self.cards[0][5]
         self.assertIn("Versand und Gebühr übernehme ich", offer_text)
@@ -196,7 +196,7 @@ class TestProcess(unittest.TestCase):
 
     def test_late_mail_only_good_deals_silent(self):
         # 01.10: Apps Script не спрацював, запасний cron приніс листи 2-годинної давнини пачкою
-        rmc._process(ka_mail("Xbox Series X 1TB", 340, ad_id="11", age_min=120), 6, False, set(), {})   # NEGOTIATE
+        rmc._process(ka_mail("Xbox Series X 1TB", 450, ad_id="11", age_min=120), 6, False, set(), {})   # NEGOTIATE
         self.assertEqual(len(self.cards), 0)
         rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="12", age_min=120), 6, False, set(), {})   # вигідно
         self.assertEqual(len(self.cards), 1)
@@ -260,7 +260,7 @@ class TestCompactCards0410(unittest.TestCase):
         self.assertIn("🤝 Запропонуй", buy_txt)
         self.assertEqual(len(buy_kb), 2)
         self.assertTrue(buy_kb[1].startswith("📋 Текст із пропозицією"))
-        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 75)   # «бери» (09.10: комісія 0 — 67 € тепер «дуже вигідно»)
+        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", 90)   # «бери» (10.10: фірмовий набір, межа ~100 €)
         r["buy_now"], r["risk_lines"] = False, []   # без «Direkt kaufen» — два тексти, обидва кнопками
         self.assertEqual(format_html(r).count("<code>"), 0)
         kb = rmc.build_keyboard("u", card_seller_text(r), None, offer_template(r))["inline_keyboard"]

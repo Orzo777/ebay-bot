@@ -55,7 +55,7 @@ class TestParse(unittest.TestCase):
 
 class TestEvaluate(unittest.TestCase):
     def test_negotiate_card_with_risk(self):
-        msg, res = evaluate_listing(page("Xbox Series X 1TB + OVP", "390 €"), "u")   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
+        msg, res = evaluate_listing(page("Xbox Series X 1TB + OVP", "450 €"), "u")   # 10.10: правило «≥ 50 € за медіаною»
         self.assertEqual(res["verdict"], "NEGOTIATE")
         self.assertIn("ТОРГУЙСЯ", msg)
         self.assertIn("Ризик шахрайства", msg)

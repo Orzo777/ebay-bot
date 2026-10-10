@@ -71,7 +71,8 @@ class PriceTest(unittest.TestCase):
                 self.assertIn("за медіаною продаватиметься повільніше", " ".join(pr["warn"]), comp)
         self.assertFalse(sell.plan_price(r, 50, [999])["warn"])
         # тижневий звіт (залежалося): як раніше — серед трьох найдешевших, не нижче 92% «швидкої»
-        self.assertEqual(sell.plan_price(r, 50, [120, 125, 129, 131], undercut=True)["list"], 124)
+        self.assertEqual(sell.plan_price(r, 50, [120, 125, 129, 131], undercut=True)["list"],
+                         sell.nice(r["quick_sale"] * sell.LOW_SHARE))   # 10.10: фірмовий набір — не нижче 92% його «швидкої»
         self.assertGreaterEqual(sell.plan_price(r, 50, [100], undercut=True)["list"], r["quick_sale"] * sell.LOW_SHARE - 5)
 
     def test_loss_guard(self):

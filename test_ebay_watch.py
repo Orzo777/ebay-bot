@@ -42,7 +42,7 @@ class TestEvaluate(unittest.TestCase):
         self.assertFalse(any("Sicher bezahlen" in n for n in r["notes"]))
 
     def test_market_price_skipped(self):
-        self.assertEqual(evaluate_ebay(item("Microsoft Xbox Series X 1TB Konsole", 480))["verdict"], "SKIP")
+        self.assertEqual(evaluate_ebay(item("Microsoft Xbox Series X 1TB Konsole", 540))["verdict"], "SKIP")   # 10.10: правило «≥ 50 € за медіаною»
 
     def test_accessory_skipped(self):
         self.assertEqual(evaluate_ebay(item("Xbox Series X Speichererweiterung 1TB", 160))["verdict"], "SKIP")
@@ -61,9 +61,9 @@ class TestEvaluate(unittest.TestCase):
         self.assertTrue(r["verdict"].startswith("BUY") and r["pickup"])
 
     def test_offer_only_with_best_offer(self):
-        cap_ish = evaluate_ebay(item("Xbox Series X Konsole", 340, ship="10.99"))
+        cap_ish = evaluate_ebay(item("Xbox Series X Konsole", 430, ship="10.99"))   # 10.10: правило «≥ 50 € за медіаною»
         self.assertIsNone(offer_ebay(cap_ish))
-        neg = evaluate_ebay(item("Xbox Series X Konsole", 355, ship="10.99", offer=True))
+        neg = evaluate_ebay(item("Xbox Series X Konsole", 430, ship="10.99", offer=True))
         self.assertIn(neg["verdict"], ("BUY", "NEGOTIATE"))
         o = offer_ebay(neg)
         self.assertIsNotNone(o)
@@ -183,7 +183,7 @@ class TestPickupAndDefects(unittest.TestCase):
 class TestSellerMessage(unittest.TestCase):
     def test_card_has_seller_text_and_buttons(self):
         from ebay_watch import ebay_message, keyboard
-        lst = item("Microsoft Xbox Series X 1TB Konsole", 355, ship="10.99", offer=True)
+        lst = item("Microsoft Xbox Series X 1TB Konsole", 420, ship="10.99", offer=True)   # 10.10: правило «≥ 50 € за медіаною»
         r = evaluate_ebay(lst)
         r["desc"] = "Läuft einwandfrei, Rechnung vorhanden."
         txt = format_card(r, lst, risk_of(lst, r["desc"], 545), "new", NOW)
@@ -227,7 +227,7 @@ class TestNegotiateFixedPrice(unittest.TestCase):
 
     def test_fixed_price_negotiate_has_offer_text(self):
         from ebay_watch import ebay_message, keyboard, offer_ebay
-        lst = item("Microsoft Xbox Series X 1TB Konsole", 415, ship="10.99", offer=False)   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
+        lst = item("Microsoft Xbox Series X 1TB Konsole", 470, ship="10.99", offer=False)   # 10.10: правило «≥ 50 € за медіаною»
         r = evaluate_ebay(lst)
         self.assertEqual(r["verdict"], "NEGOTIATE")
         o = offer_ebay(r)
@@ -267,7 +267,7 @@ class TestAuctions(unittest.TestCase):
         self.assertIsNone(auction_candidate(self._it(140, 1 / 60), st, NOW))   # 1 хв — уже пізно
         self.assertIsNotNone(auction_candidate(self._it(140, 0.25), st, NOW))  # 15 хв, ставка нижча межі
         self.assertIsNone(auction_candidate(self._it(140, 0.2), st, NOW))      # вдруге — ні
-        self.assertIsNone(auction_candidate(dict(self._it(300, 0.25), itemId="v1|8|0"), {}, NOW))   # уже дорого
+        self.assertIsNone(auction_candidate(dict(self._it(340, 0.25), itemId="v1|8|0"), {}, NOW))   # уже дорого (10.10: межа 315)
 
     def test_low_bid_is_not_a_scam_floor(self):
         # 30.09: «дешевше €150» / «заглушка» — для фіксованих цін; ставка 45 € за 15 хв до кінця — шанс, а не шахрай

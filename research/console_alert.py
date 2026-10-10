@@ -13,7 +13,7 @@ evaluate_console() повертає None, якщо назва — не Xbox Seri
 import os
 import re
 
-from ram_alert import buy_cost, tier
+from ram_alert import buy_cost, caps_from, tier
 
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.
 # 26.09.2026: 83 продані за 30 днів (класифікація цим же оцінювачем) — p25 545, медіана 571
@@ -216,8 +216,8 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
     if total < MIN_PRICE:
         return _skip(title, total, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
     real = XBOX_SERIES_X
-    net_q = real["p25"] - costs(real["p25"])
-    cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
+    net_q = real["med"] - costs(real["med"])   # 10.10: від медіани, ≥ 50 € і ≥ 20% (ram_alert.caps_from)
+    cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb)
     notes = ["Перевір привід, контролер, блокування · лише «Sicher bezahlen» або самовивіз"]
@@ -300,8 +300,8 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
     if price < MIN_PRICE:
         return _skip(title, price, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
     real = PS5_DIGITAL if digital else PS5_DISC
-    net_q = real["p25"] - costs(real["p25"])
-    cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
+    net_q = real["med"] - costs(real["med"])   # 10.10: від медіани, ≥ 50 € і ≥ 20% (ram_alert.caps_from)
+    cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb)
     notes = ["Перевір: " + ("" if digital else "працює дисковод, ") + "контролер, немає PSN-блокування. "
@@ -403,8 +403,8 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
         return _skip(title, price, "схоже на гру чи аксесуар, а не на консоль")
     if price < real["min"]:
         return _skip(title, price, f"дешевше €{real['min']} — гра, аксесуар, шахрайство або помилка в ціні", False)
-    net_q = real["p25"] - costs(real["p25"], real["ship"])
-    cap, good, excellent = net_q / 1.3, net_q / 1.6, net_q / 2.0
+    net_q = real["med"] - costs(real["med"], real["ship"])
+    cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb)
     two = real is SWITCH2

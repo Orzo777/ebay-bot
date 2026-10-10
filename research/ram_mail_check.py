@@ -259,7 +259,7 @@ _RAM_SEARCH = {  # назва підписки → межі ціни (як у KA
     "ddr4 32gb": (15, 101), "ddr5 48gb": (20, 334),
 }
 _KA = "https://www.kleinanzeigen.de"
-CONSOLE_MAX = {"xbox series x": 426, "ps5": 357, "switch 2": 305, "xbox series": 426, "playstation 5": 357}   # «Preis bis» у KA
+CONSOLE_MAX = {"xbox series x": 493, "ps5": 411, "switch 2": 352, "xbox series": 493, "playstation 5": 411}   # «Preis bis» у KA
 _CONSOLE_SEARCH = {
     "xbox series x": "/s-konsolen/xbox/anbieter:privat/anzeige:angebote/preis:150:{xbox series x}/xbox-series-x/"
                      "k0c279+konsolen.art_s:xbox+konsolen.model_s:series_x+konsolen.versand_s:ja",
@@ -293,7 +293,7 @@ _HAMBURG_SEARCH = {
     "playstation 5": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:230:{ps5}/playstation-5/k0c279" + _HAMBURG
                      + "+konsolen.art_s:playstation",
 }
-HAMBURG_MAX = dict(ddr5=526, ddr4=223, xbox=451, ps5=379, switch2=321)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
+HAMBURG_MAX = dict(ddr5=639, ddr4=279, xbox=520, ps5=435, switch2=369)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
 
 
 def _load_bounds():

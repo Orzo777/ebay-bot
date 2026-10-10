@@ -42,6 +42,7 @@ QUERIES = {  # ключ як у ram_alert.REAL → пошуковий запит
     ("ddr5", "udimm", False, 32, 2): "DDR5 32GB 2x16GB",
     ("ddr5", "udimm", False, 64, 2): "DDR5 64GB 2x32GB",
     ("ddr5", "udimm", False, 16, 1): "DDR5 16GB",
+    ("ddr5", "udimm", False, 32, 1): "DDR5 32GB 1x32GB",
     ("ddr5", "sodimm", False, 32, 2): "DDR5 SODIMM 32GB 2x16GB",
     ("ddr5", "sodimm", False, 64, 2): "DDR5 SODIMM 64GB 2x32GB",
     ("ddr5", "sodimm", False, 32, 1): "DDR5 SODIMM 32GB",
@@ -71,7 +72,6 @@ CANDIDATES = {
     ("ddr4", "udimm", False, 64, 4): "DDR4 64GB 4x16GB",
     ("ddr5", "sodimm", False, 16, 2): "DDR5 SODIMM 16GB 2x8GB",
     ("ddr5", "udimm", False, 96, 2): "DDR5 96GB 2x48GB",
-    ("ddr5", "udimm", False, 32, 1): "DDR5 32GB",
     ("ddr4", "server", True, 32, 1): "DDR4 32GB RDIMM ECC",
 }
 
@@ -151,12 +151,12 @@ def ebay_fetch(q: str, cond: str, cat: str | None = None) -> list[dict]:
     return out
 
 
-def _cap(p25: float, console: bool, ship: float | None = None) -> float:
-    """Стеля купівлі (повна вартість), як у ram_alert / console_alert: (p25 − витрати продажу) / 1,3."""
+def _cap(med: float, console: bool, ship: float | None = None) -> float:
+    """Стеля купівлі (повна вартість), як у ram_alert / console_alert: від медіани, ≥ 50 € і ≥ 20% (10.10)."""
     import console_alert
     import ram_alert
-    net = p25 - (console_alert.costs(p25, ship or console_alert.SHIP) if console else ram_alert.costs(p25))
-    return net / 1.3
+    net = med - (console_alert.costs(med, ship or console_alert.SHIP) if console else ram_alert.costs(med))
+    return ram_alert.caps_from(net)[0]
 
 
 def _update(e: dict, base: dict, ask: float | None, sellers: int, today: str, min_sellers: int,
@@ -195,7 +195,7 @@ def _update(e: dict, base: dict, ask: float | None, sellers: int, today: str, mi
         e["last_alert"], e["alert_p25"] = today, e["p25"]
         arrow = "📉" if change < 0 else "📈"
         return (f"{arrow} {base['name']}: {100 * change:+.0f}% за тиждень — швидкий продаж {then} → {e['p25']} €, "
-                f"стеля купівлі {_cap(then, console, ship):.0f} → {_cap(e['p25'], console, ship):.0f} €")
+                f"стеля купівлі {_cap(then * e['med'] / e['p25'], console, ship):.0f} → {_cap(e['med'], console, ship):.0f} €")
     return None
 
 

@@ -75,14 +75,14 @@ class TestPhotoCheck(unittest.TestCase):
         from ram_alert import refine_by_desc
         self.assertEqual(evaluate("SK Hynix 2x 16GB DDR4 PC4-2666V-RE1 Arbeitsspeicher", 85)["verdict"], "SKIP")
         self.assertEqual(evaluate("Micron 2x16GB 2RX8 PC4-2666V-RE2-12 MTA18ASF2G72PDZ", 85)["verdict"], "SKIP")
-        self.assertNotEqual(evaluate("Samsung 2x16GB DDR4 M378A2K43EB1-CWE PC4-3200AA-UA2-11", 85)["verdict"], "SKIP")
+        self.assertNotEqual(evaluate("Samsung 2x16GB DDR4 M378A2K43EB1-CWE PC4-3200AA-UA2-11", 45)["verdict"], "SKIP")   # 10.10: звичайні планки дешевші
         t = "SK Hynix 2x 16GB DDR4 RAM PC4-2666V Arbeitsspeicher"
-        r = evaluate(t, 85)
+        r = evaluate(t, 45)
         self.assertNotEqual(r["verdict"], "SKIP")
         desc = ("Modellbezeichnung: HMA82GR7AFR8N-VK TF AC - Bauform: 288-pin DIMM. Er eignet sich hervorragend, "
                 "um den Arbeitsspeicher deines PCs aufzurüsten. Preis pro Stück.")
-        self.assertIn("серверна", refine_by_desc(r, t, 85, False, desc, evaluate)["reason"])
-        self.assertNotEqual(refine_by_desc(r, t, 85, False, "Non-ECC, unbuffered, kein Server RAM. Läuft im Gaming-PC.",
+        self.assertIn("серверна", refine_by_desc(r, t, 45, False, desc, evaluate)["reason"])
+        self.assertNotEqual(refine_by_desc(r, t, 45, False, "Non-ECC, unbuffered, kein Server RAM. Läuft im Gaming-PC.",
                                            evaluate)["verdict"], "SKIP")
 
     def test_ecc_unbuffered_is_separate_type(self):

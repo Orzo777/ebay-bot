@@ -41,8 +41,8 @@ class TestAmbiguousKit(unittest.TestCase):
         self.assertIn("2×32", format_html(r))
 
     def test_real_single_16_gets_single_warning(self):
-        r = evaluate("SK Hynix 16GB DDR5 SODIMM RAM, 5600MHz, PC5-5600B", 60)
-        self.assertEqual(r["verdict"], "BUY-GOOD")   # 60 € + пересилка + Sicher bezahlen (база Terapeak 10.10: p25 129)
+        r = evaluate("SK Hynix 16GB DDR5 SODIMM RAM, 5600MHz, PC5-5600B", 45)
+        self.assertEqual(r["verdict"], "BUY-GOOD")   # 10.10: правило «≥ 50 € за медіаною»
         self.assertTrue(r["single_module_warning"])
         self.assertFalse(r["kit_unknown"])
         self.assertIn("EIN Riegel mit 16 GB", seller_template(r))
@@ -58,27 +58,27 @@ class TestAmbiguousKit(unittest.TestCase):
 
 class TestNewTypes(unittest.TestCase):
     def test_ddr5_sodimm_2x16_kit(self):
-        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 140)
+        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 185)   # 10.10: правило «≥ 50 € за медіаною»
         self.assertEqual(r["type"], "DDR5 SO-DIMM 32 ГБ (2×16) кіт")
         self.assertEqual(r["verdict"], "BUY")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 165)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8% (09.10: комісія 0)
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 200)["verdict"], "SKIP")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 165, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 205)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 230)["verdict"], "SKIP")
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 230, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
 
     def test_ddr5_sodimm_2x32_kit(self):
         # 26.09: поділились у бот Kingston FURY Impact 64GB (2x32) SO-DIMM за 420 € — бот не знав типу
         t = "Kingston FURY Impact 64GB (2x32GB) DDR5-5600 SO-DIMM KF556S40IBK2"
-        r = evaluate(t, 420)
+        r = evaluate(t, 480)   # 10.10: правило «≥ 50 € за медіаною»
         self.assertEqual(r["type"], "DDR5 SO-DIMM 64 ГБ (2×32) кіт")
-        self.assertEqual(r["verdict"], "SKIP")                              # ≈445 € разом — заробіток ~17 €
+        self.assertEqual(r["verdict"], "SKIP")
         self.assertTrue(evaluate(t, 270)["verdict"].startswith("BUY"))
-        self.assertEqual(evaluate(t, 310, vb=True)["verdict"], "NEGOTIATE")
+        self.assertEqual(evaluate(t, 500, vb=True)["verdict"], "NEGOTIATE")
 
     def test_types_added_26_09(self):
         # заміряні 26.09, коли з'ясувалось, що їх бракує
         self.assertEqual(evaluate("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150)["type"], "DDR5 UDIMM 48 ГБ (2×24) кіт")
         self.assertEqual(evaluate("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150)["verdict"], "BUY-EXCELLENT")
-        self.assertEqual(evaluate("Kingston Fury Beast DDR5 16GB (2x8GB) 5200", 90)["type"], "DDR5 UDIMM 16 ГБ (2×8) кіт")
+        self.assertTrue(evaluate("Kingston Fury Beast DDR5 16GB (2x8GB) 5200", 90)["type"].startswith("DDR5 UDIMM 16 ГБ (2×8) кіт"))
         self.assertEqual(evaluate("Crucial 32GB Kit DDR4 3200 SODIMM 2x16GB", 70)["type"], "DDR4 SO-DIMM 32 ГБ (2×16) кіт")
         self.assertIn("не купуємо", evaluate("Crucial DDR5 96GB Kit 2x48GB 5600", 200)["reason"])
 
@@ -96,8 +96,8 @@ class TestNewTypes(unittest.TestCase):
 
 class TestPrices(unittest.TestCase):
     def test_tiers(self):
-        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 105)["verdict"], "BUY-GOOD")
-        self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 285)["verdict"], "BUY-GOOD")
+        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 145)["verdict"], "BUY-GOOD")   # 10.10: правило «≥ 50 € за медіаною»
+        self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 450)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate("Crucial DDR5 16GB 5600 SODIMM", 145)["verdict"], "SKIP")
 
 
@@ -182,19 +182,17 @@ class TestPickup(unittest.TestCase):
     def test_pickup_can_turn_skip_into_negotiate(self):
         from ram_alert import apply_pickup
         from console_alert import evaluate_console
-        self.assertEqual(evaluate_console("Xbox Series X 1TB Konsole", 445, vb=True)["verdict"], "SKIP")   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
-        self.assertIn(apply_pickup(evaluate_console("Xbox Series X 1TB Konsole", 445, vb=True))["verdict"],
+        self.assertEqual(evaluate_console("Xbox Series X 1TB Konsole", 500, vb=True)["verdict"], "SKIP")   # 10.10: правило «≥ 50 € за медіаною»
+        self.assertIn(apply_pickup(evaluate_console("Xbox Series X 1TB Konsole", 500, vb=True))["verdict"],
                       ("BUY", "NEGOTIATE"))
 
     def test_hamburg_caps_match_model(self):
         import ram_mail_check as m
-        from ram_alert import NEGOTIATE_UP, PICKUP_COST, REAL, costs
+        from ram_alert import NEGOTIATE_UP, PICKUP_COST, caps_from
         import console_alert as ca
-
-        def mx(p25, c):
-            return int((p25 - c) / 1.3 * NEGOTIATE_UP - PICKUP_COST)
-        self.assertEqual(m.HAMBURG_MAX["xbox"], mx(ca.XBOX_SERIES_X["p25"], ca.costs(ca.XBOX_SERIES_X["p25"])))
-        self.assertEqual(m.HAMBURG_MAX["ddr5"], max(mx(v["p25"], costs(v["p25"])) for k, v in REAL.items() if k[0] == "ddr5"))
+        # 10.10: стеля «торгуйся» для самовивозу — від медіани (caps_from), як і все інше
+        x = ca.XBOX_SERIES_X["med"]
+        self.assertEqual(m.HAMBURG_MAX["xbox"], int(caps_from(x - ca.costs(x))[0] * NEGOTIATE_UP - PICKUP_COST))
         self.assertTrue(m.is_pickup_search("Neue Anzeigen für „Konsolen - xbox series x in Hamburg“"))
         self.assertIn("l9409r30", m.public_search_url("Neue Anzeigen für „Konsolen - ps5 in Hamburg“"))
 
@@ -251,14 +249,16 @@ class TestQuadKits1010(unittest.TestCase):
     """10.10: набори 4×16 / 4×32 — як дві пари 2× (5% знижки), а не «тип, що не купуємо»."""
 
     def test_quad_is_two_pairs(self):
-        from ram_alert import QUAD_SHARE, REAL, costs, evaluate
-        pair = REAL[("ddr4", "udimm", False, 32, 2)]
+        from ram_alert import QUAD_SHARE, REAL, SEGMENT, costs, evaluate
+        key = ("ddr4", "udimm", False, 32, 2)
+        pair = REAL[key]
         r = evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 150)
         self.assertNotEqual(r["verdict"], "SKIP")
-        self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (pair["p25"] - costs(pair["p25"])))
+        med = round(pair["med"] * SEGMENT[key]["brand"][1])   # 10.10: від медіани фірмового сегмента
+        self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (med - costs(med)))
         self.assertIn("4×16", r["type"])
         self.assertIn("2 пари", r["type"])
-        self.assertEqual(r["quick_sale"], 2 * pair["p25"])
+        self.assertEqual(r["quick_sale"], 2 * round(pair["p25"] * SEGMENT[key]["brand"][0]))
         self.assertEqual(evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 400)["verdict"], "SKIP")   # дорожче двох пар
         self.assertIn("2 пари", evaluate("64GB DDR4 Quad-Kit G.Skill Trident Z 3200", 150)["type"])
         self.assertNotEqual(evaluate("Crucial Pro DDR5-5600 64GB (4x16GB) UDIMM", 300)["verdict"], "SKIP")

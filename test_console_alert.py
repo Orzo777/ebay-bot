@@ -29,12 +29,12 @@ def verdict(title, price):
 class TestConsoleListings(unittest.TestCase):
     def test_real_cheap_consoles_are_buy(self):
         # повна вартість = ціна + пересилка 11 € + Sicher bezahlen (0,50 € + 4,5%)
-        self.assertEqual(verdict("Xbox Series X 1 TB, 2 Controller, 15 Spiele", 250), "BUY-GOOD")
-        self.assertEqual(verdict("Xbox Series X 1TB + 2 Spiele + Controller + OVP - Top Zustand", 320), "BUY")   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
-        self.assertEqual(verdict("Xbox Series X Konsole (1TB) mit Rechnung und drei Controller!", 340), "BUY")
-        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 390), "NEGOTIATE")
-        self.assertEqual(verdict("Microsoft Xbox Series X 1TB Black 4K Wi-Fi inkl. Controller", 420), "SKIP")
-        self.assertEqual(evaluate_console("Microsoft Xbox Series X 1TB Black", 395, vb=True)["verdict"], "NEGOTIATE")
+        self.assertEqual(verdict("Xbox Series X 1 TB, 2 Controller, 15 Spiele", 250), "BUY-EXCELLENT")   # 10.10: правило «≥ 50 € за медіаною» — межі вищі
+        self.assertEqual(verdict("Xbox Series X 1TB + 2 Spiele + Controller + OVP - Top Zustand", 390), "BUY")
+        self.assertEqual(verdict("Xbox Series X Konsole (1TB) mit Rechnung und drei Controller!", 410), "BUY")
+        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 450), "NEGOTIATE")
+        self.assertEqual(verdict("Microsoft Xbox Series X 1TB Black 4K Wi-Fi inkl. Controller", 490), "SKIP")
+        self.assertEqual(evaluate_console("Microsoft Xbox Series X 1TB Black", 470, vb=True)["verdict"], "NEGOTIATE")   # 10.10: правило «≥ 50 € за медіаною»
 
     def test_market_price_is_skip(self):
         self.assertEqual(verdict("Xbox Series X Konsole mit Controller und OVP", 500), "SKIP")
@@ -69,22 +69,22 @@ class TestConsoleListings(unittest.TestCase):
 class TestNegotiate(unittest.TestCase):
     def test_negotiate_offer_whole_sum(self):
         # 26.09 (вечір, ціни Terapeak p25 545): трохи понад стелю → торг; 09.10 комісія 0: стеля 403, 390 € → пропозиція 345
-        r = evaluate_console("Xbox Series X Console", 390)
+        r = evaluate_console("Xbox Series X Console", 450)   # 10.10: правило «≥ 50 € за медіаною» — межі вищі
         self.assertEqual(r["verdict"], "NEGOTIATE")
-        self.assertEqual(offer_price(r), 345)
+        self.assertEqual(offer_price(r), 400)
         self.assertIsNone(offer_template(r))   # «торгуйся»: один текст, одразу з пропозицією (29.09)
         t = seller_template(r)
-        self.assertIn("345 €", t)
-        self.assertTrue(t.startswith("Hallo! Ich nehme die Xbox Series X für 345 €"))   # хук: одразу рішення і сума
+        self.assertIn("400 €", t)
+        self.assertTrue(t.startswith("Hallo! Ich nehme die Xbox Series X für 400 €"))   # хук: одразу рішення і сума
         self.assertIn("reservieren", t)
         self.assertIn("Versand und Gebühr übernehme ich", t)
         self.assertNotIn("noch da", t)
         self.assertIn("Xbox Series X", t)
         self.assertLessEqual(len(t), 256)
-        self.assertIn("Запропонуй <b>345 €</b>", format_html(r))
+        self.assertIn("Запропонуй <b>400 €</b>", format_html(r))
 
     def test_negotiate_offer_not_above_cap(self):
-        r = evaluate_console("Xbox Series X 1TB", 410, vb=True)   # 09.10: комісія eBay 0 — ціни зсунуті вгору на неї
+        r = evaluate_console("Xbox Series X 1TB", 470, vb=True)   # 10.10: правило «≥ 50 € за медіаною» — межі вищі
         self.assertEqual(r["verdict"], "NEGOTIATE")
         self.assertLessEqual(buy_cost(offer_price(r), r["ship_in"]), r["cap"])   # разом — не вище стелі
         self.assertEqual(offer_price(r) % 5, 0)
@@ -99,7 +99,7 @@ class TestNegotiate(unittest.TestCase):
         self.assertIsNone(offer_price(evaluate_console("Xbox Series X 1TB", 270)))
 
     def test_far_above_cap_skip(self):
-        self.assertEqual(verdict("Xbox Series X 1TB", 450), "SKIP")
+        self.assertEqual(verdict("Xbox Series X 1TB", 500), "SKIP")
 
 
 class TestCard(unittest.TestCase):
@@ -149,7 +149,7 @@ class TestPS5(unittest.TestCase):
             self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", t)
 
     def test_negotiate_zone_and_offer(self):
-        r = evaluate_console("PS5 Slim Disc Edition 1TB", 320, vb=True)
+        r = evaluate_console("PS5 Slim Disc Edition 1TB", 370, vb=True)   # 10.10: правило «≥ 50 € за медіаною» — межі вищі
         self.assertEqual(r["verdict"], "NEGOTIATE")
         self.assertIn("die PS5", seller_template(r))
         self.assertIn("PSN", seller_template(r))
@@ -162,7 +162,7 @@ class TestPS5(unittest.TestCase):
 class TestSwitch2(unittest.TestCase):
     # 26.09: KA €220–270 при швидкому продажу на eBay €382 (вживані); ігри й аксесуари з «Switch 2» у назві — не консоль
     def test_console_vs_games(self):
-        self.assertEqual(evaluate_console("Nintendo Switch 2 + Mario Kart World", 220)["verdict"], "BUY")
+        self.assertEqual(evaluate_console("Nintendo Switch 2 + Mario Kart World", 290)["verdict"], "BUY")   # 10.10: правило «≥ 50 € за медіаною» — межі вищі
         self.assertEqual(evaluate_console("Pokémon Legenden: Z-A - Nintendo Switch 2 Edition", 35)["verdict"], "SKIP")
         self.assertEqual(evaluate_console("Nintendo Switch 2 Pro Controller", 60)["verdict"], "SKIP")
         self.assertIsNone(evaluate_console("FeinTech SW212 HDMI 2.1 Switch 2x1 + Audio Extractor", 25))
@@ -338,8 +338,11 @@ class TestPass12Regressions(unittest.TestCase):
                      ("Nintendo Switch 2 NEU OVP Siegel nicht gebrochen", 250), ("PS5 Disc Edition Siegel ungebrochen NEU OVP", 250),
                      ("Nintendo Switch OLED + Ring Fit Adventure + 2 Spiele", 80), ("Xbox Series X Konvolut mit 2 Controllern", 250),
                      ("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 80), ("Nintendo Switch V2 nur Konsole, keine Spiele", 55),
-                     ("Nintendo Switch Lite nur Konsole", 40), ("Nintendo Switch Lite grau ohne Zubehör", 40)]:
+                     ]:
             self.assertNotEqual(self._ev(t, p), "SKIP", t)
+        # 10.10: Switch Lite (продається за ~80–100 €) не дає 50 € навіть за безцінь — перевіряємо лише, що консоль розпізнано
+        for t in ["Nintendo Switch Lite nur Konsole", "Nintendo Switch Lite grau ohne Zubehör"]:
+            self.assertIn("net_q", evaluate_console(t, 40), t)
 
     def test_description_not_incomplete(self):
         for d in ["Funktioniert einwandfrei ohne Probleme im Dock", "laufen ohne Joy-Con Drift", "Switch wie neu, ohne Kratzer am Dock",

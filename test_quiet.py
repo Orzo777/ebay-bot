@@ -35,7 +35,7 @@ class QuietTest(unittest.TestCase):
         rmc.check_listing = lambda *a: {"level": "low", "score": 0, "reasons": [], "seller": "x", "buy_now": True}
         quiet.night = lambda now=None: True
         try:
-            rmc._process(ka_mail("Xbox Series X 1TB", 340, ad_id="901"), 6, False, set(), {})   # «торгуйся» / «можна»
+            rmc._process(ka_mail("Xbox Series X 1TB", 410, ad_id="901"), 6, False, set(), {})   # «бери» (10.10: межі вищі)
             rmc._process(ka_mail("Xbox Series X 1TB", 200, ad_id="902"), 6, False, set(), {})   # «бери»
         finally:
             rmc.send_telegram_card, rmc.check_listing, rmc.add_to_card, quiet.night = saved
