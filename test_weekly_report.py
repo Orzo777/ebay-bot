@@ -201,3 +201,34 @@ class HeadlineTest(unittest.TestCase):
         self.assertIn("• Зробити:", head)
         self.assertIn("змінити межі в 1", head)
         self.assertLess(text.index("Що зробити з товаром"), text.index("💰 <b>Гроші</b>"))   # дії — одразу під головним
+
+
+
+class ShortageTest(unittest.TestCase):
+    """10.10: сторож дефіциту — замір раз на 6 днів, стрибок ≥15% за 10–24 дні → рядок у тижневому звіті."""
+
+    def test_measure_filters_and_update(self):
+        import shortage_watch as sw
+        rows = [{"title": f"Sony PS5 Pro Konsole 2TB #{i}", "total": 900.0 + 20 * i} for i in range(8)] + \
+               [{"title": "PS5 Pro Hülle", "total": 30.0}, {"title": "PS5 Slim", "total": 450.0}, {"title": "PS5 Pro defekt", "total": 500.0}]
+        m = sw.measure(lambda q, c, cat: rows, sw.WATCH[0])
+        self.assertEqual(m, {"p25": 940, "med": 970, "n": 8})
+        data, calls = {}, []
+        fetch = lambda q, c, cat: (calls.append(q), rows)[1]   # noqa: E731
+        sw.update(data, fetch, "2026-10-10")
+        self.assertEqual(data["shortage"]["hist"]["PS5 Pro"], [["2026-10-10", 940, 970, 8]])
+        n = len(calls)
+        self.assertEqual(sw.update(data, fetch, "2026-10-14"), 0)   # раніше ніж за 6 днів — без запитів
+        self.assertEqual(len(calls), n)
+
+    def test_risers_and_lines(self):
+        import shortage_watch as sw
+        data = {"shortage": {"last": "2026-10-24", "hist": {
+            "PS5 Pro": [["2026-10-10", 900, 980, 30], ["2026-10-17", 960, 1000, 30], ["2026-10-24", 1080, 1150, 30]],
+            "Steam Deck OLED": [["2026-10-10", 400, 450, 20], ["2026-10-24", 410, 460, 20]]}}}
+        r = sw.risers(data, "2026-10-24")
+        self.assertEqual([(x[0], round(x[1], 2), x[2], x[3], x[4]) for x in r], [("PS5 Pro", 0.2, 1080, 900, 14)])
+        text = "\n".join(sw.lines(data, "2026-10-24"))
+        self.assertIn("PS5 Pro: <b>+20%</b> (900 → 1080 € за 14 дн.)", text)
+        self.assertNotIn("Steam Deck", text)
+        self.assertIn("збирає базу", sw.lines({"shortage": {"hist": {"X": [["2026-10-10", 1, 1, 9]]}}}, "2026-10-12")[0])

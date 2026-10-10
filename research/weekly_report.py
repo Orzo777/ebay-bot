@@ -219,6 +219,17 @@ def headline(rows: list[dict], today: date, todo: list[str], bl: list[str]) -> l
     return out
 
 
+def shortage() -> list[str]:
+    """10.10: що подорожчало за ~2 тижні поза нашими категоріями (research/shortage_watch.py, дані — у ram_prices.json)."""
+    try:
+        import shortage_watch
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"), encoding="utf-8") as fh:
+            return shortage_watch.lines(json.load(fh), date.today().isoformat())
+    except Exception as e:
+        print(f"дефіцит: {e.__class__.__name__}")
+        return []
+
+
 def bounds() -> list[str]:
     """10.10: межі «Preis bis» підписок KA, що відстали від ринку (research/ka_bounds.py)."""
     try:
@@ -230,7 +241,7 @@ def bounds() -> list[str]:
 
 
 def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.competitors, kb: list | None = None,
-          ebay_on: bool = False, bounds_fn=bounds) -> str:
+          ebay_on: bool = False, bounds_fn=bounds, shortage_fn=shortage) -> str:
     """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»."""
     acc, _ = accuracy(rows, today)
     cuts, bl = [], bounds_fn()
@@ -239,6 +250,9 @@ def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.compe
              todo, money(rows, today), acc, search(ebay, ka, rows, today) + auctions(ebay, today)]
     if bl:
         parts.append(bl)
+    sl = shortage_fn()
+    if sl:
+        parts.append(sl)
     if kb is not None:
         if ebay_on:
             kb += [[{"text": f"⬇️ №{n} → {item} €", "callback_data": f"p|{n}|{item}"}] for n, item in cuts[:6]]

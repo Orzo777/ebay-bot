@@ -335,6 +335,8 @@ def main():
     data, changes = refresh(data, ebay_fetch, today)
     found = scan(data, ebay_fetch, today)
     parts = pc_parts(data, ebay_fetch, today)
+    import shortage_watch   # 10.10: сторож дефіциту — раз на 6 днів, ~40 запитів
+    print(f"сторож дефіциту: заміряно {shortage_watch.update(data, ebay_fetch, today)} товарів")
     for group in ("types", "consoles"):
         for e in data[group].values():
             print(f"{e['name']:34} продавців {e['sellers']:3} ask {e['ask']} якір {e['anchor_ask']} ×{e['ratio']} → p25 €{e['p25']} мед €{e['med']}")
