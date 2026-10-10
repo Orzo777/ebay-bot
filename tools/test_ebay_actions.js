@@ -139,5 +139,29 @@ check('plan dispatched', [p.mode, p.mid, p.row, p.cost, p.text], ['plan', 555, 3
 const g2 = gh.length;
 ctx.planAfter_(null, 3, 'x', 1, 't', null);
 check('no message id → no plan', gh.length, g2);
+// 10.10: фото квитанції з номером → «відправлено», трек у eBay і подяка покупцю (лише один раз)
+deals.cells['7:11'] = 'Продано'; deals.cells['7:13'] = 'eBay';
+let line = ctx.receiptShipped_(3, { kind: 'receipt', receipt: { track: '0034 0434 1612 3456 7890', carrier: 'DHL' } });
+p = opened();
+check('receipt → ship + thanks', [p.action, p.row, p.track, p.carrier, p.thanks], ['ship', 3, '00340434161234567890', 'DHL', true]);
+check('receipt line', /🧾 Квитанція: DHL 00340434161234567890 → «відправлено» · ⏳ Передаю трек в eBay і подяку покупцю/.test(line), true);
+check('receipt event', JSON.parse(store.LEDGER_EVENTS)[3].outTrack, '00340434161234567890');
+ctx.receiptShipped_(3, { kind: 'receipt', receipt: { track: '00340434161234567890', carrier: 'DHL' } });
+check('thanks only once', opened().thanks, false);
+check('no track read', /трек не прочитав/.test(ctx.receiptShipped_(3, { kind: 'receipt', receipt: { track: '' } })), true);
+const g3 = gh.length;
+check('not sold → hint, nothing sent', [/не позначений проданим/.test(ctx.receiptShipped_(1, { kind: 'receipt', receipt: { track: '00340434161234567899' } })), gh.length], [true, g3]);
+// відгук після продажу
+ctx.feedbackToEbay_(3, 'Kingston 16GB DDR4');
+check('feedback dispatched', [opened().action, opened().row], ['feedback', 3]);
+// повідомлення покупця після покупки — теж з кнопкою «📨»
+const mm = ctx.ebayMailButtons_({ kind: 'message', role: 'seller', reply_de: 'Hallo, das Paket geht heute raus.', message: 'Wann versenden Sie?' }, null);
+check('buyer message has send button', /^e\|\d+\|send$/.test(datas(mm)[0]), true);
+// пакування за замовчуванням 4 → 1 € (лише якщо там 4), один раз
+const setSheet = { cells: { 'B5': 4 }, getRange: (a) => ({ getValue: () => setSheet.cells[a], setValue: (v) => { setSheet.cells[a] = v; } }) };
+vm.runInContext('ledger_ = function () { return { getSheetByName: (n) => (n === "Налаштування" ? __set : __deals) }; };', Object.assign(ctx, { __set: setSheet }));
+ctx.packOne_();
+setSheet.cells.B5 = 3; ctx.packOne_();
+check('pack default 1 once', [setSheet.cells.B5, store.PACK_ONE], [3, '1']);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

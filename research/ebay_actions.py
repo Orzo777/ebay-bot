@@ -57,18 +57,47 @@ def _ok(root) -> tuple[bool, list[str]]:
     return not errs, errs
 
 
-# ----------------------------------------------------------------------------- трек
-def orders_to_ship(token: str, post) -> list[dict]:
+# ----------------------------------------------------------------------------- замовлення: трек, подяка, відгук
+THANKS = ("Hallo, vielen Dank für Ihren Kauf! Ihr Paket ist heute an {carrier} übergeben worden, Sendungsnummer {track}. "
+          "Ich wünsche Ihnen viel Freude damit. Viele Grüße")
+FEEDBACK = "Schnelle Zahlung, unkomplizierter Kauf - jederzeit gerne wieder!"
+
+
+def recent_orders(token: str, post) -> list[dict]:
+    """Продажі за 45 днів (і вже відправлені: етикетка eBay сама ставить «Versendet» і трек)."""
     root = el.trading("GetOrders", f"<CreateTimeFrom>{_iso(45)}</CreateTimeFrom><CreateTimeTo>{_iso()}</CreateTimeTo>"
                       "<OrderRole>Seller</OrderRole><OrderStatus>Completed</OrderStatus>", token, post)
     out = []
     for o in root.iter(NS + "Order"):
-        if _t(o, "ShippedTime"):
-            continue
         for tr in o.iter(NS + "Transaction"):
             out.append(dict(order_id=_t(o, "OrderID"), line_id=_t(tr, "OrderLineItemID"), item_id=_t(tr, "Item/ItemID"),
-                            txn_id=_t(tr, "TransactionID"), title=_t(tr, "Item/Title"), sku=_t(tr, "Item/SKU")))
+                            txn_id=_t(tr, "TransactionID"), title=_t(tr, "Item/Title"), sku=_t(tr, "Item/SKU"),
+                            buyer=_t(o, "BuyerUserID") or _t(tr, "Buyer/UserID"), shipped=bool(_t(o, "ShippedTime")),
+                            feedback_left=tr.find(NS + "FeedbackLeft") is not None))
     return out
+
+
+def orders_to_ship(token: str, post) -> list[dict]:
+    return [o for o in recent_orders(token, post) if not o["shipped"]]
+
+
+def pick_order(orders: list[dict], item_id: str = "", row=None, title: str = "") -> dict | None:
+    """Спершу серед невідправлених, потім — серед усіх (етикетка eBay вже позначила відправленим)."""
+    return pick([o for o in orders if not o["shipped"]], item_id, row, title) or pick(orders, item_id, row, title)
+
+
+def thank_buyer(line: dict, track: str, carrier: str, token: str, post) -> tuple[bool, list[str]]:
+    body = (f"<ItemID>{el._x(line['item_id'])}</ItemID><MemberMessage><Subject>Ihr Paket ist unterwegs</Subject>"
+            f"<Body>{el._x(THANKS.format(carrier=carrier or 'DHL', track=track))}</Body><QuestionType>Shipping</QuestionType>"
+            f"<RecipientID>{el._x(line['buyer'])}</RecipientID></MemberMessage>")
+    return _ok(el.trading("AddMemberMessageAAQToPartner", body, token, post))
+
+
+def leave_feedback(line: dict, token: str, post) -> tuple[bool, list[str]]:
+    body = (f"<ItemID>{el._x(line['item_id'])}</ItemID><TransactionID>{el._x(line['txn_id'])}</TransactionID>"
+            f"<TargetUser>{el._x(line['buyer'])}</TargetUser><CommentType>Positive</CommentType>"
+            f"<CommentText>{el._x(FEEDBACK)}</CommentText>")
+    return _ok(el.trading("LeaveFeedback", body, token, post))
 
 
 def complete_sale(line: dict, track: str, carrier: str, token: str, post) -> tuple[bool, list[str]]:
@@ -187,15 +216,33 @@ def run(d: dict, token: str, post, send, back, key: str) -> bool:
     a, row, title = d.get("action"), d.get("row"), d.get("title") or ""
     what = f"№{row}" if row else f"«{html.escape(title[:50])}»"
     if a == "ship":
-        lines = orders_to_ship(token, post)
-        line = pick(lines, d.get("item_id") or "", row, title)
+        orders = recent_orders(token, post)
+        line = pick_order(orders, d.get("item_id") or "", row, title)
+        carrier, track = d.get("carrier") or "DHL", d["track"]
         if not line:
-            return send(f"📮 Трек {what} в eBay не передав: не знайшов невідправленого замовлення з такою назвою"
-                        f" (невідправлених: {len(lines)}). Введи трек в eBay вручну: Mein eBay → Verkauft → «Sendungsnummer hinzufügen».", None)
-        ok, errs = complete_sale(line, d["track"], d.get("carrier") or "DHL", token, post)
-        return send(f"✅ Трек {what} передано в eBay ({html.escape(d.get('carrier') or 'DHL')} {html.escape(d['track'])}): замовлення "
-                    "позначено «Versendet», покупець бачить відстеження." if ok else
-                    f"⚠️ eBay не прийняв трек {what}:\n{_errs(errs)}\nВведи вручну: Mein eBay → Verkauft → «Sendungsnummer hinzufügen».", None)
+            return send(f"📮 Трек {what} в eBay не передав: не знайшов такого продажу за 45 днів (продажів: {len(orders)}). "
+                        "Введи трек в eBay вручну: Mein eBay → Verkauft → «Sendungsnummer hinzufügen».", None)
+        if line["shipped"]:   # етикетка eBay: трек уже в замовленні — не дублюємо
+            out = [f"✅ {what}: в eBay вже «Versendet» з треком (етикетка eBay) — нічого не дублюю."]
+        else:
+            ok, errs = complete_sale(line, track, carrier, token, post)
+            out = [f"✅ Трек {what} передано в eBay ({html.escape(carrier)} {html.escape(track)}): «Versendet», покупець бачить відстеження."
+                   if ok else f"⚠️ eBay не прийняв трек {what}:\n{_errs(errs)}\nВведи вручну: Mein eBay → Verkauft → «Sendungsnummer hinzufügen»."]
+        if d.get("thanks") and line.get("buyer"):   # 10.10: коротка подяка покупцю з треком
+            ok, errs = thank_buyer(line, track, carrier, token, post)
+            out.append(f"💌 Покупцю {html.escape(line['buyer'])} надіслав подяку з треком." if ok
+                       else f"⚠️ Подяку покупцю eBay не прийняв: {_errs(errs)}")
+        return send("\n".join(out), None)
+    if a == "feedback":   # 10.10: позитивний відгук покупцю, щойно продаж оплачено
+        line = pick_order(recent_orders(token, post), d.get("item_id") or "", row, title)
+        if not line or not line.get("buyer"):
+            return send(f"⭐ Відгук покупцю {what} не залишив: не знайшов продажу — залиш в eBay сам (Mein eBay → Verkauft).", None)
+        if line["feedback_left"]:
+            print("відгук уже є")
+            return True
+        ok, errs = leave_feedback(line, token, post)
+        return send(f"⭐ Відгук покупцю {html.escape(line['buyer'])} за {what} залишено." if ok
+                    else f"⚠️ eBay не прийняв відгук {what}:\n{_errs(errs)}", None)
     if a == "revise":
         lst = active_listings(token, post)
         it = pick(lst, d.get("item_id") or "", row, title)

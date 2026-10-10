@@ -180,5 +180,12 @@ check('healthy webhooks → silence', w.sent.length, 0);
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(30))] }, okMail));
 w.run(); w.run();
 check('ka sweep dispatched once per hour', w.calls.filter((c) => c[0] === 'post' && c[1] === '/actions/workflows/ka_reply.yml/dispatches').length, 1);
+// 10.10: ключ Claude (рік) — нагадування за тиждень, раз на добу
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(30))], props: { ASSIST_BOT_TOKEN: 'A', CLAUDE_TOKEN_SET: '2025-10-04' } }, okMail));
+w.run(); w.run();
+check('claude token reminder once', (w.text().match(/Ключ Claude/g) || []).length, 1);
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(30))], props: { ASSIST_BOT_TOKEN: 'A' } }, okMail));
+w.run();
+check('fresh claude token quiet', /Ключ Claude/.test(w.text()), false);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-10f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-10g';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -70,6 +70,19 @@ function feeZero_() {
   props.setProperty('FEE_ZERO', '1');
 }
 
+const PACK_NOTE = 'Підставляється, коли «Пакування» в «Угоди» порожнє. 1 € — коробка з дому, пакет від планок, скотч (10.10).';
+
+/** 10.10: пакування за замовчуванням 4 → 1 € у вже створеній таблиці (лише якщо там досі 4), один раз. */
+function packOne_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('PACK_ONE') === '1') return;
+  const set = ledger_().getSheetByName('Налаштування');
+  if (!set) return;
+  if (Number(set.getRange('B5').getValue()) === 4) set.getRange('B5').setValue(1);
+  set.getRange('C5').setValue(PACK_NOTE);
+  props.setProperty('PACK_ONE', '1');
+}
+
 function buildLedger_(ss) {
   const deals = ss.getSheets()[0];
   deals.setName('Угоди');
@@ -82,7 +95,7 @@ function buildLedger_(ss) {
   set.getRange('A3:C5').setValues([
     ['Комісія eBay за продаж, % від суми', 0, FEE_NOTE],
     ['Фіксований збір eBay за замовлення, €', 0, FEE_NOTE],
-    ['Пакування за замовчуванням, €', 4, 'Підставляється, коли «Пакування» в «Угоди» порожнє.']]);
+    ['Пакування за замовчуванням, €', 1, PACK_NOTE]]);
   set.getRange('B3').setNumberFormat(PCT_FMT);
   set.getRange('B4:B5').setNumberFormat(EUR_FMT);
   set.getRange('B3:B5').setBackground('#FFF2CC').setFontColor('#0000FF');
@@ -314,6 +327,7 @@ function parseMail_(msg) {
 
 function processLedger() {
   try { feeZero_(); } catch (e) { console.log('feeZero_: ' + e.message); }
+  try { packOne_(); } catch (e) { console.log('packOne_: ' + e.message); }
   const ss = ledger_();
   const log = ss.getSheetByName('Лог листів');
   const deals = ss.getSheetByName('Угоди');
@@ -379,8 +393,9 @@ function processLedger() {
           deals.getRange(row, COL.status).setValue('Продано');
           what = 'продаж записано';
           notify_('💰 Продано №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
-                  '\n📮 Відправ за 1–3 робочі дні, потім «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» — трек піде в eBay сам.',
-                  btns_([['відправив', row - LEDGER_FIRST + 1]]));
+                  '\n📮 Відправ за 1–3 робочі дні, потім «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» або фото квитанції з підписом «' +
+                  (row - LEDGER_FIRST + 1) + '» — трек піде в eBay, покупцю — подяка.', btns_([['відправив', row - LEDGER_FIRST + 1]]));
+          if (/ebay/i.test(String(p.src || ''))) feedbackToEbay_(row - LEDGER_FIRST + 1, p.title);
         } else { what = 'продаж: не знайшов, що це за товар — впиши вручну'; }
       }
     }
@@ -706,13 +721,34 @@ function itemIdOf_(n) {
   return ((note.match(/eBay (\d{9,15})/) || [])[1]) || '';
 }
 
-/** Трек проданого на eBay → у замовлення eBay (якщо eBay підключено). → рядок для повідомлення. */
+/** Трек проданого на eBay → у замовлення eBay (якщо eBay підключено) + подяка покупцю (10.10, один раз). → рядок для повідомлення. */
 function shipToEbay_(n, title, t) {
   if (!t || !PropertiesService.getScriptProperties().getProperty('EBAY_RT')) return '';
   const sto = String(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.sto).getValue() || '');
   if (sto && !/ebay/i.test(sto)) return '';
-  return ebayAct_({ action: 'ship', row: n, title: String(title), track: t.num, carrier: t.carrier || 'DHL', item_id: itemIdOf_(n) }) === 204
-    ? '\n⏳ Передаю трек в eBay — покупець побачить відстеження.' : '';
+  const thanks = !(events_()[n] || {}).thanked;
+  const ok = ebayAct_({ action: 'ship', row: n, title: String(title), track: t.num, carrier: t.carrier || 'DHL', item_id: itemIdOf_(n),
+    thanks: thanks }) === 204;
+  if (ok && thanks) setEvents_(n, { thanked: iso_(new Date()) });
+  return ok ? '\n⏳ Передаю трек в eBay' + (thanks ? ' і подяку покупцю' : '') + '.' : '';
+}
+
+/** 10.10: фото квитанції відправки з номером товару → як «відправив N трек». → рядок у підсумок фото. */
+function receiptShipped_(n, g) {
+  const rc = g.receipt || {}, r = rowByN_(n);
+  const t = rc.track ? trackArg_(String(rc.track).replace(/\s+/g, '') + ' ' + (rc.carrier || '')) : null;
+  if (!t) return '🧾 Квитанцію бачу, але трек не прочитав — напиши «відправив ' + n + ' трек».';
+  if (!r || r.status !== 'Продано') {
+    return '🧾 Квитанція з треком ' + t.num + ', але №' + n + ' не позначений проданим — якщо це інший товар: «перенеси фото ' + n + ' N».';
+  }
+  setEvents_(n, { sent: iso_(new Date()), outTrack: t.num, outCarrier: t.carrier });
+  return '🧾 Квитанція: ' + (t.carrier ? t.carrier + ' ' : '') + t.num + ' → «відправлено»' + shipToEbay_(n, r.title, t).replace(/^\n/, ' · ');
+}
+
+/** 10.10: продаж на eBay оплачено → позитивний відгук покупцю. */
+function feedbackToEbay_(n, title) {
+  if (!PropertiesService.getScriptProperties().getProperty('EBAY_RT')) return;
+  ebayAct_({ action: 'feedback', row: n, title: String(title), item_id: itemIdOf_(n) });
 }
 
 /** e|id|send/acc/cnt/dec — питання і пропозиції з листів eBay; p|N|ціна — «⬇️ Знизити» з тижневого звіту. */
@@ -744,7 +780,7 @@ function ebayCallback_(cq, chat) {
 function ebayMailButtons_(g, markup) {
   if (!PropertiesService.getScriptProperties().getProperty('EBAY_RT') || g.role === 'buyer') return markup;
   let rows = [];
-  if (g.kind === 'question' && g.reply_de) {
+  if ((g.kind === 'question' || g.kind === 'message') && g.reply_de) {
     rows = [[{ text: '📨 Надіслати відповідь (як вище)', callback_data: 'e|' + actPut_({ action: 'answer', text: String(g.reply_de).slice(0, 1500),
       question: String(g.message || '').slice(0, 400), title: String(g.item || '').slice(0, 120) }) + '|send' }]];
   } else if ((g.kind === 'offer' || g.kind === 'counter') && Number(g.amount) > 0) {
@@ -1623,6 +1659,7 @@ function attachPhoto_(n, f, messageId) {
   savePhotos_(n, list);
   let g = null;
   try { g = photoGemini_(f.id); } catch (e) { console.log('фото Gemini: ' + e); }
+  if (g && g.kind === 'receipt') g.line = receiptShipped_(n, g);   // 10.10: квитанція → «відправив N трек» + подяка покупцю
   photoSummary_(n, g, list.length);
 }
 
@@ -1637,7 +1674,9 @@ function photoGemini_(fileId) {
   if (!path) return null;
   const blob = UrlFetchApp.fetch('https://api.telegram.org/file/bot' + tok + '/' + path, { muteHttpExceptions: true }).getBlob();
   const prompt = 'Фото для перепродажу оперативної пам\'яті або консолі. Поверни JSON без пояснень:\n' +
-    '{"kind": "memtest" (екран PassMark MemTest86) | "ram_label" (наклейка на планці/коробці пам\'яті) | "other",\n' +
+    '{"kind": "memtest" (екран PassMark MemTest86) | "ram_label" (наклейка на планці/коробці пам\'яті) | "receipt" (квитанція / ' +
+    'чек відправки посилки: DHL Einlieferungsbeleg, Packstation, Hermes, DPD, екран Packstation з номером) | "other",\n' +
+    ' "receipt": {"track": трек-номер посилки дослівно (без пробілів) або "", "carrier": "DHL" | "Hermes" | "DPD" | "GLS" | "UPS" | ""},\n' +
     ' "memtest": {"errors": число біля «Errors:» або null, "pass_done": true якщо завершено хоча б 1 повний прохід (напис PASS, ' +
     '«Pass: 2/4» або більше, підсумковий екран), "result": "PASS" | "FAIL" | null, "ram": текст рядка RAM Config або модель пам\'яті, ' +
     '"gb": обсяг пам\'яті в ГБ або null},\n' +
@@ -1707,13 +1746,15 @@ function photoSummary_(n, g, count) {
     } else if (errs === 0) {
       st.lines.memtest = '⏳ MemTest86: поки 0 помилок, але прохід не завершено — пришли фото, коли внизу «Pass: 2/4» або PASS.';
     }
+  } else if (g && g.kind === 'receipt' && g.line) {
+    st.lines.receipt = g.line;
   } else if (g && g.kind === 'ram_label' && g.label && r) {
     const c = labelCheck_(r.title, g.label);
     st.lines.label = c.bad.length ? '⚠️ Наклейка не збігається з покупкою: ' + c.bad.map(esc_).join('; ')
       : c.ok.length ? '✅ Наклейка збігається: ' + c.ok.map(esc_).join(', ') : 'ℹ️ Наклейку прочитав (' + esc_(String(g.label.text || '').slice(0, 60)) + '), але звірити нема з чим';
   }
   const text = '📸 <b>№' + n + '</b> «' + esc_(r ? String(r.title).slice(0, 60) : '') + '» — фото: ' + count +
-    ['label', 'memtest'].filter(function (k) { return st.lines[k]; }).map(function (k) { return '\n' + st.lines[k]; }).join('') +
+    ['label', 'memtest', 'receipt'].filter(function (k) { return st.lines[k]; }).map(function (k) { return '\n' + st.lines[k]; }).join('') +
     '\nПродати — «продати ' + n + '» (фото прийдуть альбомом); показати — «фото ' + n + '».';
   let done = false;
   const kb = JSON.stringify(btns_([['продати', n], ['фото', n]]));
@@ -1877,14 +1918,16 @@ function mainCallback(cq) {
 const EBAY_MAIL_QUERY = 'from:ebay newer_than:3d subject:(frage OR nachricht OR preisvorschlag OR gegenangebot OR rückgabe OR ' +
   'zurückgeben OR rücksendung OR fall OR anfrage OR auszahlung OR garantie OR "nicht erhalten" OR versandetikett) -subject:bestellbestätigung';
 const EBAY_KINDS = {
-  question: '❓ <b>Питання покупця</b>', offer: '🤝 <b>Пропозиція ціни</b>', counter: '🔁 <b>Зустрічна пропозиція</b>',
+  question: '❓ <b>Питання покупця</b>', message: '💬 <b>Повідомлення покупця</b>', offer: '🤝 <b>Пропозиція ціни</b>',
+  counter: '🔁 <b>Зустрічна пропозиція</b>',
   return: '↩️ <b>Повернення</b>', case: '⚠️ <b>Запит / суперечка</b>', payout: '💶 <b>Виплата eBay</b>' };
 
 function ebayMailGemini_(subject, body) {
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) return null;
   const prompt = 'Лист від eBay.de користувачу (він купує і продає вживану техніку як приватна особа). Тема: "' + subject + '".\n' +
-    'Поверни JSON: {"kind": "question" (покупець питає про товар) | "offer" (пропозиція ціни, Preisvorschlag) | "counter" ' +
+    'Поверни JSON: {"kind": "question" (покупець питає про товар до покупки) | "message" (покупець пише вже після покупки: ' +
+    'коли відправка, трек, самовивіз, оплата, адреса) | "offer" (пропозиція ціни, Preisvorschlag) | "counter" ' +
     '(зустрічна пропозиція, Gegenangebot) | "return" (повернення, Rückgabe) | "case" (запит/суперечка: nicht erhalten, eBay-Garantie, ' +
     'Fall) | "payout" (виплата, Auszahlung) | "label" (користувач купив етикетку доставки, Versandetikett) | "other", "role": "seller" якщо користувач тут продавець, "buyer" якщо покупець, ' +
     '"item": назва товару або "", "who": ім\'я іншої сторони або "", "message": текст іншої сторони мовою оригіналу або "", ' +
@@ -1893,7 +1936,7 @@ function ebayMailGemini_(subject, body) {
     '"amount": сума в євро (пропозиція покупця, коли користувач продавець / виплата) або null, ' +
     '"my_amount": сума, яку запропонував сам користувач, або null, "their_amount": сума, яку запропонувала / відповіла інша ' +
     'сторона (зустрічна, Gegenangebot), або null, "listing_price": ціна товару в оголошенні або null, "deadline": строк відповіді ' +
-    'текстом або "", (для label — "amount": ціна етикетки), "reply_de": для question — коротка ввічлива відповідь німецькою від продавця (по суті питання; якщо ' +
+    'текстом або "", (для label — "amount": ціна етикетки), "reply_de": для question і message — коротка ввічлива відповідь німецькою від продавця (по суті; якщо ' +
     'відповіді не знаєш — попроси уточнити), інакше ""}.\n\nЛист:\n' + String(body).slice(0, 6000);
   const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
   for (let i = 0; i < models.length; i++) {
@@ -1952,7 +1995,7 @@ function ebayMailText_(g, subject, link) {
       'Товар справний (ти тестував, є фото MemTest86) — напиши це й додай фото; «передумав» у приватного продавця — повернення ' +
       'можна не приймати. Не впевнений — напиши Claude.');
   }
-  if (g.kind === 'question' && g.reply_de) lines.push('✍️ Відповідь (натисни — скопіюється):\n<code>' + esc_(g.reply_de) + '</code>');
+  if ((g.kind === 'question' || g.kind === 'message') && g.reply_de) lines.push('✍️ Відповідь (натисни — скопіюється):\n<code>' + esc_(g.reply_de) + '</code>');
   if (!g.uk && !g.message) lines.push(esc_(subject));
   return { text: lines.filter(Boolean).join('\n'), markup: link ? { inline_keyboard: [[{ text: '🔗 Відкрити в eBay', url: link }]] } : null };
 }

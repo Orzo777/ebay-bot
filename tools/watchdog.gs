@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-10b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-10c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -177,6 +177,20 @@ function wdWebhooks_(st, now, msgs) {
     });
 }
 
+// 10.10: ключ Claude для бота «Помічник» (claude setup-token) діє рік — нагадати за тиждень. Дата — CLAUDE_TOKEN_SET
+// у «Властивостях скрипту» (якщо перегенерував раніше — постав нову дату), інакше дата першого ключа.
+const WD_CLAUDE_TOKEN_SET = '2026-10-10';
+function wdClaudeToken_(st, now, msgs) {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('ASSIST_BOT_TOKEN')) return;
+  const set = new Date((props.getProperty('CLAUDE_TOKEN_SET') || WD_CLAUDE_TOKEN_SET) + 'T00:00:00Z');
+  const days = Math.floor((set.getTime() + 365 * 86400e3 - now.getTime()) / 86400e3);
+  if (isNaN(days) || days > 7) return;
+  wdOnce_(st, 'claude_token', 24, '🤖 Ключ Claude для бота «Помічник» закінчується ' + (days <= 0 ? 'сьогодні' : 'через ' + days + ' дн.') +
+    '. Перегенеруй: PowerShell → D:\\ebay-bot\\.clasp-login\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe setup-token → ' +
+    'новий ключ у GitHub → секрет CLAUDE_CODE_OAUTH_TOKEN (Update), і скажи Claude дату.', msgs, now);
+}
+
 // 10.10: прибирання відповідей продавців KA (ka_reply.yml, mode=sweep) — щогодини звідси: cron «17 * * * *» на
 // GitHub для публічного репозиторію спрацьовував раз на 6–7 годин
 function wdKaSweep_(st, now) {
@@ -220,7 +234,7 @@ function watchdog() {
   const st = JSON.parse(props.getProperty('WD_STATE') || '{}');
   const now = new Date();
   const msgs = [];
-  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_, wdLedger_, wdWebhooks_, wdKaSweep_].forEach(function (f) {
+  [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_, wdLedger_, wdWebhooks_, wdKaSweep_, wdClaudeToken_].forEach(function (f) {
     try { f(st, now, msgs); } catch (e) {
       if (/GH_AUTH/.test(String(e))) {
         wdOnce_(st, 'gh_auth', 12, (/GH_AUTH немає/.test(String(e))

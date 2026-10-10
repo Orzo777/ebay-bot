@@ -27,10 +27,10 @@ def resp(call, inner="", ack="Success"):
 
 
 ORDERS = ("<OrderArray>"
-          "<Order><OrderID>O1</OrderID><TransactionArray><Transaction><OrderLineItemID>L1</OrderLineItemID><TransactionID>T1</TransactionID>"
+          "<Order><OrderID>O1</OrderID><BuyerUserID>buyer_77</BuyerUserID><TransactionArray><Transaction><OrderLineItemID>L1</OrderLineItemID><TransactionID>T1</TransactionID>"
           "<Item><ItemID>111</ItemID><Title>Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200 CMK32GX4M2B3200C16 DIMM getestet</Title>"
           "</Item></Transaction></TransactionArray></Order>"
-          "<Order><OrderID>O2</OrderID><ShippedTime>2026-10-08T10:00:00.000Z</ShippedTime><TransactionArray><Transaction>"
+          "<Order><OrderID>O2</OrderID><BuyerUserID>owc_fan</BuyerUserID><ShippedTime>2026-10-08T10:00:00.000Z</ShippedTime><TransactionArray><Transaction>"
           "<TransactionID>T2</TransactionID><Item><ItemID>222</ItemID><Title>OWC 32GB DDR4 SO-DIMM</Title></Item></Transaction>"
           "</TransactionArray></Order></OrderArray>")
 ACTIVE = ("<ActiveList><ItemArray><Item><ItemID>111</ItemID><Title>Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200</Title></Item>"
@@ -101,6 +101,28 @@ class ActionsTest(unittest.TestCase):
         self.assertEqual(t(b, "Shipment/ShipmentTrackingDetails/ShipmentTrackingNumber"), "00340434161234567890")
         self.assertEqual(t(b, "Shipment/ShipmentTrackingDetails/ShippingCarrierUsed"), "DHL")
         self.assertIn("Versendet", sent[0][0])
+
+    def test_ship_with_thanks(self):
+        sent, _, f = run({"action": "ship", "row": 2, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", "track": "00340434161234567890",
+                          "carrier": "DHL", "thanks": True})
+        b = f.body("AddMemberMessageAAQToPartner")
+        self.assertEqual([t(b, "ItemID"), t(b, "MemberMessage/RecipientID"), t(b, "MemberMessage/QuestionType")], ["111", "buyer_77", "Shipping"])
+        self.assertIn("Sendungsnummer 00340434161234567890", t(b, "MemberMessage/Body"))
+        self.assertIn("подяку", sent[0][0])
+
+    def test_ship_already_shipped_by_ebay_label(self):
+        # етикетка eBay: замовлення вже «Versendet» — трек не дублюємо, подяку надсилаємо
+        sent, _, f = run({"action": "ship", "row": 1, "title": "OWC 32GB DDR4 SO-DIMM", "track": "00340434160000000001", "thanks": True})
+        self.assertNotIn("CompleteSale", [c[0] for c in f.calls])
+        self.assertEqual(t(f.body("AddMemberMessageAAQToPartner"), "MemberMessage/RecipientID"), "owc_fan")
+        self.assertIn("вже «Versendet»", sent[0][0])
+
+    def test_feedback(self):
+        sent, _, f = run({"action": "feedback", "row": 2, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"})
+        b = f.body("LeaveFeedback")
+        self.assertEqual([t(b, "ItemID"), t(b, "TransactionID"), t(b, "TargetUser"), t(b, "CommentType")], ["111", "T1", "buyer_77", "Positive"])
+        self.assertLessEqual(len(t(b, "CommentText")), 80)
+        self.assertIn("Відгук", sent[0][0])
 
     def test_ship_no_order(self):
         sent, _, f = run({"action": "ship", "row": 9, "title": "PlayStation 5 Slim", "track": "H1000000000001", "carrier": "Hermes"})
