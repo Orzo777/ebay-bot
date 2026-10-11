@@ -515,7 +515,7 @@ def buyer_message(r: dict, offer: int | None = None) -> str:
             else f"Say you'd like to buy {what} at the listed price and would buy right away.")
     terms_en = ("Say you can pick it up in Hamburg today or tomorrow and pay cash; ask when it suits them." if r.get("pickup")
                 else 'Say you pay right away via "Sicher bezahlen" (use exactly these words) and cover shipping and the fee.')
-    return seller_msg.humanize(r, offer, text, "ka", goal, terms_en, candidate_questions(r), not r.get("pickup"))
+    return seller_msg.humanize(r, offer, text, "ka", goal, terms_en, _questions(r), not r.get("pickup"))
 
 
 def offer_template(r: dict) -> str | None:

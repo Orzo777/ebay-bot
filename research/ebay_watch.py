@@ -32,7 +32,7 @@ from ka_listing_check import _CONTACT, _PAYMENT
 import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import ebay_images, photo_line
-from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, candidate_questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
+from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
                        evaluate, refine_by_desc, tier)
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
@@ -181,7 +181,7 @@ def ebay_message(r: dict, offer: int | None = None) -> str:
     import seller_msg
     terms_en = ("Say you can pick it up in Hamburg today or tomorrow, payment through eBay; ask when it suits them."
                 if r.get("pickup") else "Say payment goes through eBay and ask to ship it well packed and insured.")
-    return seller_msg.humanize(r, offer, " ".join(parts), "ebay", goal, terms_en, candidate_questions(r, du=False), False)
+    return seller_msg.humanize(r, offer, " ".join(parts), "ebay", goal, terms_en, _questions(r, du=False), False)
 
 
 def risk_of(lst: dict, desc: str | None, quick_sale: float) -> dict:

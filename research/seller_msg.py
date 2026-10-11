@@ -1,4 +1,6 @@
 """Тексти продавцям «як людина» (11.10, прохання користувача).
+Які питання ставити, вирішують правила (ram_alert._questions: опис уже відповів — не питаємо); Gemini лише формулює —
+перший прогін показав, що flash-lite сама плутається (питала про чек, коли в описі «Rechnung vorhanden»).
 
 Шаблон (ram_alert.buyer_message / ebay_watch.ebay_message) лишається запасним варіантом. Якщо ввімкнено (SELLER_MSG=1 у
 робочих процесах і є GEMINI_API_KEY), Gemini переписує його природною німецькою з урахуванням опису: питання —
@@ -24,11 +26,8 @@ The message must:
 - {goal}
 {reserve}- {terms}
 - Questions: {questions}
-  Keep each of these questions (rephrased naturally) UNLESS the title or description clearly answers it or makes it
-  pointless. Examples of answers: "getestet", "läuft einwandfrei", "lief stabil", "wegen Upgrade ausgebaut", "bis zuletzt im
-  PC" answer whether it works; "kaum genutzt" or "wenig gespielt" do NOT. A receipt question is pointless if the seller
-  mentions months/years of use, that it came out of a PC/laptop, or that there is no receipt. If the description is empty,
-  keep all questions. Never ask something the seller already wrote.
+  These were already checked against the description. Ask them (rephrased naturally); drop one only if the description
+  states its answer word for word. Do not add any other question.
 - Do not repeat the description back, no flattery, no emojis, no "Sehr geehrte", at most one exclamation mark.
 - 2-3 short sentences, at most 230 characters in total.
 {amount_rule}- Never suggest paying outside {platform}; no phone numbers, e-mails or links.
