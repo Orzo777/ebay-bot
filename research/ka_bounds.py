@@ -31,8 +31,9 @@ RAM_TITLES = {   # підписка → типове оголошення, за 
     "ddr5 64gb": ["Corsair Vengeance DDR5 64GB (2x32GB) 6000", "Corsair Vengeance DDR5 64GB (4x16GB) 6000"],
     "ddr4 2x16gb": "Corsair Vengeance DDR4 32GB (2x16GB) 3200", "ddr4 32gb": "Corsair Vengeance DDR4 32GB (2x16GB) 3200",
     "ddr4 sodimm 32gb": "DDR4 SO-DIMM 32GB (2x16GB) 3200 Laptop",
-    "ddr4 64gb": ["DDR4 64GB (2x32GB) 3200 RAM", "Corsair Vengeance DDR4 64GB (4x16GB) 3200"],   # 10.10: і набори 4×16
-    "ddr5 48gb": "DDR5 48GB (2x24GB) 6000 RAM"}
+    "ddr4 64gb": ["DDR4 64GB (2x32GB) 3200 RAM", "Corsair Vengeance DDR4 64GB (4x16GB) 3200",   # 10.10: і набори 4×16
+                  "Corsair Vengeance LPX DDR4 64GB (2x32GB) 3200"],   # 11.10: фірмові 2×32 — свої (вищі) ціни
+    "ddr5 48gb": "DDR5 48GB (2x24GB) 6000 RAM", "ddr4 128gb": "Corsair Vengeance DDR4 128GB (4x32GB) 3200"}
 CONSOLE_TITLES = {"xbox series x": "Xbox Series X 1TB Konsole", "xbox series": "Xbox Series X 1TB Konsole",
                   "ps5": "Sony PS5 Disc Edition Konsole", "playstation 5": "Sony PS5 Disc Edition Konsole",
                   "switch 2": "Nintendo Switch 2 Konsole"}

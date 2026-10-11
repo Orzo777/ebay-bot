@@ -48,7 +48,7 @@ class TestAmbiguousKit(unittest.TestCase):
         self.assertIn("EIN Riegel mit 16 GB", seller_template(r))
 
     def test_description_answers_kit_and_tested(self):
-        r = evaluate("DDR4 RAM Arbeitsspeicher 64GB Vengeance", 100)
+        r = evaluate("DDR4 RAM Arbeitsspeicher 64GB Vengeance", 200)   # 11.10: 100 € за фірмові 2×32 — підозріло дешево (фото наклейки)
         r["desc"] = "2x32GB Kit, mit MemTest getestet, ohne Rechnung."
         t = seller_template(r)
         self.assertEqual(t, 'Hallo, ich würde den RAM gern nehmen – reservierst du ihn mir? '
