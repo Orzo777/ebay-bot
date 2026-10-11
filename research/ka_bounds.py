@@ -58,9 +58,9 @@ def recommended() -> dict:
                   for t in (ts if isinstance(ts, list) else [ts])) or None for k, ts in RAM_TITLES.items()}
     con = {k: _top(lambda p, t=t: ca.evaluate_console(t, p, vb=True), 150, int(cur["console"].get(k, 400) * 1.6) + 60)
            for k, t in CONSOLE_TITLES.items()}
-    def med(k, v):   # фірмовий сегмент (вищий) — межа підписки не має відрізати фірмові набори
+    def med(k, v):   # найдорожчий сегмент (фірмові / швидкі) — межа підписки не має відрізати найкращі набори
         sg = ra.SEGMENT.get(k)
-        return v["med"] * (sg["brand"][1] if sg else 1)
+        return v["med"] * max([1.0] + [f[1] for f in (sg or {}).values()])
     ham = {g: max(_pickup(med(k, v), ra.costs(med(k, v))) for k, v in ra.REAL.items() if k[0] == g) for g in ("ddr5", "ddr4")}
     ham.update(xbox=_pickup(ca.XBOX_SERIES_X["med"], ca.costs(ca.XBOX_SERIES_X["med"])),
                ps5=_pickup(ca.PS5_DISC["med"], ca.costs(ca.PS5_DISC["med"])),

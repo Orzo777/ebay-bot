@@ -233,3 +233,12 @@ class ShortageTest(unittest.TestCase):
         self.assertIn("PS5 Pro: <b>+20%</b> (900 → 1080 € за 14 дн.)", text)
         self.assertNotIn("Steam Deck", text)
         self.assertIn("збирає базу", sw.lines({"shortage": {"hist": {"X": [["2026-10-10", 1, 1, 9]]}}}, "2026-10-12")[0])
+
+
+class TerapeakReminderTest(unittest.TestCase):
+    def test_reminder_after_two_weeks(self):
+        import ram_alert
+        d0 = date.fromisoformat(ram_alert.TERAPEAK_DATE)
+        from datetime import timedelta as td
+        self.assertNotIn("терапік", "\n".join(wr.headline([], d0 + td(days=13), ["x"], [])))
+        self.assertIn("терапік", "\n".join(wr.headline([], d0 + td(days=14), ["x"], [])))

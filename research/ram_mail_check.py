@@ -294,7 +294,7 @@ _HAMBURG_SEARCH = {
     "playstation 5": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:230:{ps5}/playstation-5/k0c279" + _HAMBURG
                      + "+konsolen.art_s:playstation",
 }
-HAMBURG_MAX = dict(ddr5=639, ddr4=334, xbox=520, ps5=435, switch2=369)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
+HAMBURG_MAX = dict(ddr5=672, ddr4=348, xbox=520, ps5=435, switch2=369)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
 
 
 def _load_bounds():
@@ -518,7 +518,7 @@ def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: s
         if ev["verdict"] == "UNKNOWN" and not (_PC_WORD.search(lst["title"]) and lst["price"] <= 40):
             print("   невідомо, і не схоже на дешевий цілий ПК — не шлю")
             continue
-        print(f"   оцінка: {ev['verdict']}" + (f", заробіток ≈ {ev['profit']:.0f} € ({ev['how']})" if "profit" in ev else ""))
+        print(f"   оцінка: {ev['verdict']}" + (f", заробіток ~ {ev['profit']:.0f} € ({ev['how']})" if "profit" in ev else ""))
         lst["pc_eval"] = ev
         if dry_run or not PC_BOT_TOKEN:
             print("   [ПК-бот] " + ("DRY RUN" if dry_run else "немає секрету PC_BOT_TOKEN — пропускаю"))

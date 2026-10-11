@@ -170,7 +170,7 @@ class TestProcess(unittest.TestCase):
             rmc.send_pc_card, rmc.PC_BOT_TOKEN = old
         ev = pcs[0]["pc_eval"]
         self.assertEqual((ev["verdict"], ev["parsed"]["ram"], ev["parsed"]["gpu"]), ("NEGOTIATE", 64, "rtx 3060 ti"))
-        self.assertTrue(400 <= ev["max_price"] <= 470, ev["max_price"])
+        self.assertTrue(440 <= ev["max_price"] <= 530, ev["max_price"])   # 11.10: DDR4 2×32 фірмові дорожчі (Terapeak)
         self.assertIn("ТОРГУЙСЯ", rmc.pc_text(pcs[0]))
 
     def test_right_type_but_pricier_gives_no_hint(self):

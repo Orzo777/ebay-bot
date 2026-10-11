@@ -54,6 +54,9 @@ QUERIES = {  # ключ як у ram_alert.REAL → пошуковий запит
     ("ddr4", "udimm", False, 64, 2): "DDR4 64GB 2x32GB",
     ("ddr4", "sodimm", False, 32, 1): "DDR4 SODIMM 32GB",
     ("ddr4", "sodimm", False, 64, 2): "DDR4 SODIMM 64GB 2x32GB",
+    ("ddr4", "udimm", False, 64, 4): "DDR4 64GB 4x16GB",   # 11.10: набори з 4 планок — свій тип (Terapeak)
+    ("ddr4", "udimm", False, 32, 4): "DDR4 32GB 4x8GB",
+    ("ddr5", "udimm", False, 64, 4): "DDR5 64GB 4x16GB",
 }
 CONSOLE_QUERIES = {   # ключ як у console_alert.CONSOLE_TYPES → запит (лише вживані)
     "XBOX_SERIES_X": "xbox series x konsole", "PS5_DISC": "ps5 konsole", "PS5_DIGITAL": "ps5 digital konsole",
@@ -69,7 +72,6 @@ CANDIDATES = {
     ("ddr4", "sodimm", False, 16, 2): "DDR4 SODIMM 16GB 2x8GB",
     ("ddr4", "sodimm", False, 16, 1): "DDR4 SODIMM 16GB",
     ("ddr4", "udimm", False, 16, 1): "DDR4 16GB",
-    ("ddr4", "udimm", False, 64, 4): "DDR4 64GB 4x16GB",
     ("ddr5", "sodimm", False, 16, 2): "DDR5 SODIMM 16GB 2x8GB",
     ("ddr5", "udimm", False, 96, 2): "DDR5 96GB 2x48GB",
     ("ddr4", "server", True, 32, 1): "DDR4 32GB RDIMM ECC",

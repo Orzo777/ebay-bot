@@ -91,28 +91,28 @@ class TestAmbiguousKit(unittest.TestCase):
 
 class TestNewTypes(unittest.TestCase):
     def test_ddr5_sodimm_2x16_kit(self):
-        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 185)   # 10.10: правило «≥ 50 € за медіаною»
-        self.assertEqual(r["type"], "DDR5 SO-DIMM 32 ГБ (2×16) кіт")
+        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 205)   # 11.10: ціна росте (14 днів)
+        self.assertTrue(r["type"].startswith("DDR5 SO-DIMM 32 ГБ (2×16) кіт"))
         self.assertEqual(r["verdict"], "BUY")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 205)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8%
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 230)["verdict"], "SKIP")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 230, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 230)["verdict"], "NEGOTIATE")  # фікс. ціна: до +8%
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 250)["verdict"], "SKIP")
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 250, vb=True)["verdict"], "NEGOTIATE")  # VB: до +15%
 
     def test_ddr5_sodimm_2x32_kit(self):
         # 26.09: поділились у бот Kingston FURY Impact 64GB (2x32) SO-DIMM за 420 € — бот не знав типу
         t = "Kingston FURY Impact 64GB (2x32GB) DDR5-5600 SO-DIMM KF556S40IBK2"
-        r = evaluate(t, 480)   # 10.10: правило «≥ 50 € за медіаною»
-        self.assertEqual(r["type"], "DDR5 SO-DIMM 64 ГБ (2×32) кіт")
+        r = evaluate(t, 560)   # 11.10: повний замір Terapeak, сегменти й швидкість
+        self.assertTrue(r["type"].startswith("DDR5 SO-DIMM 64 ГБ (2×32) кіт"))
         self.assertEqual(r["verdict"], "SKIP")
         self.assertTrue(evaluate(t, 270)["verdict"].startswith("BUY"))
-        self.assertEqual(evaluate(t, 500, vb=True)["verdict"], "NEGOTIATE")
+        self.assertEqual(evaluate(t, 540, vb=True)["verdict"], "NEGOTIATE")
 
     def test_types_added_26_09(self):
         # заміряні 26.09, коли з'ясувалось, що їх бракує
         self.assertEqual(evaluate("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150)["type"], "DDR5 UDIMM 48 ГБ (2×24) кіт")
         self.assertEqual(evaluate("Corsair Vengeance DDR5 48GB 2x24GB 6000", 150)["verdict"], "BUY-EXCELLENT")
         self.assertTrue(evaluate("Kingston Fury Beast DDR5 16GB (2x8GB) 5200", 90)["type"].startswith("DDR5 UDIMM 16 ГБ (2×8) кіт"))
-        self.assertEqual(evaluate("Crucial 32GB Kit DDR4 3200 SODIMM 2x16GB", 70)["type"], "DDR4 SO-DIMM 32 ГБ (2×16) кіт")
+        self.assertTrue(evaluate("Crucial 32GB Kit DDR4 3200 SODIMM 2x16GB", 70)["type"].startswith("DDR4 SO-DIMM 32 ГБ (2×16) кіт"))
         self.assertIn("не купуємо", evaluate("Crucial DDR5 96GB Kit 2x48GB 5600", 200)["reason"])
 
     def test_ddr5_single_16_desktop(self):
@@ -129,7 +129,7 @@ class TestNewTypes(unittest.TestCase):
 
 class TestPrices(unittest.TestCase):
     def test_tiers(self):
-        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 145)["verdict"], "BUY-GOOD")   # 10.10: правило «≥ 50 € за медіаною»
+        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 165)["verdict"], "BUY-GOOD")   # 11.10: повний замір Terapeak, сегменти й швидкість
         self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 450)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate("Crucial DDR5 16GB 5600 SODIMM", 145)["verdict"], "SKIP")
 
@@ -255,7 +255,7 @@ class TestAudit28Ram(unittest.TestCase):
         r = evaluate("Kingston FURY Beast DDR5 32GB 5600 MHz CL40", 200)                  # кіт 2x16 без «2x16»
         self.assertTrue(r["verdict"].startswith("BUY") and r["kit_unknown"])
         r = evaluate("Kingston FURY Beast DDR5 16 GB Kit – 5200 MHz – CL40", 80)
-        self.assertEqual(r["type"], evaluate("Kingston FURY Beast DDR5 2x8GB", 80)["type"])
+        self.assertEqual(r["type"], evaluate("Kingston FURY Beast DDR5 2x8GB 5200", 80)["type"])
         self.assertIn("48", evaluate("48GB DDR5-6800 CL34 RGB – SK Hynix M-Die nicht 32GB 64GB", 250)["type"])
         r = evaluate("Crucial 64GB DDR5 RAM (1x64GB) 5600MHz SODIMM", 300)
         self.assertEqual(r["verdict"], "SKIP")                                              # 1x64 — не кіт 2x32
@@ -279,20 +279,39 @@ class TestPass3Parse(unittest.TestCase):
 
 
 class TestQuadKits1010(unittest.TestCase):
-    """10.10: набори 4×16 / 4×32 — як дві пари 2× (5% знижки), а не «тип, що не купуємо»."""
+    """Набори з 4 планок. 11.10: де є власні продажі (4×16 DDR4/DDR5, 4×8 DDR4) — свій тип (4×16 DDR4 продається за ~260 €,
+    а як «дві пари» бот рахував ~338 € — завищено); 4×32 — як дві пари 2×32 (5% знижки)."""
 
     def test_quad_is_two_pairs(self):
         from ram_alert import QUAD_SHARE, REAL, SEGMENT, costs, evaluate
-        key = ("ddr4", "udimm", False, 32, 2)
+        key = ("ddr4", "udimm", False, 64, 2)
         pair = REAL[key]
-        r = evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 150)
-        self.assertNotEqual(r["verdict"], "SKIP")
-        med = round(pair["med"] * SEGMENT[key]["brand"][1])   # 10.10: від медіани фірмового сегмента
+        r = evaluate("Corsair Vengeance 128GB (4x32GB) DDR4 3200", 505)
+        self.assertEqual(r["verdict"], "BUY")
+        med = round(pair["med"] * SEGMENT[key]["brand_fast"][1])   # фірмові швидкі 2×32
         self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (med - costs(med)))
-        self.assertIn("4×16", r["type"])
+        self.assertIn("4×32", r["type"])
         self.assertIn("2 пари", r["type"])
-        self.assertEqual(r["quick_sale"], 2 * round(pair["p25"] * SEGMENT[key]["brand"][0]))
-        self.assertEqual(evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 400)["verdict"], "SKIP")   # дорожче двох пар
-        self.assertIn("2 пари", evaluate("64GB DDR4 Quad-Kit G.Skill Trident Z 3200", 150)["type"])
+        self.assertEqual(r["quick_sale"], 2 * round(pair["p25"] * SEGMENT[key]["brand_fast"][0]))
+
+    def test_quads_with_own_sales(self):
+        from ram_alert import evaluate
+        r = evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 150)
+        self.assertTrue(r["type"].startswith("DDR4 UDIMM 64 ГБ (4×16) кіт · фірмовий"))
+        self.assertNotIn("2 пари", r["type"])
+        self.assertEqual(r["median_sale"], 317)                 # фірмові 4×16 від 2933 МГц (Terapeak 11.10)
+        self.assertEqual(evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 300)["verdict"], "SKIP")
+        self.assertIn("4×16", evaluate("64GB DDR4 Quad-Kit G.Skill Trident Z 3200", 150)["type"])
         self.assertNotEqual(evaluate("Crucial Pro DDR5-5600 64GB (4x16GB) UDIMM", 300)["verdict"], "SKIP")
-        self.assertEqual(evaluate("Corsair Vengeance LPX 32GB (4x8GB) DDR4", 20)["verdict"], "SKIP")   # пара 2×8 — не наш тип
+        self.assertTrue(evaluate("Corsair Vengeance LPX 32GB (4x8GB) DDR4", 60)["verdict"].startswith("BUY"))   # 4×8 — тепер наш тип
+
+    def test_speed_segments(self):
+        from ram_alert import evaluate
+        fast = evaluate("Corsair Vengeance DDR5 32GB (2x16GB) 6000 CL30", 300)
+        slow = evaluate("Corsair Vengeance DDR5 32GB (2x16GB) 5200 CL40", 300)
+        self.assertEqual((fast["median_sale"], slow["median_sale"]), (393, 326))
+        self.assertIn("від 6000 МГц", fast["type"])
+        self.assertIn("до 5600 МГц", slow["type"])
+        self.assertEqual(evaluate("Kingston FURY Beast DDR5 32GB 6000", 300)["median_sale"], 393)   # «6000» без «MHz»
+        self.assertEqual(evaluate("Kingston FURY Beast DDR5 32GB (2x16GB)", 300)["median_sale"], 383)   # швидкість невідома
+        self.assertEqual(evaluate("Samsung DDR5 32GB (2x16GB) 4800", 200)["median_sale"], 280)

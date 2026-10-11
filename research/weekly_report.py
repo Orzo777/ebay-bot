@@ -217,6 +217,10 @@ def headline(rows: list[dict], today: date, todo: list[str], bl: list[str]) -> l
            f"• Зробити: {len(acts)} " + ("(див. «Що зробити з товаром»)" if acts else "— нічого, усе в русі ✓")]
     if bl:
         out.append(f"• Підписки KA: змінити межі в {sum(1 for x in bl if x.startswith('•'))} (внизу)")
+    import ram_alert   # 11.10: ціни ростуть — 30-денна медіана відстає; замір Terapeak — раз на 2 тижні
+    age = (today - date.fromisoformat(ram_alert.TERAPEAK_DATE)).days
+    if age >= ram_alert.TERAPEAK_EVERY:
+        out.append(f"• Ціни продажу заміряні {age} дн. тому — увійди в eBay у вбудованому браузері й напиши Claude «терапік»")
     return out
 
 

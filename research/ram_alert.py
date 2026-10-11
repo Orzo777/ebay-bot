@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, ".")
-from ram_parse import NOT_SERVER, SERVER_DESC, parse_title
+from ram_parse import NOT_SERVER, SERVER_DESC, parse_title, snap
 
 # (gen, form, ecc, total, modules) -> реальні продажі (Terapeak). Період у полі `period`:
 #   30 днів (23.09.2026) — для типів із великою вибіркою: ціна DDR5 росте ~12%/міс, 90-денна медіана
@@ -27,25 +27,31 @@ from ram_parse import NOT_SERVER, SERVER_DESC, parse_title
 # 26.09.2026 (вечір): 7 типів оновлено з заміру Terapeak (30 днів, ~840 проданих, класифікація парсером бота).
 # 10.10.2026: новий замір Terapeak (30 днів, 4 367 оголошень з продажами DDR4/DDR5/консолей) — оновлено типи з ≥ 20 продажами;
 # щоденна поправка за цінами оголошень відпливла (DDR4 2×16: бот 144 при реальних 129, Xbox: 612 при 538) — якір скинеться.
+# 11.10.2026: повний замір Terapeak (30 днів, 4 527 оголошень з продажами, 2 514 розпізнано класифікатором; ціна = продаж +
+# пересилка, вага min(продано, 3)). Медіана за 30 днів; якщо за останні 14 днів вона зсунулась на ≥ 5% при ≥ 12 продажах —
+# свіжіші 14 днів (ринок росте: DDR5 SO-DIMM 2×32 і DDR4 SO-DIMM 32 ГБ). Розкладку беремо лише явну («2x16», K2, CT2K,
+# номер одиночної планки) — «32GB DDR5» без розкладки змішував одиночні планки з наборами і занижував ціну наборів.
+TERAPEAK_DATE, TERAPEAK_EVERY = "2026-10-11", 14   # дата заміру нижче; тижневий звіт нагадує, коли мине 14 днів
 REAL_BASE = {
-    ("ddr5", "udimm", False, 32, 2): dict(p25=327, med=372, st=19, period=30, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
+    ("ddr5", "udimm", False, 32, 2): dict(p25=328, med=372, st=19, period=30, name="DDR5 UDIMM 32 ГБ (2×16) кіт"),
     ("ddr5", "udimm", False, 64, 2): dict(p25=617, med=688, st=9, period=30, name="DDR5 UDIMM 64 ГБ (2×32) кіт"),
-    ("ddr5", "udimm", False, 16, 1): dict(p25=146, med=175, st=6, period=90, name="DDR5 UDIMM 16 ГБ (одна планка)"),
-    # 10.10.2026, Terapeak: 56 продано / 30 дн. — одна планка 32 ГБ для ПК (рішення користувача додати)
-    ("ddr5", "udimm", False, 32, 1): dict(p25=284, med=333, st=15, period=30, name="DDR5 UDIMM 32 ГБ (одна планка)"),
-    ("ddr5", "sodimm", False, 32, 2): dict(p25=238, med=272, st=8, period=90, name="DDR5 SO-DIMM 32 ГБ (2×16) кіт"),
-    # 26.09.2026, Terapeak 30 днів: ≥13 проданих вживаних (Crucial/SK hynix/Samsung/Kingston Impact), p25 ~510, медіана ~556
-    ("ddr5", "sodimm", False, 64, 2): dict(p25=421, med=567, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
-    ("ddr5", "sodimm", False, 32, 1): dict(p25=246, med=277, st=16, period=90, name="DDR5 SO-DIMM 32 ГБ"),
-    ("ddr5", "sodimm", False, 16, 1): dict(p25=129, med=153, st=18, period=90, name="DDR5 SO-DIMM 16 ГБ"),
-    # 26.09.2026, Terapeak 30 днів (типи, яких бракувало): DDR5 2×24 — 9 продано, 2×8 — 13, DDR4 SO-DIMM 2×16 — 24
-    ("ddr5", "udimm", False, 48, 2): dict(p25=409, med=459, st=9, period=30, name="DDR5 UDIMM 48 ГБ (2×24) кіт"),
-    ("ddr5", "udimm", False, 16, 2): dict(p25=195, med=210, st=10, period=30, name="DDR5 UDIMM 16 ГБ (2×8) кіт"),
-    ("ddr4", "sodimm", False, 32, 2): dict(p25=119, med=149, st=15, period=30, name="DDR4 SO-DIMM 32 ГБ (2×16) кіт"),
-    ("ddr4", "udimm", False, 32, 2): dict(p25=129, med=166, st=30, period=30, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
-    ("ddr4", "udimm", False, 64, 2): dict(p25=267, med=306, st=6, period=90, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
-    ("ddr4", "sodimm", False, 32, 1): dict(p25=136, med=155, st=15, period=90, name="DDR4 SO-DIMM 32 ГБ"),
-    ("ddr4", "sodimm", False, 64, 2): dict(p25=214, med=260, st=2.5, period=90, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
+    ("ddr5", "udimm", False, 16, 1): dict(p25=146, med=165, st=6, period=14, name="DDR5 UDIMM 16 ГБ (одна планка)"),
+    ("ddr5", "udimm", False, 32, 1): dict(p25=229, med=285, st=15, period=30, name="DDR5 UDIMM 32 ГБ (одна планка)"),
+    ("ddr5", "sodimm", False, 32, 2): dict(p25=258, med=294, st=8, period=14, name="DDR5 SO-DIMM 32 ГБ (2×16) кіт"),
+    ("ddr5", "sodimm", False, 64, 2): dict(p25=529, med=611, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
+    ("ddr5", "sodimm", False, 32, 1): dict(p25=258, med=277, st=16, period=30, name="DDR5 SO-DIMM 32 ГБ"),
+    ("ddr5", "sodimm", False, 16, 1): dict(p25=129, med=153, st=18, period=30, name="DDR5 SO-DIMM 16 ГБ"),
+    ("ddr5", "udimm", False, 48, 2): dict(p25=462, med=474, st=9, period=30, name="DDR5 UDIMM 48 ГБ (2×24) кіт"),
+    ("ddr5", "udimm", False, 16, 2): dict(p25=193, med=209, st=10, period=30, name="DDR5 UDIMM 16 ГБ (2×8) кіт"),
+    ("ddr5", "udimm", False, 64, 4): dict(p25=614, med=661, st=3, period=30, name="DDR5 UDIMM 64 ГБ (4×16) кіт"),
+    ("ddr4", "sodimm", False, 32, 2): dict(p25=106, med=124, st=15, period=30, name="DDR4 SO-DIMM 32 ГБ (2×16) кіт"),
+    ("ddr4", "udimm", False, 32, 2): dict(p25=143, med=169, st=30, period=30, name="DDR4 UDIMM 32 ГБ (2×16) кіт"),
+    ("ddr4", "udimm", False, 64, 2): dict(p25=300, med=357, st=6, period=30, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
+    # 4 планки — свій ринок, а не «дві пари»: 4×16 DDR4 продається за 260 €, а як дві пари бот рахував ~338 € (завищено)
+    ("ddr4", "udimm", False, 64, 4): dict(p25=214, med=260, st=6, period=30, name="DDR4 UDIMM 64 ГБ (4×16) кіт"),
+    ("ddr4", "udimm", False, 32, 4): dict(p25=102, med=127, st=10, period=14, name="DDR4 UDIMM 32 ГБ (4×8) кіт"),
+    ("ddr4", "sodimm", False, 32, 1): dict(p25=137, med=161, st=15, period=14, name="DDR4 SO-DIMM 32 ГБ"),
+    ("ddr4", "sodimm", False, 64, 2): dict(p25=244, med=276, st=5, period=30, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
 }
 
 
@@ -148,20 +154,44 @@ def caps_from(net: float) -> tuple[float, float, float]:
     return (min(net - MIN_PROFIT, net / (1 + MIN_ROI)), min(net - GOOD_PROFIT, net / 1.35), min(net - EXC_PROFIT, net / 1.5))
 
 
-# 10.10, Terapeak: фірмові набори для ПК продаються значно дорожче за звичайні планки з розібраних ПК (DDR4 2×16:
-# 157/173 € проти 103/113 €), а загальна база їх змішувала. Множники (p25, медіана) до загальної бази типу.
+# Фірмові набори (Corsair, G.Skill, Kingston Fury…) продаються дорожче за звичайні планки з розібраних ПК, а швидкі
+# (DDR5 від 6000, DDR4 від 2933 МГц) — дорожче за повільні: DDR5 2×16 фірмові 6000+ — 393 €, до 5600 — 326 € (11.10).
+# Комірка «сегмент_швидкість» (від 8 продажів) → «сегмент» (від 5) → загальна база. Ціни (p25, медіана) — абсолютні з того
+# ж заміру; множник до бази рахується сам, тож щоденна поправка price_refresh зсуває й сегменти.
 BRANDED = re.compile(r"corsair|g\.?\s?skill|kingston\s*fury|hyperx|ballistix|teamgroup|t-force|patriot|viper|vengeance|trident|"
-                     r"ripjaws|fury\s*beast|fury\s*renegade|dominator|lexar\s*ares|adata\s*xpg|xpg\s*lancer|flare\s*x|aegis|crucial\s*pro", re.I)
-SEGMENT = {
-    ("ddr4", "udimm", False, 32, 2): {"brand": (157 / 129, 173 / 166), "oem": (103 / 129, 113 / 166)},
-    ("ddr5", "udimm", False, 32, 2): {"brand": (352 / 327, 386 / 372), "oem": (256 / 327, 280 / 372)},
-    ("ddr5", "udimm", False, 64, 2): {"brand": (622 / 617, 688 / 688), "oem": (499 / 617, 514 / 688)},
-    ("ddr5", "udimm", False, 16, 2): {"brand": (204 / 195, 221 / 210), "oem": (174 / 195, 187 / 210)},
-    # 11.10 Terapeak, фірмові DDR4 2×32 за 30 днів (ціна росте: 60–30 дн. медіана 334, 30–14 дн. 363, останні 14 дн. 399):
-    # p25 336, медіана 363. Звичайні — як загальна база (окремо не міряли). Через це й набори 128 ГБ (4×32) були занижені:
-    # бот давав 532–610 €, а фірмові 4×32 продавались 460–690 € у липні–серпні і 700–1050 € за останні 2 тижні.
-    ("ddr4", "udimm", False, 64, 2): {"brand": (336 / 267, 363 / 306), "oem": (1.0, 1.0)},
+                     r"ripjaws|fury\s*beast|fury\s*renegade|dominator|lexar\s*ares|adata\s*xpg|xpg\s*lancer|flare\s*x|aegis|crucial\s*pro|"
+                     r"predator\s*pallas|\bpallas\b", re.I)
+SEG_PRICES = {
+    ("ddr5", "udimm", False, 32, 2): {"brand": (350, 383), "oem": (256, 283), "brand_fast": (361, 393), "brand_slow": (311, 326),
+                                      "oem_slow": (256, 280)},
+    ("ddr5", "udimm", False, 64, 2): {"brand": (622, 696), "oem": (480, 511), "brand_fast": (687, 723), "brand_slow": (517, 614)},
+    ("ddr5", "udimm", False, 16, 2): {"brand": (200, 219), "oem": (169, 179), "brand_fast": (219, 236), "brand_slow": (193, 209)},
+    ("ddr5", "udimm", False, 64, 4): {"brand": (661, 666)},
+    ("ddr5", "sodimm", False, 32, 2): {"oem": (258, 293)},
+    ("ddr4", "udimm", False, 32, 2): {"brand": (157, 178), "oem": (98, 109), "brand_fast": (158, 179), "brand_slow": (122, 174),
+                                      "oem_fast": (98, 110), "oem_slow": (99, 108)},
+    ("ddr4", "udimm", False, 64, 2): {"brand": (314, 370), "oem": (230, 289), "brand_fast": (336, 377), "oem_fast": (233, 289),
+                                      "oem_slow": (230, 260)},
+    ("ddr4", "udimm", False, 64, 4): {"brand": (256, 284), "oem": (171, 185), "brand_fast": (278, 317), "brand_slow": (214, 232)},
+    ("ddr4", "udimm", False, 32, 4): {"brand": (127, 153), "oem": (84, 86), "brand_fast": (127, 153), "oem_slow": (84, 86)},
+    ("ddr4", "sodimm", False, 32, 1): {"oem_fast": (141, 161), "oem_slow": (108, 119)},
+    ("ddr4", "sodimm", False, 32, 2): {"brand": (118, 143), "oem": (103, 121), "oem_fast": (102, 122), "oem_slow": (103, 110)},
+    ("ddr4", "sodimm", False, 64, 2): {"oem": (238, 276), "oem_fast": (253, 299)},
 }
+SEGMENT = {k: {c: (v[0] / REAL_BASE[k]["p25"], v[1] / REAL_BASE[k]["med"]) for c, v in cells.items()}
+           for k, cells in SEG_PRICES.items()}
+FAST_FROM, SLOW_TO = {"ddr5": 6000, "ddr4": 2933}, {"ddr5": 5600, "ddr4": 2666}
+_BARE_SPEED = re.compile(r"(?<![\d.,])(\d{4})(?![\d.,]|\s*(?:gb|tb|w\b|mah|zoll))", re.I)
+
+
+def speed_bucket(gen: str, title: str, parsed: int | None) -> str | None:
+    """«fast» / «slow» / None. Швидкість — з парсера, інакше голе число стандартної частоти («DDR5 32GB 6000»)."""
+    sp = parsed
+    if not sp:
+        sp = next((int(m.group(1)) for m in _BARE_SPEED.finditer(title) if snap(gen, int(m.group(1))) == int(m.group(1))), None)
+    if not sp or gen not in FAST_FROM:
+        return None
+    return "fast" if sp >= FAST_FROM[gen] else "slow"
 
 
 def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict:
@@ -212,16 +242,20 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
         return dict(verdict="SKIP", reason=f"ціна {price:.0f} € — заглушка («1 €», «VB»), а не справжня ціна",
                     title=title, price=total_price, wrong_type=False)
     sg = SEGMENT.get(key[:3] + (p["total"] // 2, 2) if quad else key[:2] + (False,) + key[3:])
-    if sg:   # фірмовий набір чи звичайні планки — свої ціни продажу (ECC UDIMM — від звичайних)
+    if sg:   # фірмовий набір чи звичайні планки, швидкі чи повільні — свої ціни продажу (ECC UDIMM — від звичайних)
         seg = "oem" if ecc_udimm else "brand" if BRANDED.search(title) else "oem"
-        fp, fm = sg[seg]
+        spd = speed_bucket(p["gen"], title, p.get("speed"))
+        cell = f"{seg}_{spd}" if spd and f"{seg}_{spd}" in sg else seg if seg in sg else None
+        fp, fm = sg[cell] if cell else (1.0, 1.0)
         if quad:
             quad = dict(quad, p25=round(quad["p25"] * fp), med=round(quad["med"] * fm))
             real = dict(real, p25=2 * quad["p25"], med=2 * quad["med"])
         else:
             real = dict(real, p25=round(real["p25"] * fp), med=round(real["med"] * fm))
         if not ecc_udimm:
-            real["name"] = real["name"] + (" · фірмовий" if seg == "brand" else " · звичайні планки")
+            real["name"] = real["name"] + (" · фірмовий" if seg == "brand" else " · звичайні планки") + \
+                ((f" · від {FAST_FROM[p['gen']]} МГц" if spd == "fast" else f" · до {SLOW_TO[p['gen']]} МГц")
+                 if cell and "_" in cell else "")
     net_q = (QUAD_SHARE * 2 * (quad["med"] - costs(quad["med"])) if quad   # дві продажі пар — кожна зі своїми витратами
              else real["med"] - costs(real["med"]))
     cap, good, excellent = caps_from(net_q)
