@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-11b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-11c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -325,7 +325,8 @@ function parseMail_(msg) {
   }
   const total = amountAfter_(body, 'Gesamtbetrag|Gesamtsumme|Bestellsumme|Gesamt|Summe|Total');
   const ship = amountAfter_(body, 'Verpackung und Versand|Versandkosten|Versand');
-  let price = ppItem ? money_(ppItem[2]) : amountAfter_(body, 'Artikelpreis|Kaufpreis|Verkaufspreis|Sofort-Kaufen-Preis|Preis');
+  // 11.10: лист eBay про продаж — «Verkauft:\nEUR 149,00» (мітки «Preis» там немає, ціна продажу лишалась порожня)
+  let price = ppItem ? money_(ppItem[2]) : amountAfter_(body, 'Artikelpreis|Kaufpreis|Verkaufspreis|Sofort-Kaufen-Preis|Preis|Verkauft');
   const fee = amountAfter_(body, 'Käuferschutz|Servicegebühr|Gebühr');
   if (price == null && total != null) price = Math.round((total - (ship || 0) - (fee || 0)) * 100) / 100;
   return { kind: kind, src: src, title: title, id: idm ? idm[1] : '', link: idm ? 'https://www.ebay.de/itm/' + idm[1] : (kam ? kam[0] : ''),
@@ -414,6 +415,8 @@ function processLedger() {
   try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
   try { fixAlbum1010_(); } catch (e) { console.log('fixAlbum1010_: ' + e); }
+  try { fixSalePrice1011_(); } catch (e) { console.log('fixSalePrice1011_: ' + e); }
+  try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
@@ -1649,6 +1652,58 @@ function movePhotos_(a, b, k) {
 }
 
 /** 10.10, один раз: два фото альбому «2» (упаковка проданого) потрапили до №1 — переносимо назад. */
+/** 11.10, один раз: продажі, записані без ціни (лист «Artikel verkauft» з «Verkauft: EUR …»), — ціну з того самого листа. */
+function fixSalePrice1011_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('SALE_PRICE_1011') === '1') return;
+  const sh = ledger_().getSheetByName('Угоди');
+  const n = Math.max(sh.getLastRow() - LEDGER_FIRST + 1, 0);
+  const data = n ? sh.getRange(LEDGER_FIRST, 1, n, COL.id).getValues() : [];
+  const empty = [];
+  data.forEach(function (v, i) { if (v[COL.title - 1] && v[COL.status - 1] === 'Продано' && v[COL.sprice - 1] === '') empty.push(i); });
+  if (empty.length) {
+    GmailApp.search('from:ebay subject:verkauft newer_than:30d', 0, 20).forEach(function (th) {
+      th.getMessages().forEach(function (m) {
+        const p = parseMail_(m);
+        const amount = p.total != null ? p.total : p.price;
+        if (p.skip || p.kind !== 'sale' || amount == null || !empty.length) return;
+        const want = words_(p.title);
+        let best = -1, bs = 0;
+        empty.forEach(function (i) {
+          const have = words_(data[i][COL.title - 1]);
+          const s = want.filter(function (w) { return have.indexOf(w) >= 0; }).length;
+          if (s > bs) { bs = s; best = i; }
+        });
+        if (best < 0 || bs < 2) return;
+        sh.getRange(LEDGER_FIRST + best, COL.sprice).setValue(amount);
+        empty.splice(empty.indexOf(best), 1);
+        notify_('💰 Дописав ціну продажу №' + (best + 1) + ': ' + amount + ' € — тепер прибуток рахується (напиши «облік»).');
+      });
+    });
+  }
+  props.setProperty('SALE_PRICE_1011', '1');
+}
+
+/** 11.10, один раз: скасовані купівлі (гроші повернуто) не входять у «Витрачено» в «Підсумку» — ні загалом, ні за категоріями. */
+function summaryNoCancelled1011_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('SUM_NO_CANCEL_1011') === '1') return;
+  const sum = ledger_().getSheetByName('Підсумок');
+  if (!sum) return;
+  const R = function (c) { return "'Угоди'!" + c + '5:' + c; };
+  const ex = ',' + R('K') + ',"<>Скасовано"';
+  if (sum.getRange('B6').getFormula() === '=SUM(' + R('J') + ')') sum.getRange('B6').setFormula('=SUMIFS(' + R('J') + ex + ')');
+  for (let r = 15; r <= 19; r++) {
+    const f = sum.getRange(r, 4).getFormula();
+    if (f === '=SUMIFS(' + R('J') + ',' + R('D') + ',A' + r + ')') sum.getRange(r, 4).setFormula(f.slice(0, -1) + ex + ')');
+  }
+  for (let r = 23; r <= 26; r++) {
+    const f = sum.getRange(r, 3).getFormula();
+    if (f === '=SUMIFS(' + R('J') + ',' + R('E') + ',A' + r + ')') sum.getRange(r, 3).setFormula(f.slice(0, -1) + ex + ')');
+  }
+  props.setProperty('SUM_NO_CANCEL_1011', '1');
+}
+
 function fixAlbum1010_() {
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty('FIX_ALBUM_1010') === '1') return;

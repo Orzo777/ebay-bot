@@ -44,6 +44,12 @@ check('total only', [p.kind, p.price, p.total], ['purchase', 1234.56, 1234.56]);
 p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Sie haben einen Artikel verkauft: OWC 32GB DDR4 iMac', 'Verkaufspreis: EUR 110,00\nGesamt: EUR 116,19'));
 check('ebay sale', [p.kind, p.title, p.total], ['sale', 'OWC 32GB DDR4 iMac', 116.19]);
 
+// 11.10: справжній лист eBay про продаж — сума під «Verkauft:», а «48 Stunden» і «Verkaufte Stückzahl: 1» — не ціна
+p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', '🎉 Artikel verkauft - Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200 CMK32...',
+  'Gute Neuigkeiten - Ihr Artikel wurde verkauft!\nBestellstatus prüfen\nHallo i1_dev,\nIhr Käufer hat noch nicht bezahlt. Wir erinnern ihn ' +
+  'daran, innerhalb von 48 Stunden zu bezahlen.\nCorsair Vengeance LPX 32GB (2x16GB) DDR4 3200 CMK32...\nVerkauft:\nEUR 149,00\n' +
+  'Verkauft am:\n09. Okt. 2026\nKäufer:\nberwald08\nVerkaufte Stückzahl:\n1'));
+check('ebay sale 11.10 format', [p.kind, p.price, p.total], ['sale', 149, null]);
 p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Ihr Artikel wurde versandt: RAM ddr4 32GB für iMac', 'Artikelnummer: 317456789012'));
 check('shipped', [p.kind, p.id], ['shipped', '317456789012']);
 p = ctx.parseMail_(mail('eBay <ebay@ebay.de>', 'Ihr Paket wurde zugestellt', '/itm/317456789012'));
