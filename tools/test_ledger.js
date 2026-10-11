@@ -60,6 +60,25 @@ p = ctx.parseMail_(mail('Kleinanzeigen <noreply@kleinanzeigen.de>', 'Du hast „
 check('ka purchase', [p.kind, p.src, p.title, p.price, p.ship, p.fee], ['purchase', 'Kleinanzeigen', 'Corsair Vengeance 32GB DDR5', 150, 6.19, 5.5]);
 p = ctx.parseMail_(mail('Kleinanzeigen <noreply@kleinanzeigen.de>', 'Dein Artikel „OWC 32GB" wurde gekauft', 'Kaufpreis 110,00 €'));
 check('ka sale', [p.kind, p.title], ['sale', 'OWC 32GB']);
+// 11.10: справжня перша покупка з KA (Direkt kaufen): лист PayPal з цінами + лист KA без цін
+const PP = 'Hello, Ivan\nYour purchase details\nPayment from\nIvan\nPayment to\nkleinanzeigen.de GmbH\nTransaction ID\n35L97\t' +
+  'Transaction date\n11 October 2026\nTotal purchase amount\t96,54 € EUR\nInvoice ID\tQ27\nShipping address\nIvan\nHamburg\nGermany\n' +
+  '2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz\t90,00 € EUR\nItem no: 1 | 90,00 € EUR\nVersand\t1,99 € EUR\n' +
+  'Item no: 1 | 1,99 € EUR\nKäuferschutz\t4,55 € EUR\nItem no: 1 | 4,55 € EUR\nSubtotal\t96,54 € EUR\nTotal discount\t0,00 € EUR\n' +
+  'Total amount\t96,54 € EUR';
+p = ctx.parseMail_(mail('"service@paypal.de" <service@paypal.de>', 'You authorized a payment', PP));
+check('paypal → ka purchase', [p.kind, p.src, p.title, p.price, p.ship, p.fee, p.total],
+  ['purchase', 'Kleinanzeigen', '2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz', 90, 1.99, 4.55, 96.54]);
+p = ctx.parseMail_(mail('"service@paypal.de" <service@paypal.de>', 'You authorized a payment', PP.replace('\t90,00', '\n90,00')));
+check('paypal, price on next line', [p.title, p.price], ['2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz', 90]);
+p = ctx.parseMail_(mail('"service@paypal.de" <service@paypal.de>', 'You authorized a payment', PP.replace('kleinanzeigen.de GmbH', 'Amazon EU')));
+check('paypal for another shop — skipped', !!p.skip, true);
+p = ctx.parseMail_(mail('Kleinanzeigen <noreply@kleinanzeigen.de>', 'Dein Kauf wurde bestätigt!',
+  'Dein Kauf wurde bestätigt!\nTransaktion ID: 717d3ac0\nDer Verkäufer hat deinen Kauf des Artikels "2x Corsair Vengeance LPX DDR4 RAM ' +
+  '32GB (2x16GB) 2133MHz" über "Direkt kaufen" bestätigt.\nAls Nächstes versendet der Verkäufer den Artikel.\n' +
+  'Du bist durch den Kleinanzeigen-Käuferschutz abgesichert. Die Zahlung wird über Adyen abgewickelt.'));
+check('ka «Kauf bestätigt»', [p.kind, p.src, p.title, p.price, p.fee],
+  ['purchase', 'Kleinanzeigen', '2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz', null, null]);
 p = ctx.parseMail_(mail('Kleinanzeigen <noreply@kleinanzeigen.de>', 'Neue Anzeigen für „ddr5 32gb"', ''));
 check('ka alert skipped', !!p.skip, true);
 

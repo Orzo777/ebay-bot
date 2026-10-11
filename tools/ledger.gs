@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-11a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-11b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -265,15 +265,18 @@ function category_(t) {
 
 // ------------------------------------------------------------------ розбір листів
 // Лише листи-угоди (у темі), а не сповіщення підписок KA — їх сотні на день
-const LEDGER_QUERY = '(from:ebay OR from:kleinanzeigen) newer_than:45d subject:(bestellbestätigung OR bestellung OR gekauft ' +
-  'OR verkauft OR versandt OR versendet OR verschickt OR unterwegs OR zugestellt OR geliefert OR storniert OR abgebrochen ' +
-  'OR erstattet OR rückerstattung OR gewonnen OR bestätigt OR zahlung) -subject:"Suchauftrag" -subject:"neue Anzeigen"';
+// 11.10: KA «Direkt kaufen» — лист KA «Dein Kauf wurde bestätigt!» без ціни; ціна, пересилка й Käuferschutz — лише в листі
+// PayPal «You authorized a payment» (Payment to: kleinanzeigen.de GmbH). PayPal-листи про інші покупки пропускаємо.
+const LEDGER_QUERY = '(from:ebay OR from:kleinanzeigen OR from:paypal) newer_than:45d subject:(bestellbestätigung ' +
+  'OR bestellung OR gekauft OR verkauft OR versandt OR versendet OR verschickt OR unterwegs OR zugestellt OR geliefert OR storniert ' +
+  'OR abgebrochen OR erstattet OR rückerstattung OR gewonnen OR bestätigt OR zahlung OR authorized OR autorisiert OR payment) ' +
+  '-subject:"Suchauftrag" -subject:"neue Anzeigen"';
 const KINDS = [   // порядок важливий: скасування раніше за «куплено»
   ['cancel', /storniert|abgebrochen|rückerstattung|erstattet|zurückerstattet|cancel+ed|refund/i],
   ['delivered', /zugestellt|geliefert|delivered/i],
   ['shipped', /versandt|verschickt|versendet|ist unterwegs|auf dem weg|shipped/i],
   ['sale', /(?:wurde|haben|hast|ist)\s+verkauft|artikel verkauft|wurde gekauft|hat .{0,60}gekauft|sold/i],
-  ['purchase', /bestellbestätigung|bestellung .{0,20}bestätigt|(?:sie haben|du hast) .{0,80}(?:gekauft|gewonnen)|kauf bestätigt|zahlung (?:bestätigt|erfolgreich)|order confirmed|you (?:bought|won)/i]];
+  ['purchase', /bestellbestätigung|bestellung .{0,20}bestätigt|(?:sie haben|du hast) .{0,80}(?:gekauft|gewonnen)|kauf (?:wurde )?bestätigt|zahlung (?:bestätigt|erfolgreich)|order confirmed|you (?:bought|won)|authori[sz]ed a payment|zahlung autorisiert/i]];
 
 function money_(s) {
   const m = String(s).match(/([\d.]{1,7},\d{2})/);
@@ -295,16 +298,22 @@ function parseMail_(msg) {
   const from = msg.getFrom() || '';
   const body = msg.getPlainBody() || '';
   const html = msg.getBody() || '';
-  const src = /ebay/i.test(from) ? 'eBay' : /kleinanzeigen/i.test(from) ? 'Kleinanzeigen' : 'Інше';
+  const pp = /paypal/i.test(from);
+  if (pp && !/kleinanzeigen\.de\s*gmbh/i.test(body + ' ' + html)) return { skip: true };   // PayPal — лише оплати на KA
+  const src = /ebay/i.test(from) ? 'eBay' : /kleinanzeigen/i.test(from) || pp ? 'Kleinanzeigen' : 'Інше';
   let kind = null;
   for (let i = 0; i < KINDS.length; i++) if (KINDS[i][1].test(subject)) { kind = KINDS[i][0]; break; }
   if (!kind) return { skip: true };   // реклама, повідомлення, «Preisvorschlag» тощо — не угода
+  // назва товару в тексті: KA «Kauf des Artikels "…"», PayPal — рядок «назва   90,00 € EUR» над «Item no: 1»
+  const kaItem = body.match(/Kauf des Artikels\s+["„“]([^"“”\n]{4,150})["“”]/i);
+  const ppItem = pp ? body.match(/(?:^|\n)[ \t]*([^\n\t]{4,150}?)[ \t\n]+([\d.]{1,7},\d{2})\s*€?\s*EUR\s*\n\s*(?:Item no|Artikel)/i) : null;
   const idm = (html + ' ' + body).match(/\/itm\/(?:[^\/\s"'<>]*\/)?(\d{10,14})/) ||
               body.match(/(?:Artikelnummer|Artikel-?Nr\.?|Item number)[:\s#]*(\d{10,14})/i);
   const kam = (html + ' ' + body).match(/https?:\/\/(?:www\.)?kleinanzeigen\.de\/s-anzeige\/[^\s"'<>]+/);
   let title = (subject.match(/[„"«]([^“"»]{4,})[“"»]/) || [])[1] ||
               (subject.indexOf(':') >= 0 ? subject.slice(subject.indexOf(':') + 1)
                : subject.replace(/^.*?(?:bestätigung|bestätigt|verkauft|gekauft|versandt|versendet|zugestellt|storniert)\s+(?:für\s+)?/i, ''));
+  if (kaItem || ppItem) title = (kaItem || ppItem)[1];
   title = title.replace(/\s+/g, ' ').trim().slice(0, 150);
   // eBay обрізає назву в темі («Corsair Vengeance LP...», 03.10 — без «DDR4» категорія вийшла «Інше», а «продати N» не
   // впізнав би товар): повна назва — рядок тексту листа, що починається так само
@@ -316,7 +325,7 @@ function parseMail_(msg) {
   }
   const total = amountAfter_(body, 'Gesamtbetrag|Gesamtsumme|Bestellsumme|Gesamt|Summe|Total');
   const ship = amountAfter_(body, 'Verpackung und Versand|Versandkosten|Versand');
-  let price = amountAfter_(body, 'Artikelpreis|Kaufpreis|Verkaufspreis|Sofort-Kaufen-Preis|Preis');
+  let price = ppItem ? money_(ppItem[2]) : amountAfter_(body, 'Artikelpreis|Kaufpreis|Verkaufspreis|Sofort-Kaufen-Preis|Preis');
   const fee = amountAfter_(body, 'Käuferschutz|Servicegebühr|Gebühr');
   if (price == null && total != null) price = Math.round((total - (ship || 0) - (fee || 0)) * 100) / 100;
   return { kind: kind, src: src, title: title, id: idm ? idm[1] : '', link: idm ? 'https://www.ebay.de/itm/' + idm[1] : (kam ? kam[0] : ''),
