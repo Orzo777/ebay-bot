@@ -116,24 +116,26 @@ def discover_models(key: str) -> list[str]:
     return _working["list"]
 
 
-def ask_gemini(images: list[bytes], prompt: str, key: str | None = None) -> dict | None:
+def ask_gemini(images: list[bytes], prompt: str, key: str | None = None, allow_text: bool = False, budget: float = 50,
+               temperature: float = 0) -> dict | None:
+    """allow_text — запит без фото (тексти продавцям, seller_msg.py); budget — скільки секунд чекати разом."""
     import requests
     key = key or os.getenv("GEMINI_API_KEY")
-    if not key or not images:
+    if not key or not (images or allow_text):
         return None
     parts = [{"text": prompt}] + [{"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(b).decode()}}
                                   for b in images]
     body = {"contents": [{"parts": parts}],
-            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
+            "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"}}
     order = ([_working["m"]] if "m" in _working else []) + [m for m in MODELS + discover_models(key)
                                                             if m != _working.get("m")]
     order = list(dict.fromkeys(order))[:8]
-    t_end = time.time() + 50   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
+    t_end = time.time() + budget   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
     for model in order + order[:1]:   # 503 «high demand» (29.09) — інша модель, потім ще раз перша
         if time.time() > t_end:
             break
         try:
-            r = requests.post(API.format(model), headers={"x-goog-api-key": key}, json=body, timeout=TIMEOUT)
+            r = requests.post(API.format(model), headers={"x-goog-api-key": key}, json=body, timeout=min(TIMEOUT, budget))
         except Exception as e:
             print(f"   [фото] {model}: {e.__class__.__name__}")
             continue

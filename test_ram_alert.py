@@ -7,7 +7,7 @@ import unittest
 os.environ["RAM_PRICES_OFF"] = "1"   # фіксовані цифри Terapeak: щотижневе оновлення цін не змінює очікувані вердикти
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
-from ram_alert import evaluate, format_html, seller_template
+from ram_alert import buyer_message, evaluate, format_html, seller_template
 from ram_mail_check import _ad_key, build_keyboard
 
 
@@ -51,9 +51,42 @@ class TestAmbiguousKit(unittest.TestCase):
         r = evaluate("DDR4 RAM Arbeitsspeicher 64GB Vengeance", 100)
         r["desc"] = "2x32GB Kit, mit MemTest getestet, ohne Rechnung."
         t = seller_template(r)
-        self.assertEqual(t, 'Hallo! Ich nehme den RAM und kaufe sofort – bitte für mich reservieren. '
-                            'Ich zahle per „Sicher bezahlen", Versand und Gebühr übernehme ich. Danke!')
+        self.assertEqual(t, 'Hallo, ich würde den RAM gern nehmen – reservierst du ihn mir? '
+                            'Ich zahle gleich per „Sicher bezahlen", Versand und Gebühr übernehme ich. Viele Grüße')
         self.assertNotIn("Скільки планок", format_html(r))
+
+    def test_no_silly_questions(self):
+        # 11.10 (користувач): «18 Monate im PC, wegen Upgrade ausgebaut» — не питати, чи працює і чи є чек
+        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200", 90)
+        self.assertNotIn("Rechnung", seller_template(r))          # б/у пам'ять — чек не питаємо взагалі
+        self.assertIn("fehlerfrei", seller_template(r))           # опис мовчить — питаємо, чи працювала
+        r["desc"] = "War 18 Monate in meinem Gaming-PC verbaut, wegen Upgrade auf 64 GB ausgebaut."
+        self.assertNotIn("fehlerfrei", seller_template(r))
+        from console_alert import evaluate_console
+        x = evaluate_console("Xbox Series X 1TB", 410)
+        self.assertIn("Rechnung", seller_template(x))             # консоль — чек питаємо…
+        x["desc"] = "Seit 2 Jahren genutzt, läuft einwandfrei."
+        self.assertNotIn("Rechnung", seller_template(x))          # …але не після двох років користування
+
+    def test_gemini_text_checked(self):
+        import os
+        from unittest import mock
+        import seller_msg
+        r = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200", 90)
+        good = ('Hi, ich würde den RAM gern für 85 € nehmen und gleich über Sicher bezahlen kaufen, Versand und Gebühr '
+                'übernehme ich. Magst du ihn mir reservieren?')
+        cases = [(good, good), ("Ich zahle 70 € per Überweisung", None), (good.replace("85", "80"), None),
+                 (good.replace("Sicher bezahlen", "Kleinanzeigen"), None), ("", None)]
+        with mock.patch.dict(os.environ, {"SELLER_MSG": "1", "GEMINI_API_KEY": "k"}):
+            for got, want in cases:
+                seller_msg._CACHE.clear()
+                with mock.patch("photo_check.ask_gemini", return_value={"text": got}):
+                    t = buyer_message(r, 85)
+                if want:
+                    self.assertEqual(t, want)
+                else:   # підозріла відповідь — шаблон
+                    self.assertTrue(t.startswith("Hallo, ich würde den RAM gern für 85 € nehmen"), got)
+        seller_msg._CACHE.clear()
 
 
 class TestNewTypes(unittest.TestCase):

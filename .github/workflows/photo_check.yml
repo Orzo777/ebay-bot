@@ -13,6 +13,10 @@ on:
       price:
         description: "Ціна, €"
         required: true
+      mode:
+        description: "photo — фото оголошення; text — тексти продавцям на прикладах (research/seller_msg.py)"
+        required: false
+        default: photo
 
 permissions:
   contents: read
@@ -29,6 +33,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Photo check
+        if: inputs.mode != 'text'
         run: python research/photo_check.py "$URL" "$TITLE" "$PRICE"
         env:
           URL: ${{ inputs.url }}
@@ -37,3 +42,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
           EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+      - name: Seller texts
+        if: inputs.mode == 'text'
+        run: python research/seller_msg.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

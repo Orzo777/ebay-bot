@@ -32,7 +32,7 @@ from ka_listing_check import _CONTACT, _PAYMENT
 import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import ebay_images, photo_line
-from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
+from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, candidate_questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
                        evaluate, refine_by_desc, tier)
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
@@ -164,17 +164,24 @@ def ebay_message(r: dict, offer: int | None = None) -> str:
     Як і на KA: спершу рішення, потім умови, в кінці лише питання, на які опис не відповів. Оплата — тільки через eBay."""
     what = r.get("item_acc", "den RAM")
     if offer is None:
-        head = f"Hallo! Ich möchte {what} kaufen."
+        head = f"Hallo, ich würde {what} gern kaufen."
+        goal = f"Say you'd like to buy {what} at the listed price."
     elif r.get("vb"):
-        head = f"Hallo! Ich nehme {what} für {offer} € – Preisvorschlag schicke ich gleich."
+        head = f"Hallo, ich würde {what} gern für {offer} € nehmen und schicke Ihnen gleich einen Preisvorschlag."
+        goal = f"Say you'd like to buy {what} for {offer} € and will send a price offer (Preisvorschlag) right away."
     else:   # Preisvorschlag вимкнений: продавець може знизити ціну в оголошенні
-        head = f"Hallo! Würden Sie {what} für {offer} € verkaufen? Passen Sie den Preis an, dann kaufe ich sofort."
-    terms = ("Ich hole heute oder morgen in Hamburg ab, bezahlt wird über eBay. Wann passt es Ihnen?" if r.get("pickup")
-             else "Bezahlung über eBay, bitte gut verpackt und versichert versenden.")
-    parts = [head, terms, *_questions(r), "Danke!"]
+        head = f"Hallo, würden Sie {what} auch für {offer} € abgeben? Wenn Sie den Preis anpassen, kaufe ich sofort."
+        goal = (f"Ask whether they would sell {what} for {offer} € by lowering the price in the listing; "
+                "then you buy immediately.")
+    terms = ("Ich kann heute oder morgen in Hamburg abholen, bezahlt wird über eBay – wann passt es Ihnen?" if r.get("pickup")
+             else "Bezahlt wird über eBay, bitte gut verpackt und versichert verschicken.")
+    parts = [head, terms, *_questions(r, du=False), "Viele Grüße"]
     while len(" ".join(parts)) > 256 and len(parts) > 3:
         parts.pop(-2)
-    return " ".join(parts)
+    import seller_msg
+    terms_en = ("Say you can pick it up in Hamburg today or tomorrow, payment through eBay; ask when it suits them."
+                if r.get("pickup") else "Say payment goes through eBay and ask to ship it well packed and insured.")
+    return seller_msg.humanize(r, offer, " ".join(parts), "ebay", goal, terms_en, candidate_questions(r, du=False), False)
 
 
 def risk_of(lst: dict, desc: str | None, quick_sale: float) -> dict:

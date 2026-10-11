@@ -75,8 +75,8 @@ class TestNegotiate(unittest.TestCase):
         self.assertIsNone(offer_template(r))   # «торгуйся»: один текст, одразу з пропозицією (29.09)
         t = seller_template(r)
         self.assertIn("400 €", t)
-        self.assertTrue(t.startswith("Hallo! Ich nehme die Xbox Series X für 400 €"))   # хук: одразу рішення і сума
-        self.assertIn("reservieren", t)
+        self.assertTrue(t.startswith("Hallo, ich würde die Xbox Series X gern für 400 € nehmen"))   # одразу рішення і сума
+        self.assertIn("reservierst", t)
         self.assertIn("Versand und Gebühr übernehme ich", t)
         self.assertNotIn("noch da", t)
         self.assertIn("Xbox Series X", t)
@@ -112,7 +112,7 @@ class TestCard(unittest.TestCase):
         self.assertNotIn("RAM", t)
         self.assertLessEqual(len(t), 256)
         # порядок: беру → умови → питання
-        self.assertLess(t.index("reservieren"), t.index("Sicher bezahlen"))
+        self.assertLess(t.index("reservierst"), t.index("Sicher bezahlen"))
         self.assertLess(t.index("Sicher bezahlen"), t.index("Laufwerk"))
 
     def test_description_answers_skip_questions(self):

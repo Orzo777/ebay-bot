@@ -306,7 +306,14 @@ _DESC_UNTESTED = re.compile(r"ungetestet|nicht getestet|ungeprüft|nicht geprüf
                             r"keine\s+ahnung,?\s+ob|kein\w*\s+(?:\w+\s+)?(?:system|pc|rechner|mainboard)\s+(?:\w+\s+)?zum\s+test|"
                             r"nicht\s+(?:mehr\s+)?ausprobiert|ohne\s+gew[äa]hr,?\s+ob", re.I)
 _DESC_WORKS = re.compile(r"getestet|funktioniert|funktionsfähig|einwandfrei|fehlerfrei|problemlos|memtest|"
-                         r"läuft\s+(?:stabil|super|perfekt|top|ohne)|keine\s+(?:probleme|fehler|mängel)", re.I)
+                         r"läuft\s+(?:stabil|super|perfekt|top|ohne)|keine\s+(?:probleme|fehler|mängel)|"
+                         # 11.10: «wegen Upgrade ausgebaut», «lief bis zuletzt im Gaming-PC» — справна, не питаємо
+                         r"aufgerüstet|upgrade|lief(?:en)?\s+(?:\w+\s+){0,3}(?:stabil|ohne|bis)|bis\s+zuletzt|"
+                         r"im\s+(?:täglichen\s+)?(?:betrieb|einsatz)", re.I)
+# 11.10: довго користувався / вийняв з ПК — чек не питаємо («18 Monate genutzt», «seit 2022», «aus meinem PC»)
+_DESC_LONG_USE = re.compile(r"\b\d+\s*(?:monat|jahr)(?:e|en)?\b|seit\s+(?:\d{4}|\w+\s+(?:jahr|monat))|"
+                            r"(?:jahre?|monate?)\s+(?:lang\s+)?(?:genutzt|benutzt|im\s+einsatz|verbaut)|"
+                            r"aus\s+(?:meinem|einem|unserem)\s+(?:\w+\s+)?(?:pc|rechner|computer|laptop|notebook)|ausgebaut", re.I)
 _DESC_NO_RECEIPT = re.compile(r"\b(?:keine?n?|ohne)\s+(?:\w+\s+)?(?:rechnung|kaufbeleg|quittung|kassenbon)|"
                               r"rechnung\s+(?:ist\s+)?(?:nicht|leider nicht)", re.I)
 _DESC_RECEIPT = re.compile(r"rechnung|kaufbeleg|quittung|kassenbon|kaufnachweis", re.I)
@@ -449,39 +456,66 @@ def desc_facts(desc: str | None, r: dict | None = None) -> dict:
     return dict(works=works, receipt=receipt, kit_ok=kit_ok)
 
 
-def _questions(r: dict) -> list[str]:
-    f = desc_facts(r.get("desc"), r)
+def is_console(r: dict) -> bool:
+    return r.get("brand") in ("Sony", "Microsoft", "Nintendo")
+
+
+def candidate_questions(r: dict, du: bool = True) -> list[str]:
+    """Усі питання, що можуть знадобитись (без огляду на опис) — для Gemini, яка сама відкидає зайві (seller_msg.py)."""
     q = []
-    if r.get("single_module_warning") and not f["kit_ok"]:
+    if r.get("single_module_warning"):
         q.append(f'Ist es genau EIN Riegel mit {r["total"]} GB?')
-    elif r.get("kit_unknown") and not f["kit_ok"]:
+    elif r.get("kit_unknown"):
         q.append(f'Sind es 2x{r["total"] // 2} GB oder mehr Riegel?')
     if too_cheap(r) and r.get("item_acc", "den RAM") == "den RAM":
-        q.append("Können Sie ein Foto vom Aufkleber schicken?")
-    if f["works"] is None:
-        q.append(r.get("check_q", "Lief er fehlerfrei?"))
-    if f["receipt"] is None:
-        q.append("Gibt es eine Rechnung?")
+        q.append("Kannst du ein Foto vom Aufkleber schicken?" if du else "Können Sie ein Foto vom Aufkleber schicken?")
+    q.append(r.get("check_q", "Lief er fehlerfrei?"))
+    if is_console(r):   # 11.10: чек — лише для консолей (крадені); за б/у пам'ять його ніхто не має і не питає
+        q.append("Hast du noch die Rechnung?" if du else "Gibt es noch eine Rechnung?")
     return q
 
 
+def _questions(r: dict, du: bool = True) -> list[str]:
+    """Запасний варіант без Gemini: лише питання, на які опис не відповів."""
+    f, d = desc_facts(r.get("desc"), r), r.get("desc") or ""
+    skip = set()
+    if f["kit_ok"]:
+        skip |= {q for q in candidate_questions(r, du) if "Riegel" in q}
+    if f["works"] is not None:
+        skip.add(r.get("check_q", "Lief er fehlerfrei?"))
+    if f["receipt"] is not None or _DESC_LONG_USE.search(d):
+        skip |= {q for q in candidate_questions(r, du) if "Rechnung" in q}
+    return [q for q in candidate_questions(r, du) if q not in skip]
+
+
+def _pron(what: str) -> str:
+    return {"den": "ihn", "die": "sie", "das": "es"}.get(what.split()[0].lower(), "es")
+
+
 def buyer_message(r: dict, offer: int | None = None) -> str:
-    """Текст продавцю (німецькою, ≤256 символів — ліміт кнопки «копіювати» в Telegram).
-    Як «хук»: спершу рішення (беру, зарезервуй), потім умови, в кінці лише питання, на які опис не відповів.
+    """Текст продавцю на KA (німецькою, ≤256 символів — ліміт кнопки «копіювати» в Telegram).
+    Спершу рішення (беру, зарезервуй), потім умови, в кінці лише питання, на які опис не відповів. 11.10: звучить як
+    людина («ich würde … gern nehmen», на «du», як заведено на KA), а з Gemini — ще й з урахуванням опису (seller_msg.py).
     «Ще в наявності?» не питаємо: зняте оголошення продавець і так закриває або ставить «Reserviert»."""
     what = r.get("item_acc", "den RAM")
-    head = (f"Hallo! Ich nehme {what} für {offer} € und kaufe sofort – bitte für mich reservieren."
-            if offer is not None else f"Hallo! Ich nehme {what} und kaufe sofort – bitte für mich reservieren.")
+    pron = _pron(what)
+    price_part = f" für {offer} €" if offer is not None else ""
+    head = f"Hallo, ich würde {what} gern{price_part} nehmen – reservierst du {pron} mir?"
     if r.get("pickup"):
-        head = (f"Hallo! Ich nehme {what} für {offer} € – bitte für mich reservieren."
-                if offer is not None else f"Hallo! Ich nehme {what} – bitte für mich reservieren.")
-        terms = "Ich hole heute oder morgen in Hamburg ab und zahle bar. Wann passt es Ihnen?"
+        head = f"Hallo, ich würde {what} gern{price_part} nehmen."
+        terms = "Ich kann heute oder morgen in Hamburg abholen und bar zahlen – wann passt es dir?"
     else:
-        terms = 'Ich zahle per „Sicher bezahlen", Versand und Gebühr übernehme ich.'
-    parts = [head, terms, *_questions(r), "Danke!"]
+        terms = 'Ich zahle gleich per „Sicher bezahlen", Versand und Gebühr übernehme ich.'
+    parts = [head, terms, *_questions(r), "Viele Grüße"]
     while len(" ".join(parts)) > 256 and len(parts) > 3:   # задовге — спершу жертвуємо останнім питанням (чек)
         parts.pop(-2)
-    return " ".join(parts)
+    text = " ".join(parts)
+    import seller_msg
+    goal = (f"Say you'd like to buy {what} for {offer} € and would buy right away." if offer is not None
+            else f"Say you'd like to buy {what} at the listed price and would buy right away.")
+    terms_en = ("Say you can pick it up in Hamburg today or tomorrow and pay cash; ask when it suits them." if r.get("pickup")
+                else 'Say you pay right away via "Sicher bezahlen" (use exactly these words) and cover shipping and the fee.')
+    return seller_msg.humanize(r, offer, text, "ka", goal, terms_en, candidate_questions(r), not r.get("pickup"))
 
 
 def offer_template(r: dict) -> str | None:
