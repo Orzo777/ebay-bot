@@ -40,9 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -51,7 +51,7 @@ jobs:
 
       - name: Restore KA card map (read-only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'reply' }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ram_mail_state.json
           key: rammailstate-reply-${{ github.run_id }}
@@ -59,14 +59,14 @@ jobs:
 
       - name: Restore share card map (read-only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'reply' }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ka_share_state.json
           key: kashare-reply-${{ github.run_id }}
           restore-keys: kashare-
 
       - name: Restore sent replies
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ka_replies_state.json
           key: kareplies-${{ github.run_id }}
@@ -92,7 +92,7 @@ jobs:
 
       - name: Save sent replies
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ka_replies_state.json
           key: kareplies-${{ github.run_id }}

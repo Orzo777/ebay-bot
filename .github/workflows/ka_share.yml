@@ -29,9 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -39,7 +39,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Restore card map
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ka_share_state.json
           key: kashare-${{ github.run_id }}
@@ -65,7 +65,7 @@ jobs:
 
       - name: Save card map
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ka_share_state.json
           key: kashare-${{ github.run_id }}

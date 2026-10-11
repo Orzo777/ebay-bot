@@ -127,6 +127,17 @@ def console_ask(ckey: str, fetch) -> tuple[float | None, int]:
     return _min_by_seller(fetch(CONSOLE_QUERIES[ckey], USED_CONDS, CONSOLE_CAT), keep)
 
 
+def _browse_raw() -> dict:
+    """Сира відповідь Browse API (1 запит) — для сторожа сервісів: чи є в ній «warnings» від eBay."""
+    import config
+    import check
+    from main import _request_with_backoff
+    if not hasattr(ebay_fetch, "client"):
+        ebay_fetch.client = check.Fetcher().client
+    return _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=ebay_fetch.client._headers(),
+                                 params={"q": "ddr4 ram", "limit": 1})
+
+
 def ebay_fetch(q: str, cond: str, cat: str | None = None) -> list[dict]:
     import config
     import check
@@ -337,6 +348,12 @@ def main():
     parts = pc_parts(data, ebay_fetch, today)
     import shortage_watch   # 10.10: сторож дефіциту — раз на 6 днів, ~40 запитів
     print(f"сторож дефіциту: заміряно {shortage_watch.update(data, ebay_fetch, today)} товарів")
+    import service_watch   # 11.10: сторож сервісів — раз на 7 днів (Gemini, GitHub, eBay, Telegram)
+    try:
+        svc = service_watch.update(data, today, ebay_json=_browse_raw)
+    except Exception as e:   # ціни важливіші за цей рядок
+        print(f"сторож сервісів: {e.__class__.__name__}")
+        svc = []
     for group in ("types", "consoles"):
         for e in data[group].values():
             print(f"{e['name']:34} продавців {e['sellers']:3} ask {e['ask']} якір {e['anchor_ask']} ×{e['ratio']} → p25 €{e['p25']} мед €{e['med']}")
@@ -352,6 +369,8 @@ def main():
         health.office_send("\n".join(found))
     if parts:
         health.office_send("\n".join(parts))
+    for msg in svc:
+        health.office_send(msg)
 
 
 if __name__ == "__main__":

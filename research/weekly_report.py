@@ -231,6 +231,17 @@ def shortage() -> list[str]:
         return []
 
 
+def services() -> list[str]:
+    """11.10: сторож сервісів (research/service_watch.py) — рядок «🔧 Сервіси»."""
+    try:
+        import service_watch
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"), encoding="utf-8") as fh:
+            return service_watch.lines(json.load(fh))
+    except Exception as e:
+        print(f"сервіси: {e.__class__.__name__}")
+        return []
+
+
 def bounds() -> list[str]:
     """10.10: межі «Preis bis» підписок KA, що відстали від ринку (research/ka_bounds.py)."""
     try:
@@ -242,7 +253,7 @@ def bounds() -> list[str]:
 
 
 def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.competitors, kb: list | None = None,
-          ebay_on: bool = False, bounds_fn=bounds, shortage_fn=shortage) -> str:
+          ebay_on: bool = False, bounds_fn=bounds, shortage_fn=shortage, services_fn=services) -> str:
     """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»."""
     acc, _ = accuracy(rows, today)
     cuts, bl = [], bounds_fn()
@@ -254,6 +265,9 @@ def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.compe
     sl = shortage_fn()
     if sl:
         parts.append(sl)
+    sv = services_fn()
+    if sv:
+        parts.append(sv)
     if kb is not None:
         if ebay_on:
             kb += [[{"text": f"⬇️ №{n} → {item} €", "callback_data": f"p|{n}|{item}"}] for n, item in cuts[:6]]

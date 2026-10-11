@@ -29,9 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -42,14 +42,14 @@ jobs:
         run: python -m unittest test_weekly_report test_sell
 
       - name: Restore eBay watcher state (read-only)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ebay_watch_state.json
           key: ebaywatch-weekly-${{ github.run_id }}
           restore-keys: ebaywatch-
 
       - name: Restore KA mail state (read-only)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ram_mail_state.json
           key: rammailstate-weekly-${{ github.run_id }}
