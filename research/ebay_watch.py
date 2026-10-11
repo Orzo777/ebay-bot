@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, ".")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
-from console_alert import evaluate_console
+from console_alert import alerts_on as console_alerts_on, evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
 import health
 from photo_check import STATS as PHOTO_STATS
@@ -559,6 +559,11 @@ AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 540),
 AUCTION_MINUTES = (2, 20)
 
 
+def active(queries: list) -> list:
+    """11.10: консолі на паузі (console_alert.alerts_on) — їхні запити не робимо, лишаються лише RAM."""
+    return [q for q in queries if q[1] != CONSOLE_CAT or console_alerts_on()]
+
+
 def fetch_auctions(client, q: str, cat: str, lo: int, hi: int) -> list[dict]:
     from main import _request_with_backoff
     params = {"q": q, "category_ids": cat, "sort": "endingSoonest", "limit": 100,
@@ -597,7 +602,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
     sent = auctions_sent = api_errors = 0
     calls0, photo0 = CALLS["n"], dict(PHOTO_STATS)
     state["round"] = state.get("round", 0) + 1
-    jobs = [(q, False) for q in QUERIES] + ([(q, True) for q in PICKUP_QUERIES] if state["round"] % 2 else [])
+    jobs = [(q, False) for q in active(QUERIES)] + ([(q, True) for q in active(PICKUP_QUERIES)] if state["round"] % 2 else [])
     merged = {}   # одне оголошення може прийти з обох запитів — самовивіз «прилипає»
     for (q, cat, lo, hi), pickup in jobs:
         try:
@@ -650,7 +655,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             send_card(card + ("\n\n" + ph[0] if ph else ""), lst["url"], r)
         sent += 1
     if state["round"] % 2 == 0:   # аукціони — через коло (~6 хв; квота API): у вікно 20 хв потрапляємо щонайменше двічі
-        for q, cat, lo, hi in AUCTION_QUERIES:
+        for q, cat, lo, hi in active(AUCTION_QUERIES):
             try:
                 raw = fetch_auctions(client, q, cat, lo, hi)
             except Exception as e:

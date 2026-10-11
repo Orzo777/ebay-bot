@@ -30,7 +30,7 @@ from email.utils import parsedate_to_datetime
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 import config
-from console_alert import evaluate_console
+from console_alert import alerts_on as console_alerts_on, evaluate_console
 from ka_listing_check import check_listing, risk_lines
 import cardmap
 import quiet
@@ -575,6 +575,9 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
                 if pickup:
                     apply_pickup(res)
                 print(f"   модель з опису: {model} -> {res['verdict']}")
+        if res.get("brand") in ("Sony", "Microsoft", "Nintendo") and not console_alerts_on():
+            print("   консолі на паузі (CONSOLE_ALERTS=0) — не шлю")
+            continue
         shown, shown_verdict = lst, res["verdict"]
         wrong_type = wrong_type or res["verdict"] == "UNKNOWN" or bool(res.get("wrong_type"))
         if res["verdict"] not in SEND_VERDICTS:

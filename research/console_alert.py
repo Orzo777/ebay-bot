@@ -13,6 +13,13 @@ evaluate_console() повертає None, якщо назва — не Xbox Seri
 import os
 import re
 
+
+def alerts_on() -> bool:
+    """11.10 (рішення користувача): консолі на паузі — фокус на RAM, особливостей тестування консолей поки не знаємо.
+    Картки консолей з KA і eBay не шлемо; ціни (Terapeak / щоденне оновлення) і посилання, які кидає сам користувач, —
+    працюють. CONSOLE_ALERTS=1 у робочих процесах ram_mail_alert / ebay_watch вмикає назад."""
+    return os.getenv("CONSOLE_ALERTS", "0") == "1"
+
 from ram_alert import buy_cost, caps_from, tier
 
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.

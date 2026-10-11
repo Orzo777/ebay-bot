@@ -1,5 +1,6 @@
 """Тихі години (09.10): уночі «можна» без звуку, «бери» й аукціони — зі звуком. Без мережі."""
 import os
+os.environ["CONSOLE_ALERTS"] = "1"   # 11.10: консолі на паузі за замовчуванням — тут перевіряємо їхні картки
 import sys
 import unittest
 from datetime import datetime, timezone

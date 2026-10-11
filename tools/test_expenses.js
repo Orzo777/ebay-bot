@@ -93,6 +93,20 @@ check('облік with a sale', [/Продано: 1 шт за 149\.00 € \(ку
   /заробив на товарі: \+66\.37 € \(\+94%\)/.test(t), /№1 Corsair Vengeance LPX 32GB \(2x16GB\): 70\.63 € → 149\.00 € = \+66\.37 € · 3 дн\./.test(t),
   /На руках: 1 шт, у товарі 45\.00 €/.test(t), /Разом: \+66\.37 € − 60\.20 € = \+6\.17 €$/m.test(t), /до нуля/.test(t)],
   [true, true, true, true, true, true, false]);
+// гроші загалом: 137 отримано − (70.63 + 45, скасована PS5 не рахується) − 60.20 витрат = −38.83; з товаром (45) — +6.17
+check('облік: money overall', /💶 Гроші зараз: −38\.83 € · з товаром на руках \(45\.00 €\) — \+6\.17 €/.test(t), true);
+
+// «Підсумок»: блок «Гроші загалом» — один раз, під усім, формули на B6/B7/B8 і «Витрати»
+vm.runInContext('moneyBlock1011_()', ctx);
+const sm = ss.sheets['Підсумок'], top = Object.keys(sm.cells).map((k) => +k.split(':')[0]);
+const at = Object.keys(sm.cells).find((k) => sm.cells[k] === '💶 Гроші загалом');
+const r0 = +at.split(':')[0];
+check('money block rows', [sm.cells[(r0 + 4) + ':1'], sm.cells[(r0 + 4) + ':2'], sm.cells[(r0 + 6) + ':2'], sm.cells[(r0 + 3) + ':2']],
+      ['Гроші зараз: плюс чи мінус, €', '=B' + (r0 + 1) + '-B' + (r0 + 2) + '-B' + (r0 + 3), '=B' + (r0 + 4) + '+B' + (r0 + 5),
+       "=IFERROR(SUM('Витрати'!C3:C),0)"]);
+const n0 = Object.keys(sm.cells).length;
+vm.runInContext('moneyBlock1011_()', ctx);
+check('money block once', Object.keys(sm.cells).length, n0);
 const before = sent.length;
 say('витрата 99 чуже', 99);
 check('foreign chat — nothing written', [sent.length, exp.cells['7:2']], [before, undefined]);

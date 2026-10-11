@@ -2,6 +2,7 @@
 лише ОДНЕ оголошення з пачки (діагностика 26.09.2026: у 25 листах по одному id, хоча в дзвіночку
 «2/4/5 neue Ergebnisse»). Без мережі: Telegram підмінено."""
 import os
+os.environ["CONSOLE_ALERTS"] = "1"   # 11.10: консолі на паузі за замовчуванням — тут перевіряємо їхні картки
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -86,6 +87,16 @@ class TestProcess(unittest.TestCase):
         sent = rmc._process(ka_mail("Xbox Series X 1TB + OVP", 250), 6, False, set(), {})
         self.assertEqual((sent, len(self.hints)), (1, 0))
         self.assertIn("/s-konsolen/xbox/", self.cards[0][3])   # кнопка «інші нові збіги» — публічна сторінка
+
+    def test_consoles_paused(self):
+        # 11.10 (рішення користувача): консолі на паузі — картки лише для RAM; запити eBay — лише RAM
+        from unittest import mock
+        import ebay_watch
+        with mock.patch.dict(os.environ, {"CONSOLE_ALERTS": "0"}):
+            self.assertEqual(rmc._process(ka_mail("Xbox Series X 1TB + OVP", 250), 6, False, set(), {}), 0)
+            self.assertEqual(rmc._process(ka_mail("Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200", 70, ad_id="77"), 6, False, set(), {}), 1)
+            self.assertEqual({q[1] for q in ebay_watch.active(ebay_watch.QUERIES + ebay_watch.AUCTION_QUERIES)}, {ebay_watch.RAM_CAT})
+        self.assertIn(ebay_watch.CONSOLE_CAT, {q[1] for q in ebay_watch.active(ebay_watch.QUERIES)})
 
     def test_scam_seller_gives_no_card(self):
         rmc.check_listing = lambda *a: {"level": "medium", "score": 3, "reasons": ["x"], "seller": "приватний",

@@ -1,6 +1,7 @@
 """Відповідь продавця реплаєм на картку (02.10): карта карток і пошук картки. Без мережі."""
 import json
 import os
+os.environ["CONSOLE_ALERTS"] = "1"   # 11.10: консолі на паузі за замовчуванням — тут перевіряємо їхні картки
 import sys
 import tempfile
 import unittest
