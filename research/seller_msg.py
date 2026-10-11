@@ -15,6 +15,7 @@ _EUR = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:€|euro\b|eur\b)", re.I)
 
 PROMPT = """You write a short message from a private buyer to a seller on {platform} in Germany.
 Write natural, friendly, casual German like a real person typing on a phone, not a template. {address}
+Start with "Hallo" or "Hi".
 Item: "{title}", listed at {price} €.
 Seller's description (may be empty):
 \"\"\"{desc}\"\"\"
@@ -22,11 +23,12 @@ Seller's description (may be empty):
 The message must:
 - {goal}
 {reserve}- {terms}
-- Questions: from this list ask ONLY those that the title and description do not already answer or make obvious; at most
-  two; if none is needed, ask nothing: {questions}
-  Do not ask whether it works if the seller says it was tested, ran without problems, was in use until recently or was
-  removed after an upgrade. Do not ask for a receipt (Rechnung) if the seller mentions months/years of use, that it came out
-  of a PC/laptop, or says there is none. Never ask something the seller already wrote.
+- Questions: {questions}
+  Keep each of these questions (rephrased naturally) UNLESS the title or description clearly answers it or makes it
+  pointless. Examples of answers: "getestet", "läuft einwandfrei", "lief stabil", "wegen Upgrade ausgebaut", "bis zuletzt im
+  PC" answer whether it works; "kaum genutzt" or "wenig gespielt" do NOT. A receipt question is pointless if the seller
+  mentions months/years of use, that it came out of a PC/laptop, or that there is no receipt. If the description is empty,
+  keep all questions. Never ask something the seller already wrote.
 - Do not repeat the description back, no flattery, no emojis, no "Sehr geehrte", at most one exclamation mark.
 - 2-3 short sentences, at most 230 characters in total.
 {amount_rule}- Never suggest paying outside {platform}; no phone numbers, e-mails or links.
@@ -44,17 +46,26 @@ def _amounts_ok(text: str, allowed: set[int]) -> bool:
     return True
 
 
-def valid(text, channel: str, offer: int | None, price: float, pickup: bool) -> bool:
-    if not isinstance(text, str) or not 30 <= len(text) <= 256 or _BAD.search(text):
-        return False
+def problem(text, channel: str, offer: int | None, price: float, pickup: bool) -> str:
+    """'' — текст годиться; інакше коротка причина (для журналу, без самого тексту)."""
+    if not isinstance(text, str) or not 30 <= len(text) <= 256:
+        return "довжина"
+    if _BAD.search(text):
+        return "контакти / оплата поза платформою / кирилиця"
     t = text.lower()
     if offer is not None and (str(offer) not in text or not _amounts_ok(text, {offer})):
-        return False
+        return "сума"
     if offer is None and not _amounts_ok(text, {round(price)}):
-        return False
+        return "інша сума"
     if pickup:
-        return "hamburg" in t or "abhol" in t
-    return "sicher bezahlen" in t if channel == "ka" else "ebay" in t
+        return "" if "hamburg" in t or "abhol" in t else "немає самовивозу"
+    if channel == "ka":
+        return "" if "sicher bezahlen" in t else "немає «Sicher bezahlen»"
+    return "" if "ebay" in t else "немає «eBay»"
+
+
+def valid(text, channel: str, offer: int | None, price: float, pickup: bool) -> bool:
+    return not problem(text, channel, offer, price, pickup)
 
 
 def humanize(r: dict, offer: int | None, template: str, channel: str, goal: str, terms: str,
@@ -82,8 +93,9 @@ def humanize(r: dict, offer: int | None, template: str, channel: str, goal: str,
         print(f"   [текст] {e.__class__.__name__}")
         got = None
     text = re.sub(r"\s+", " ", str((got or {}).get("text") or "")).strip()
-    ok = valid(text, channel, offer, price, pickup)
-    print(f"   [текст] Gemini: {'ok' if ok else 'шаблон'} ({len(text)} симв.)")
+    why = problem(text, channel, offer, price, pickup)
+    ok = not why
+    print(f"   [текст] Gemini: {'ok' if ok else 'шаблон — ' + why} ({len(text)} симв.)")
     _CACHE[key] = text if ok else template
     return _CACHE[key]
 
