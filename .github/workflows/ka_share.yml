@@ -52,6 +52,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SELLER_MSG: "1"   # тексти продавцям — Gemini за описом (research/seller_msg.py)
           SHARE_TEXT: ${{ inputs.text }}
           SHARE_CHAT: ${{ inputs.chat_id }}
           KA_SHARE_STATE: ka_share_state.json

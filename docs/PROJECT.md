@@ -271,6 +271,13 @@ assist.yml → research/assist.py запускає **Claude Code** (`claude -p`,
 
 ### 11.10.2026
 
+- **Тексти продавцям — як людина і з розумом:** шаблон звучить природно («Hallo, ich würde … gern für 85 € nehmen –
+  reservierst du ihn mir?», на KA — на «du»). Питання — лише ті, на які опис не відповів: «wegen Upgrade ausgebaut»,
+  «lief stabil», «bis zuletzt im PC» = справна; чек питаємо лише за консолі і не після «18 Monate genutzt» / «aus meinem
+  PC». Gemini (research/seller_msg.py, SELLER_MSG=1 у ram_mail_alert / ka_share / ebay_watch) переписує текст за описом;
+  які питання — вирішують правила (flash-lite сама питала про чек при «Rechnung vorhanden»). Відповідь перевіряється
+  (та сама сума, «Sicher bezahlen» / eBay / самовивіз, без контактів і оплати поза платформою), інакше — шаблон.
+  Ручна перевірка: photo_check.yml, mode=text.
 - **Покупки з KA (Direkt kaufen) — в облік самі:** перша справжня покупка показала формат: лист KA «Dein Kauf wurde
   bestätigt!» без ціни й посилання; ціна, пересилка й Käuferschutz — лише в листі PayPal «You authorized a payment»
   (Payment to: kleinanzeigen.de GmbH). Облік читає обидва: PayPal → рядок з 90 + 1,99 + 4,55 €, лист KA — «купівля вже є»
