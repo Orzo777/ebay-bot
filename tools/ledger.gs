@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-10h';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-11a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -519,13 +519,7 @@ function ledgerCommand(msg) {
   if (!chat || String(msg.chat.id) !== String(chat) || !props.getProperty('LEDGER_ID')) return true;   // чужий чат — мовчки
   const cmd = m[1].toLowerCase(), rest = m[2] || '';
   if (cmd === 'облік') {
-    const s = ledger_().getSheetByName('Підсумок');
-    const v = s.getRange('B3:B11').getValues().map(function (r) { return r[0]; });
-    const exp = expenseTotal_();
-    notify_('📒 Облік: угод ' + v[0] + ', продано ' + v[1] + ', на руках ' + v[2] + '\nУ товарі: ' + Number(v[4]).toFixed(2) +
-            ' €\nПрибуток з проданого: ' + Number(v[6]).toFixed(2) + ' €' +
-            (exp ? '\nВитрати (обладнання, пакування…): ' + exp.toFixed(2) + ' € → прибуток після витрат: ' +
-             (Number(v[6]) - exp).toFixed(2) + ' €' : '') + '\n' + ledger_().getUrl());
+    notify_(ledgerSummary_(ledgerRows_(), expenseRows_()) + '\n' + ledger_().getUrl());
     return true;
   }
   // сума — першим словом («купив 45 OWC 2x16») або після «за» («купив OWC 2x16 за 45»), а не «2» з «2x16»
@@ -1310,6 +1304,55 @@ function addExpense_(d) {
   for (let i = vals.length - 1; i >= 0; i--) if (vals[i][0] !== '') { r = EXP_FIRST + i + 1; break; }
   sh.getRange(r, 1, 1, 5).setValues([[d.date || new Date(), d.title, d.amount, d.cat || expenseCategory_(d.title), d.note || '']]);
   return r;
+}
+
+/** Рядки аркуша «Витрати»: [{amount, cat}] (порожні — без суми — пропускаємо). */
+function expenseRows_() {
+  const sh = ledger_().getSheetByName(EXP_SHEET);
+  if (!sh || sh.getLastRow() < EXP_FIRST) return [];
+  return sh.getRange(EXP_FIRST, 3, sh.getLastRow() - EXP_FIRST + 1, 2).getValues()
+    .filter(function (r) { return Number(r[0]); })
+    .map(function (r) { return { amount: Number(r[0]), cat: String(r[1] || 'Інше') }; });
+}
+
+/** «облік» (11.10): кожен продаж — куплено → продано → заробив; разом виручка, собівартість, витрати на продаж,
+ *  операційні витрати по категоріях і підсумок (скільки ще до нуля, якщо в мінусі). */
+function ledgerSummary_(rows, exps) {
+  const e = function (x) { return (Math.round(x * 100) / 100).toFixed(2) + ' €'; };
+  const sgn = function (x) { return (x >= 0 ? '+' : '−') + e(Math.abs(x)); };
+  const sold = rows.filter(function (r) { return r.status === 'Продано' && r.sprice != null; });
+  const open = rows.filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; });
+  const sum = function (list, f) { return list.reduce(function (a, r) { return a + (Number(f(r)) || 0); }, 0); };
+  const revenue = sum(sold, function (r) { return r.sprice; }), cost = sum(sold, function (r) { return r.spent; });
+  const profit = sum(sold, function (r) { return r.profit != null ? r.profit : (r.net != null ? r.net : r.sprice) - (r.spent || 0); });
+  const sellCosts = revenue - cost - profit;   // пересилка покупцю, пакування, комісія
+  const out = ['📒 Облік'];
+  if (sold.length) {
+    out.push('💰 Продано: ' + sold.length + ' шт за ' + e(revenue) + ' (куплено за ' + e(cost) + ')');
+    if (sellCosts > 0.005) out.push('   пересилка покупцям і пакування: −' + e(sellCosts));
+    out.push('   заробив на товарі: ' + sgn(profit) + (cost ? ' (' + (profit >= 0 ? '+' : '') + Math.round(100 * profit / cost) + '%)' : ''));
+    sold.slice().sort(function (a, b) { return String(b.sdate).localeCompare(String(a.sdate)); }).slice(0, 5).forEach(function (r) {
+      const p = r.profit != null ? r.profit : r.sprice - (r.spent || 0);
+      const d = r.date && r.sdate ? days_(r.date, r.sdate) : null;
+      out.push('   • №' + r.n + ' ' + String(r.title).slice(0, 36).trim() + ': ' + e(r.spent || 0) + ' → ' + e(r.sprice) + ' = ' + sgn(p) +
+               (d != null && d >= 0 ? ' · ' + d + ' дн.' : ''));
+    });
+    if (sold.length > 5) out.push('   … ще ' + (sold.length - 5) + ' — у таблиці');
+  } else {
+    out.push('💰 Продажів ще немає');
+  }
+  out.push('📦 На руках: ' + open.length + ' шт, у товарі ' + e(sum(open, function (r) { return r.spent; })));
+  const expTotal = sum(exps, function (x) { return x.amount; });
+  if (expTotal) {
+    const byCat = {};
+    exps.forEach(function (x) { byCat[x.cat] = (byCat[x.cat] || 0) + x.amount; });
+    out.push('🧾 Витрати: ' + e(expTotal) + ' (' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; })
+      .map(function (c) { return c.toLowerCase() + ' ' + e(byCat[c]); }).join(' · ') + ')');
+  }
+  const net = profit - expTotal;
+  out.push('📊 Разом: ' + (expTotal ? sgn(profit) + ' − ' + e(expTotal) + ' = ' : '') + sgn(net) +
+           (net < 0 ? ' — до нуля ще ' + e(-net) : ''));
+  return out.join('\n');
 }
 
 function expenseTotal_() {

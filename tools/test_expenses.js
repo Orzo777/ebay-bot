@@ -73,7 +73,26 @@ check('shipping category', exp.cells['6:4'], 'Пересилка');
 say('витрата стенд');
 check('no amount → hint', /спершу сума/.test(sent[sent.length - 1]), true);
 say('облік');
-check('облік shows expenses and profit after', /Витрати \(обладнання, пакування…\): 60\.20 € → прибуток після витрат: -17\.70 €/.test(sent[sent.length - 1]), true);
+check('облік without sales: expenses by category, total', [/Продажів ще немає/.test(sent[sent.length - 1]),
+  /Витрати: 60\.20 € \(обладнання 54\.50 € · пакування 3\.00 € · пересилка 2\.70 €\)/.test(sent[sent.length - 1]),
+  /Разом: \+0\.00 € − 60\.20 € = −60\.20 € — до нуля ще 60\.20 €/.test(sent[sent.length - 1])], [true, true, true]);
+// 11.10: продажі — кожен окремо (куплено → продано → заробив), пересилка й пакування окремим рядком
+const deals = ss.sheets['Угоди'];
+[[new Date('2026-10-01T10:00:00Z'), 'Corsair Vengeance LPX 32GB (2x16GB) DDR4', 'Продано', 70.63, new Date('2026-10-04T10:00:00Z'), 149, 137.0, 66.37],
+ [new Date('2026-10-09T10:00:00Z'), 'Kingston Fury 16GB DDR5', 'Отримано', 45, '', '', '', ''],
+ [new Date('2026-10-05T10:00:00Z'), 'PS5 Slim', 'Скасовано', 300, '', '', '', '']].forEach((v, i) => {
+  const r = 5 + i;
+  deals.cells[r + ':2'] = v[0]; deals.cells[r + ':3'] = v[1]; deals.cells[r + ':11'] = v[2]; deals.cells[r + ':10'] = v[3];
+  deals.cells[r + ':12'] = v[4]; deals.cells[r + ':14'] = v[5]; deals.cells[r + ':18'] = v[6]; deals.cells[r + ':19'] = v[7];
+  deals.last = r;
+});
+vm.runInContext("Utilities = { formatDate: function (d) { return d.toISOString().slice(0, 10); } };", ctx);
+say('облік');
+const t = sent[sent.length - 1];
+check('облік with a sale', [/Продано: 1 шт за 149\.00 € \(куплено за 70\.63 €\)/.test(t), /пересилка покупцям і пакування: −12\.00 €/.test(t),
+  /заробив на товарі: \+66\.37 € \(\+94%\)/.test(t), /№1 Corsair Vengeance LPX 32GB \(2x16GB\): 70\.63 € → 149\.00 € = \+66\.37 € · 3 дн\./.test(t),
+  /На руках: 1 шт, у товарі 45\.00 €/.test(t), /Разом: \+66\.37 € − 60\.20 € = \+6\.17 €$/m.test(t), /до нуля/.test(t)],
+  [true, true, true, true, true, true, false]);
 const before = sent.length;
 say('витрата 99 чуже', 99);
 check('foreign chat — nothing written', [sent.length, exp.cells['7:2']], [before, undefined]);
