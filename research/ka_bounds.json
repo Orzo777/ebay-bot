@@ -7,25 +7,26 @@
   "xbox series x": 493
  },
  "hamburg": {
-  "ddr4": 281,
-  "ddr5": 639,
+  "ddr4": 348,
+  "ddr5": 672,
   "ps5": 435,
   "switch2": 369,
   "xbox": 520
  },
  "ram": {
   "arbeitsspeicher ddr5": 123,
-  "ddr4 2x16gb": 121,
-  "ddr4 32gb": 121,
-  "ddr4 64gb": 282,
-  "ddr4 sodimm 32gb": 94,
+  "ddr4 128gb": 637,
+  "ddr4 2x16gb": 127,
+  "ddr4 32gb": 127,
+  "ddr4 64gb": 333,
+  "ddr4 sodimm 32gb": 98,
   "ddr5 16gb": 123,
-  "ddr5 2x16gb": 341,
-  "ddr5 2x32gb": 611,
-  "ddr5 32gb": 341,
-  "ddr5 48gb": 413,
+  "ddr5 2x16gb": 347,
+  "ddr5 2x32gb": 643,
+  "ddr5 32gb": 347,
+  "ddr5 48gb": 422,
   "ddr5 64gb": 653,
   "ddr5 sodimm 16gb": 99,
-  "ddr5 sodimm 32gb": 230
+  "ddr5 sodimm 32gb": 253
  }
 }
