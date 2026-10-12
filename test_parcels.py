@@ -109,7 +109,7 @@ class ParcelsTest(unittest.TestCase):
                                                 "description": "Die Sendung wurde in das Zustellfahrzeug geladen."},
                                      "estimatedDeliveryTimeFrame": {"estimatedFrom": "2026-10-13T08:00:00Z",
                                                                     "estimatedThrough": "2026-10-13T12:00:00Z"}}]})
-        with mock.patch.dict(os.environ, {"DHL_API_KEY": "k"}):
+        with mock.patch.dict(os.environ, {"DHL_API_KEY": " k\n"}):   # пробіл / перенос рядка з копіювання
             s = parcels.dhl_status("00340434111111111111", get)
         self.assertEqual((s["delivered"], s["ready"], s["eta"], s["date"]), (False, False, "13.10 – 13.10", "12.10"))
 

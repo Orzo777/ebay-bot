@@ -69,8 +69,9 @@ def dhl_api_status(num: str, get, key: str) -> dict | None:
 
 def dhl_status(num: str, get) -> dict | None:
     """→ {status, date, delivered, ready, eta} або None (DHL не відповів / номер невідомий)."""
-    if os.getenv("DHL_API_KEY"):
-        return dhl_api_status(num, get, os.environ["DHL_API_KEY"])
+    key = re.sub(r"\s+", "", os.getenv("DHL_API_KEY") or "")   # 12.10: ключ вставили з переносом рядка — InvalidHeader
+    if key:
+        return dhl_api_status(num, get, key)
     try:
         r = get(DHL_URL, params={"piececode": num, "language": "de"}, timeout=20,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "application/json"})
