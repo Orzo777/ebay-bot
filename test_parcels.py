@@ -89,10 +89,29 @@ class ParcelsTest(unittest.TestCase):
         self.assertIn("№8", lines[3])
         self.assertIn("⏳ ще не відправлено · eBay обіцяє 14.10–16.10", lines[3])
         self.assertIn("📬 чекає у відділенні / Packstation з 11.10 — забери", lines[4])
-        self.assertIn("⏳ трек-номера ще немає", lines[5])
+        self.assertIn("⏳ трек є лише в KA", lines[5])            # KA шле трек лише в чат — підказка, як додати
+        self.assertIn("«трек 9 номер»", lines[5])
         self.assertEqual(lines[6], "⬆️ Від тебе покупцям")
         self.assertIn("✅ доставлено 11.10", lines[7])
         self.assertIn('href="https://www.dhl.de/', t)
+
+    def test_ledger_delivery_beats_ebay_shipped(self):
+        r = {"n": 2, "title": "Corsair", "src": "eBay", "delivered": "2026-10-11"}
+        o = {"track": ("00340434", "DHL"), "shipped": "2026-10-10T09:00:00.000Z", "eta_min": "", "eta_max": "", "delivered": ""}
+        self.assertIn("✅ доставлено 11.10", parcels.line_for(r, o, None, True))
+
+    def test_dhl_official_api(self):
+        from unittest import mock
+
+        def get(url, params=None, headers=None, **kw):
+            self.assertEqual((url, headers), (parcels.DHL_API, {"DHL-API-Key": "k"}))
+            return R({"shipments": [{"status": {"statusCode": "transit", "timestamp": "2026-10-12T09:00:00Z",
+                                                "description": "Die Sendung wurde in das Zustellfahrzeug geladen."},
+                                     "estimatedDeliveryTimeFrame": {"estimatedFrom": "2026-10-13T08:00:00Z",
+                                                                    "estimatedThrough": "2026-10-13T12:00:00Z"}}]})
+        with mock.patch.dict(os.environ, {"DHL_API_KEY": "k"}):
+            s = parcels.dhl_status("00340434111111111111", get)
+        self.assertEqual((s["delivered"], s["ready"], s["eta"], s["date"]), (False, False, "13.10 – 13.10", "12.10"))
 
     def test_nothing_and_no_ebay(self):
         self.assertIn("немає", parcels.report({"incoming": [], "outgoing": []}, None, self.post, self.get))

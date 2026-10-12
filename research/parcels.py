@@ -5,10 +5,14 @@
 потрібен). Hermes / DPD / GLS — останнє, що знає облік, і посилання на сторінку перевізника.
 """
 import html
+import os
 import re
 from datetime import datetime, timezone
 
 DHL_URL = "https://www.dhl.de/int-verfolgen/data/search"
+# 12.10: з серверів GitHub публічна сторінка DHL віддає захист від ботів (не JSON) — там потрібен офіційний безкоштовний ключ
+# (developer.dhl.com → «Shipment Tracking - Unified», секрет DHL_API_KEY). Без ключа — публічна сторінка (працює з дому).
+DHL_API = "https://api-eu.dhl.com/track/shipments"
 TRACK_LINK = {"DHL": "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode={}",
               "Hermes": "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation#{}",
               "DPD": "https://tracking.dpd.de/status/de_DE/parcel/{}",
@@ -37,8 +41,36 @@ def _find(o, pat: re.Pattern) -> list:
     return out
 
 
+def dhl_api_status(num: str, get, key: str) -> dict | None:
+    """Офіційний DHL Shipment Tracking - Unified API (ключ DHL_API_KEY)."""
+    try:
+        r = get(DHL_API, params={"trackingNumber": num, "language": "de"}, headers={"DHL-API-Key": key}, timeout=20)
+        if r.status_code != 200:
+            print(f"DHL API {r.status_code}")
+            return None
+        sh = (r.json().get("shipments") or [{}])[0]
+    except Exception as e:
+        print(f"DHL API: {e.__class__.__name__}")
+        return None
+    st = sh.get("status") or {}
+    if not st:
+        return None
+    text = str(st.get("description") or st.get("status") or "")
+    code = str(st.get("statusCode") or "")
+    tf = sh.get("estimatedDeliveryTimeFrame") or {}
+    eta = [x for x in (tf.get("estimatedFrom"), tf.get("estimatedThrough")) if x] or \
+          ([sh["estimatedTimeOfDelivery"]] if sh.get("estimatedTimeOfDelivery") else [])
+    delivered = code == "delivered"
+    return dict(status=text, date=_d(st.get("timestamp", "")), delivered=delivered,
+                ready=not delivered and bool(re.search(r"filiale|packstation|paketshop|abhol", text, re.I))
+                and not re.search(r"abholung .{0,20}erfolgt|abgeholt", text, re.I),
+                eta=" – ".join(_d(x) for x in eta[:2]))
+
+
 def dhl_status(num: str, get) -> dict | None:
     """→ {status, date, delivered, ready, eta} або None (DHL не відповів / номер невідомий)."""
+    if os.getenv("DHL_API_KEY"):
+        return dhl_api_status(num, get, os.environ["DHL_API_KEY"])
     try:
         r = get(DHL_URL, params={"piececode": num, "language": "de"}, timeout=20,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "application/json"})
@@ -115,20 +147,22 @@ def line_for(row: dict, order: dict | None, live: dict | None, outgoing: bool) -
             state = f"📬 чекає у відділенні / Packstation з {live['date']}" + ("" if outgoing else " — забери")
         else:
             state = f"🚚 {html.escape(live['status'][:90])} ({live['date']})" + (f" · очікується {live['eta']}" if live["eta"] else "")
-    elif order and order.get("delivered"):
-        state = f"✅ доставлено {_d(order['delivered'])}"
+    elif (order and order.get("delivered")) or row.get("delivered"):   # облік знає доставку раніше за eBay (11.10, №2)
+        state = f"✅ доставлено {_d((order or {}).get('delivered') or row['delivered'])}"
     elif order and (order.get("shipped") or num):
         eta = f" · очікується {_d(order['eta_min'])}–{_d(order['eta_max'])}" if order.get("eta_max") else ""
         state = f"🚚 відправлено {_d(order['shipped'])}" + eta if order.get("shipped") else "🚚 в дорозі" + eta
     elif order:
         eta = f" · eBay обіцяє {_d(order['eta_min'])}–{_d(order['eta_max'])}" if order.get("eta_max") else ""
         state = ("⏳ ще не відправлено" if not outgoing else "⏳ ще не відправив") + eta
-    elif row.get("delivered"):
-        state = f"✅ доставлено {_d(row['delivered'])}"
     elif row.get("last"):
         state = f"🚚 {html.escape(row['last'])}"
+    elif num:
+        state = "🚚 в дорозі"
+    elif "klein" in str(row.get("src", "")).lower():   # KA шле трек лише в чат, не на пошту
+        state = f"⏳ трек є лише в KA — скопіюй («Details» → «Sendungsverfolgung») і напиши «трек {row['n']} номер»"
     else:
-        state = "🚚 в дорозі" if num else "⏳ трек-номера ще немає"
+        state = "⏳ трек-номера ще немає"
     return f"• {who}{src} — {state}{tail}"
 
 

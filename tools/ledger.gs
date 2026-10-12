@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-12a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-12b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1437,6 +1437,8 @@ function guessCarrier_(num) {
   if (/^1Z/.test(num)) return 'UPS';
   if (/^(00340|JJD)/.test(num) || /^\d{12}$|^\d{20}$/.test(num)) return 'DHL';
   if (/^H\d{19}$/.test(num)) return 'Hermes';
+  if (/^[1-9]\d{13}$/.test(num)) return 'Hermes';   // 12.10: Hermes із KA — 14 цифр (53284131401093); DPD — 14 цифр з «0»
+  if (/^0\d{13}$/.test(num)) return 'DPD';
   return '';
 }
 /** Трек-номер із тексту листа: після «Sendungsnummer / Trackingnummer / Paketnummer …» або впізнаваний формат DHL/UPS/Hermes. */

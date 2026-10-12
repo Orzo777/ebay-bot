@@ -45,5 +45,8 @@ check('button keeps the keyboard', tg.some((x) => x[0] === 'editMessageReplyMark
 rows = rows.filter((r) => r.status !== 'В дорозі' && r.status !== 'Оплачено'); ev = { 5: ev[5] };
 say('де посилки');
 check('nothing in transit — no GitHub run', [disp.length, /Посилок у дорозі немає/.test(sent[sent.length - 1][0])], [2, true]);
+// 12.10: Hermes із KA — 14 цифр; DPD — 14 цифр з нуля; DHL — 12 / 20
+check('carrier guess', [ctx.trackArg_('53284131401093').carrier, ctx.trackArg_('01234567890123').carrier, ctx.trackArg_('990502112245').carrier],
+      ['Hermes', 'DPD', 'DHL']);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
