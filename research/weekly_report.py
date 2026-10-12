@@ -12,7 +12,7 @@ import html
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 sys.path.insert(0, ".")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -175,7 +175,8 @@ def auctions(ebay: dict, today: date) -> list[str]:
 
 
 def search(ebay: dict, ka: dict, rows: list[dict], today: date) -> list[str]:
-    e, k = health.totals(ebay.get("stats"), 168), health.totals(ka.get("stats"), 168)
+    end = datetime.combine(today, datetime.max.time(), timezone.utc)   # тиждень звіту, а не «зараз» (тест 12.10 падав від дати)
+    e, k = health.totals(ebay.get("stats"), 168, end), health.totals(ka.get("stats"), 168, end)
     week = today - timedelta(days=6)
     bought = [r for r in rows if (_d(r["date"]) or date.min) >= week]
     out = ["🔎 <b>Пошук за тиждень</b>",

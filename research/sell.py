@@ -541,6 +541,16 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід» — підключимо знову.", None)
         except el.EbayError as e:
             return send(f"⚠️ eBay: {html.escape(str(e)[:300])} — перешли це Claude.", None)
+    if mode == "parcels":   # 12.10: «📦 Де посилки» — eBay (якщо підключено) + живий статус DHL + облік
+        import parcels
+        token = None
+        if d.get("rt"):
+            try:
+                token = el.access_token(d["rt"], app, cert, post)
+            except Exception as e:   # без eBay — лишаються DHL і облік
+                print(f"eBay токен: {e.__class__.__name__}")
+        import requests
+        return send(parcels.report(d, token, post, requests.get), None)
     if mode != "publish":
         return send(f"⚠️ Невідомий режим «{html.escape(str(mode))}» — напиши Claude.", None)
 

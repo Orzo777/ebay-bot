@@ -60,8 +60,8 @@ check('rows of 2', kb.inline_keyboard.map((r) => r.length), [2, 1]);
 check('callback data', datas(kb), ['c|перевірив|2', 'c|проблема|2', 'c|продати|123']);
 check('callback ≤ 64 bytes', datas(kb).every((d) => Buffer.byteLength(d) <= 64), true);
 check('digest: one main action per row', datas(ctx.digestButtons_([[1, 'ka5'], [2, 'test0'], [2, 'test2'], [6, 'ship1'], ['_', 'todo:x'], [9, 'out7']])),
-      ['c|отримав|1', 'c|перевірив|2', 'c|відправив|6']);
-check('digest without actions → no keyboard', ctx.digestButtons_([['_', 'todo:x']]), null);
+      ['c|отримав|1', 'c|перевірив|2', 'c|відправив|6', 'c|посилки|0']);
+check('digest without actions → only «Де посилки»', datas(ctx.digestButtons_([['_', 'todo:x']])), ['c|посилки|0']);   // 12.10
 
 // натискання «✅ Перевірив №2»: статус, кнопки прибрано, відповідь з кнопкою «продати»
 const cb = (data, chat) => ({ id: 'q1', data, message: { chat: { id: chat || 7 }, message_id: 55 } });
@@ -83,7 +83,7 @@ check('foreign chat / bad data ignored', [sent.length, deals.cells['5:11']], [n0
 vm.runInContext('officeMessage(__m)', Object.assign(ctx, { __m: { text: 'на руках', chat: { id: 7 } } }));
 const oh = sent[sent.length - 1];
 check('on hand: 3 open rows, sold excluded', [/На руках: 3/.test(oh[0]), /OWC/.test(oh[0]), /№3 .*\n\s+Перевірено.*можна продавати/.test(oh[0])], [true, false, true]);
-check('on hand buttons', datas(oh[1]), ['c|отримав|1', 'c|продати|2', 'c|продати|3']);
+check('on hand buttons', datas(oh[1]), ['c|отримав|1', 'c|продати|2', 'c|продати|3', 'c|посилки|0']);
 
 // вебхуки: один раз дозволити натискання, без скидання черги
 ctx.enableButtons_(); ctx.enableButtons_();

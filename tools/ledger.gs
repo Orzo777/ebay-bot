@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-11d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-12a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -418,6 +418,7 @@ function processLedger() {
   try { fixSalePrice1011_(); } catch (e) { console.log('fixSalePrice1011_: ' + e); }
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
+  try { keyboard1012_(); } catch (e) { console.log('keyboard1012_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
@@ -439,7 +440,8 @@ function weeklyIfDue_(props, now) {
 // ------------------------------------------------------------------ Telegram
 // Облік і продаж — в окремому боті «Облік і продаж» (OFFICE_BOT_TOKEN), щоб не змішувати з картками покупок.
 // Поки другого бота немає — пише в основний, як раніше.
-const OFFICE_KEYBOARD = { keyboard: [[{ text: 'на руках' }, { text: 'облік' }, { text: 'продати' }], [{ text: 'звіт' }, { text: 'допомога' }]],
+const OFFICE_KEYBOARD = { keyboard: [[{ text: 'на руках' }, { text: 'облік' }, { text: 'продати' }],
+  [{ text: 'посилки' }, { text: 'звіт' }, { text: 'допомога' }]],
   resize_keyboard: true,
   is_persistent: true };
 const OFFICE_HELP = 'Тут облік і продаж (картки покупок — в основному боті).\n' +
@@ -447,6 +449,7 @@ const OFFICE_HELP = 'Тут облік і продаж (картки покуп�
   '• продав 110 OWC — записати продаж\n' +
   '• на руках — що в тебе зараз: статус, скільки днів, що робити далі (з кнопками)\n' +
   '• облік — підсумок і посилання на таблицю\n' +
+  '• посилки — де кожна посилка до тебе й від тебе: статус, коли очікується, чи дійшла (eBay + DHL)\n' +
   '• витрата 50 стенд для тесту RAM — витрата не на товар (обладнання, пакування, пересилка); прибуток після витрат — ' +
   'у «Підсумку»\n' +
   '• продати 3 — готове оголошення для eBay: ціна, пороги Preisvorschlag, назва й опис німецькою ' +
@@ -488,7 +491,7 @@ function officeMessage(msg) {
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       onHandCommand_(msg)) return;
-  if (ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
+  if (parcelsCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
@@ -799,6 +802,41 @@ function ebayMailButtons_(g, markup) {
   return { inline_keyboard: rows.concat((markup || {}).inline_keyboard || []) };
 }
 
+// ------------------------------------------------------------------ «📦 Де посилки» (12.10)
+// Посилки до нас (куплене, ще не отримане) і від нас (продане, відправлене; доставлене — ще 3 дні) → GitHub (sell.yml,
+// режим parcels: eBay GetOrders + живий статус DHL) → одне повідомлення: де посилка, коли очікується, чи дійшла.
+const PARCELS_BTN = { text: '📦 Де посилки', callback_data: 'c|посилки|0' };
+
+function parcelsData_() {
+  const ev = events_(), today = iso_(new Date()), rows = ledgerRows_();
+  const incoming = rows.filter(function (r) { return ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0; }).map(function (r) {
+    const e = ev[r.n] || {};
+    return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.track || '', carrier: e.carrier || '', date: r.date };
+  });
+  const outgoing = rows.filter(function (r) {
+    const e = ev[r.n] || {};
+    return r.status === 'Продано' && e.sent && (!e.outDelivered || days_(e.outDelivered, today) <= 3);
+  }).map(function (r) {
+    const e = ev[r.n] || {};
+    return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.outTrack || '', carrier: e.outCarrier || '', delivered: e.outDelivered || '' };
+  });
+  return { incoming: incoming, outgoing: outgoing };
+}
+
+function parcelsCommand_(msg) {
+  if (!/^\/?(?:посилки|де посилки|трекінг|трекинг)(?:\s+0)?$/i.test(String(msg.text || '').trim())) return false;
+  const d = parcelsData_();
+  if (!d.incoming.length && !d.outgoing.length) {
+    notify_('📦 Посилок у дорозі немає: усе куплене вже в тебе, а продане — доставлено.');
+    return true;
+  }
+  const rt = PropertiesService.getScriptProperties().getProperty('EBAY_RT') || '';
+  const code = sellDispatch_(Object.assign({ mode: 'parcels', rt: rt }, d));
+  notify_(code === 204 ? '⏳ Дивлюся посилки (' + d.incoming.length + ' до тебе, ' + d.outgoing.length + ' від тебе) — до хвилини.'
+                       : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+  return true;
+}
+
 /** «✅ Межі оновив» з тижневого звіту → GitHub записує рекомендовані межі підписок KA як поточні. */
 function boundsCommand_(msg) {
   const mm = String(msg.text || '').trim().match(/^\/?межі(?:\s+(1))?$/i);   // «межі» — показати; «межі 1» (кнопка) — записати
@@ -984,7 +1022,7 @@ function ledgerRows_() {
       return { n: i + 1, date: iso_(v[COL.date - 1]), title: String(v[COL.title - 1]).slice(0, 90), cat: v[COL.cat - 1],
         src: v[COL.src - 1], spent: num_(v[COL.spent - 1]) != null ? num_(v[COL.spent - 1]) : num_(v[COL.price - 1]),
         status: v[COL.status - 1], sdate: iso_(v[COL.sdate - 1]), sprice: num_(v[COL.sprice - 1]), net: num_(v[COL.net - 1]),
-        profit: num_(v[COL.profit - 1]) };
+        profit: num_(v[COL.profit - 1]), id: String(v[COL.id - 1] || '') };
     })
     .filter(function (r) { return r.title; });
 }
@@ -1736,6 +1774,14 @@ function moneyBlock1011_() {
   props.setProperty('MONEY_BLOCK_1011', '1');
 }
 
+/** 12.10, один раз: нова кнопка «посилки» на постійній клавіатурі бота (Telegram оновлює її лише з новим повідомленням). */
+function keyboard1012_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('KEYBOARD_1012') === '1') return;
+  notify_('📦 Нова кнопка внизу — «посилки»: де кожна посилка до тебе й від тебе, коли очікується і чи дійшла.', OFFICE_KEYBOARD);
+  props.setProperty('KEYBOARD_1012', '1');
+}
+
 function fixAlbum1010_() {
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty('FIX_ALBUM_1010') === '1') return;
@@ -1935,7 +1981,7 @@ function sendAlbum_(list, caption) {
 // Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
-  'кроки': '📋 Покроково' };
+  'кроки': '📋 Покроково', 'посилки': '📦 Посилки' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {
@@ -1957,7 +2003,7 @@ function digestButtons_(marks) {
     const a = act[m[1]];
     if (a && m[0] !== '_' && !seen[m[0]]) { seen[m[0]] = 1; list.push([a, m[0]]); }
   });
-  return list.length ? btns_(list.slice(0, 8)) : null;
+  return list.length ? btns_(list.slice(0, 8), [PARCELS_BTN]) : { inline_keyboard: [[PARCELS_BTN]] };
 }
 
 /** Натискання кнопки (doPost, ?bot=office): виконати команду, кнопки з повідомлення прибрати. */
@@ -1966,9 +2012,9 @@ function officeCallback(cq) {
   if (ebayCallback_(cq, chat)) return;
   const m = String(cq.data || '').match(/^c\|([^|]+)\|(\d{1,4})$/);
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
-  tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + ' №' + m[2] : '' });
+  tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + (m[1] === 'посилки' ? '' : ' №' + m[2]) : '' });
   if (!m || !chat || String(from) !== String(chat) || !BTN[m[1]]) return;
-  if (['продати', 'фото', 'авто', 'кроки'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
+  if (['продати', 'фото', 'авто', 'кроки', 'посилки'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
     tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
   }
   officeMessage({ text: m[1] + ' ' + m[2], chat: { id: from }, message_id: 0 });
@@ -1991,7 +2037,8 @@ function onHandCommand_(msg) {
       (nx[0] ? ' → ' + nx[0] : '') + (e.track && ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0 ? ' · трек ' + e.track : '');
   });
   const spent = open.reduce(function (a, r) { return a + (Number(r.spent) || 0); }, 0);
-  notify_('📦 На руках: ' + open.length + ' · у товарі ≈ ' + spent.toFixed(0) + ' €\n\n' + lines.join('\n'), acts.length ? btns_(acts.slice(0, 10)) : null);
+  notify_('📦 На руках: ' + open.length + ' · у товарі ≈ ' + spent.toFixed(0) + ' €\n\n' + lines.join('\n'),
+          acts.length ? btns_(acts.slice(0, 10), [PARCELS_BTN]) : { inline_keyboard: [[PARCELS_BTN]] });
   return true;
 }
 
