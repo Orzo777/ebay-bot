@@ -134,7 +134,10 @@ class ParcelsTest(unittest.TestCase):
                           {"n": 3, "title": "Corsair 2133", "src": "Kleinanzeigen", "track": "53284131401093", "carrier": "Hermes"}],
              "outgoing": [{"n": 1, "title": "Corsair 3200", "src": "eBay", "track": "00340434000000000001", "carrier": "DHL"}]}
         with mock.patch.dict(os.environ, {"TRACK17_KEY": " key\n"}):
-            t = parcels.report(d, None, post, self.get)
+            t, events = parcels.check(d, None, post, self.get)
+        # 13.10: події для обліку → сповіщення без кнопки (у відділенні — до нас; доставлено — покупцю)
+        self.assertEqual(events, [{"n": 2, "dir": "in", "kind": "ready", "date": "2026-10-13"},
+                                  {"n": 1, "dir": "out", "kind": "delivered", "date": "2026-10-12"}])
         self.assertEqual(sent[0], ("gettrackinfo", ["H1000000000000000001", "53284131401093", "00340434000000000001"], "key"))
         self.assertEqual(sent[1], ("register", ["53284131401093"], "key"))   # новий номер — реєструємо один раз
         self.assertIn("📬 чекає у відділенні / Packstation з 13.10 — забери", t)   # Hermes тепер з живим статусом
@@ -142,6 +145,12 @@ class ParcelsTest(unittest.TestCase):
         self.assertIn("№3 Corsair 2133 (Kleinanzeigen) — 🚚 в дорозі", t)     # щойно зареєстрований — поки посилання
         self.assertEqual(self.calls, [])                                       # DHL не питаємо, 17TRACK уже відповів
         self.assertEqual(parcels.t17_statuses(["1"], lambda *a, **k: R({}, 401), "k"), {})   # недійсний ключ — без падіння
+
+    def test_events_from_ebay(self):
+        o = {"track": ("", ""), "shipped": "", "eta_min": "", "eta_max": "", "delivered": "2026-10-12T15:00:00.000Z"}
+        self.assertEqual(parcels._event({"n": 4}, o, None, False), {"n": 4, "dir": "in", "kind": "delivered", "date": "2026-10-12"})
+        self.assertIsNone(parcels._event({"n": 5, "delivered": "2026-10-11"}, o, None, True))   # облік уже знає
+        self.assertIsNone(parcels._event({"n": 6}, dict(o, delivered=""), None, False))       # ще в дорозі — мовчимо
 
     def test_nothing_and_no_ebay(self):
         self.assertIn("немає", parcels.report({"incoming": [], "outgoing": []}, None, self.post, self.get))

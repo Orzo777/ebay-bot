@@ -48,5 +48,25 @@ check('nothing in transit — no GitHub run', [disp.length, /Посилок у �
 // 12.10: Hermes із KA — 14 цифр; DPD — 14 цифр з нуля; DHL — 12 / 20
 check('carrier guess', [ctx.trackArg_('53284131401093').carrier, ctx.trackArg_('01234567890123').carrier, ctx.trackArg_('990502112245').carrier],
       ['Hermes', 'DPD', 'DHL']);
+// 13.10: події з GitHub → inParcel_ / outParcel_ (лише для рядків у потрібному статусі)
+rows = [{ n: 2, title: 'OWC', src: 'eBay', status: 'В дорозі' }, { n: 1, title: 'Corsair', src: 'eBay', status: 'Продано' },
+  { n: 4, title: 'Kingston', src: 'eBay', status: 'Отримано' }];
+const got = [];
+vm.runInContext('inParcel_ = function (n, k, d) { __got.push(["in", n, k, iso_(d)]); };' +
+  'outParcel_ = function (n, k, d) { __got.push(["out", n, k, iso_(d)]); };', Object.assign(ctx, { __got: got }));
+ctx.parcelEvents_([{ n: 2, dir: 'in', kind: 'ready', date: '2026-10-13' }, { n: 1, dir: 'out', kind: 'delivered', date: '2026-10-12' },
+  { n: 4, dir: 'in', kind: 'delivered', date: '2026-10-12' }, { n: 9, dir: 'in', kind: 'delivered' }, { n: 2, dir: 'in', kind: 'transit' }]);
+check('events → ledger', got, [['in', 2, 'ready', '2026-10-13'], ['out', 1, 'delivered', '2026-10-12']]);
+
+// фонова перевірка: удень, раз на 3 години, лише коли є що відстежувати
+vm.runInContext('Date.prototype.toLocaleString = function () { return __hour; };', Object.assign(ctx, { __hour: '10' }));
+ev = { 2: { track: '990502112245', carrier: 'DHL' } };
+disp.length = 0; delete store.PARCELS_WATCH_AT;
+check('watch dispatches', [ctx.parcelsWatch_(), disp[0].mode, disp[0].watch, disp[0].incoming.length], [true, 'parcels', true, 1]);
+check('watch: not again within 3 h', [ctx.parcelsWatch_(), disp.length], [false, 1]);
+delete store.PARCELS_WATCH_AT; ctx.__hour = '23';
+check('watch: quiet at night', [ctx.parcelsWatch_(), disp.length], [false, 1]);
+ctx.__hour = '10'; rows = [{ n: 3, title: 'KA', src: 'Kleinanzeigen', status: 'Оплачено' }]; ev = {};
+check('watch: KA without track — nothing to check', [ctx.parcelsWatch_(), disp.length], [false, 1]);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

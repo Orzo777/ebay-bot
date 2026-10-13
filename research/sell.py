@@ -541,7 +541,7 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід» — підключимо знову.", None)
         except el.EbayError as e:
             return send(f"⚠️ eBay: {html.escape(str(e)[:300])} — перешли це Claude.", None)
-    if mode == "parcels":   # 12.10: «📦 Де посилки» — eBay (якщо підключено) + живий статус DHL + облік
+    if mode == "parcels":   # 12.10: «📦 Де посилки» — eBay (якщо підключено) + живий статус (17TRACK / DHL) + облік
         import parcels
         token = None
         if d.get("rt"):
@@ -550,7 +550,13 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             except Exception as e:   # без eBay — лишаються DHL і облік
                 print(f"eBay токен: {e.__class__.__name__}")
         import requests
-        return send(parcels.report(d, token, post, requests.get), None)
+        text, events = parcels.check(d, token, post, requests.get)
+        if events:   # 13.10: доставлено / у відділенні → облік (статус «Отримано», сповіщення — один раз)
+            back({"kind": "parcels", "events": events}, key)
+        if d.get("watch"):   # фонова перевірка кожні 3 години — без повідомлення, лише події
+            print(f"parcels watch: {len(events)} подій")
+            return True
+        return send(text, None)
     if mode != "publish":
         return send(f"⚠️ Невідомий режим «{html.escape(str(mode))}» — напиши Claude.", None)
 

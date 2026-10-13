@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-12b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-13a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -412,6 +412,7 @@ function processLedger() {
     log.appendRow([m.getId(), m.getDate(), p.from || m.getFrom(), m.getSubject(), what, row || '', p.snippet || '']);
   });
   try { processCarriers_(log, done); } catch (e) { console.log('перевізники: ' + e); }
+  try { parcelsWatch_(); } catch (e) { console.log('посилки: ' + e); }
   try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
   try { fixAlbum1010_(); } catch (e) { console.log('fixAlbum1010_: ' + e); }
@@ -823,6 +824,31 @@ function parcelsData_() {
   return { incoming: incoming, outgoing: outgoing };
 }
 
+/** 13.10: події з GitHub (17TRACK / DHL / eBay) → як листи перевізників: статус «Отримано» і одне сповіщення. */
+function parcelEvents_(list) {
+  const rows = ledgerRows_();
+  list.forEach(function (x) {
+    const n = Number(x.n), r = rows.filter(function (y) { return y.n === n; })[0];
+    if (!r || ['delivered', 'ready'].indexOf(x.kind) < 0) return;
+    const date = /^\d{4}-\d\d-\d\d$/.test(String(x.date)) ? new Date(x.date + 'T12:00:00') : new Date();
+    if (x.dir === 'out') { if (r.status === 'Продано') outParcel_(n, x.kind, date); }
+    else if (['Оплачено', 'В дорозі'].indexOf(r.status) >= 0) inParcel_(n, x.kind, date);
+  });
+}
+
+/** 13.10: сповіщення без кнопки — раз на 3 години (8–21 за Берліном) і лише коли щось у дорозі. */
+function parcelsWatch_() {
+  const props = PropertiesService.getScriptProperties(), now = Date.now();
+  const h = Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }));
+  if (!(h >= 8 && h <= 21) || now - Number(props.getProperty('PARCELS_WATCH_AT') || 0) < 3 * 3600 * 1000) return false;
+  const d = parcelsData_();
+  d.incoming = d.incoming.filter(function (r) { return r.track || /ebay/i.test(String(r.src || '')); });
+  d.outgoing = d.outgoing.filter(function (r) { return !r.delivered; });
+  if (!d.incoming.length && !d.outgoing.length) return false;
+  props.setProperty('PARCELS_WATCH_AT', String(now));
+  return sellDispatch_(Object.assign({ mode: 'parcels', watch: true, rt: props.getProperty('EBAY_RT') || '' }, d)) === 204;
+}
+
 function parcelsCommand_(msg) {
   if (!/^\/?(?:посилки|де посилки|трекінг|трекинг)(?:\s+0)?$/i.test(String(msg.text || '').trim())) return false;
   const d = parcelsData_();
@@ -1001,6 +1027,8 @@ function sealedPost(s) {
     props.setProperty('ASSIST_HIST', JSON.stringify(h.slice(-6)));
   } else if (d.kind === 'ebay_bad') {
     props.deleteProperty('EBAY_RT');
+  } else if (d.kind === 'parcels' && Array.isArray(d.events)) {
+    parcelEvents_(d.events);
   } else if (d.kind === 'listed' && d.row) {
     const chat = props.getProperty('TELEGRAM_CHAT_ID');
     listedCommand_({ text: 'виставив ' + d.row + (d.price ? ' ' + d.price : ''), chat: { id: chat } }, d.item_id);

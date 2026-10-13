@@ -65,7 +65,7 @@ def dhl_api_status(num: str, get, key: str) -> dict | None:
     eta = [x for x in (tf.get("estimatedFrom"), tf.get("estimatedThrough")) if x] or \
           ([sh["estimatedTimeOfDelivery"]] if sh.get("estimatedTimeOfDelivery") else [])
     delivered = code == "delivered"
-    return dict(status=text, date=_d(st.get("timestamp", "")), delivered=delivered,
+    return dict(status=text, date=_d(st.get("timestamp", "")), iso=str(st.get("timestamp", ""))[:10], delivered=delivered,
                 ready=not delivered and bool(re.search(r"filiale|packstation|paketshop|abhol", text, re.I))
                 and not re.search(r"abholung .{0,20}erfolgt|abgeholt", text, re.I),
                 eta=" – ".join(_d(x) for x in eta[:2]))
@@ -92,7 +92,8 @@ def dhl_status(num: str, get) -> dict | None:
         return None
     st = str(ver["status"])
     eta = [str(v) for k, v in _find(det, re.compile(r"zeitfenster|voraussichtlich|zustelltermin|zustelldatum", re.I))]
-    return dict(status=st, date=_d(ver.get("datumAktuellerStatus", "")), delivered=bool(det.get("istZugestellt")),
+    return dict(status=st, date=_d(ver.get("datumAktuellerStatus", "")), iso=str(ver.get("datumAktuellerStatus", ""))[:10],
+                delivered=bool(det.get("istZugestellt")),
                 ready=not det.get("istZugestellt") and bool(re.search(r"filiale|packstation|paketshop|abhol", st, re.I))
                 and not re.search(r"abholung .{0,20}erfolgt|abgeholt", st, re.I),
                 eta=" – ".join(_d(x) or x[:16] for x in eta[:2]))
@@ -107,7 +108,7 @@ def _t17(info: dict) -> dict | None:
     when = ev.get("time_iso") or ev.get("time_utc") or ""
     eta = ((info.get("time_metrics") or {}).get("estimated_delivery_date") or {})
     eta = [x for x in (eta.get("from"), eta.get("to")) if x]
-    return dict(status=text, date=_d(when), delivered=st == "Delivered", ready=st == "AvailableForPickup",
+    return dict(status=text, date=_d(when), iso=str(when)[:10], delivered=st == "Delivered", ready=st == "AvailableForPickup",
                 eta=" – ".join(_d(x) for x in eta[:2]))
 
 
@@ -216,10 +217,29 @@ def line_for(row: dict, order: dict | None, live: dict | None, outgoing: bool) -
     return f"• {who}{src} — {state}{tail}"
 
 
+def _event(r: dict, order: dict | None, live: dict | None, outgoing: bool) -> dict | None:
+    """Що облік має дізнатися без кнопки (13.10): доставлено / чекає у відділенні. Повтори Apps Script відсікає сам."""
+    if outgoing and r.get("delivered"):
+        return None
+    if live and (live["delivered"] or live["ready"]):
+        kind, day = ("delivered" if live["delivered"] else "ready"), live.get("iso") or ""
+    elif order and order.get("delivered"):
+        kind, day = "delivered", order["delivered"][:10]
+    else:
+        return None
+    return {"n": r["n"], "dir": "out" if outgoing else "in", "kind": kind,
+            "date": day if re.fullmatch(r"\d{4}-\d\d-\d\d", day) else ""}
+
+
 def report(d: dict, token: str | None, post, get) -> str:
+    return check(d, token, post, get)[0]
+
+
+def check(d: dict, token: str | None, post, get) -> tuple[str, list[dict]]:
+    """→ (повідомлення для кнопки, події для обліку)."""
     rows_in, rows_out = d.get("incoming") or [], d.get("outgoing") or []
     if not rows_in and not rows_out:
-        return "📦 Посилок у дорозі немає: усе куплене вже в тебе, а продане — доставлено."
+        return "📦 Посилок у дорозі немає: усе куплене вже в тебе, а продане — доставлено.", []
     buy, sell = [], []
     if token:
         try:
@@ -236,7 +256,7 @@ def report(d: dict, token: str | None, post, get) -> str:
             plan.append((title if i == 0 else None, r, order, num, carrier, outgoing))
     key17 = re.sub(r"\s+", "", os.getenv("TRACK17_KEY") or "")
     s17 = t17_statuses([p[3] for p in plan], post, key17) if key17 else {}
-    out = ["📦 <b>Посилки</b>"]
+    out, events = ["📦 <b>Посилки</b>"], []
     for title, r, order, num, carrier, outgoing in plan:
         if title:
             out.append(title)
@@ -244,4 +264,7 @@ def report(d: dict, token: str | None, post, get) -> str:
         if live is None and num and (not carrier or "dhl" in carrier.lower() or "deutsche post" in carrier.lower()):
             live = dhl_status(num, get)
         out.append(line_for(r, order, live, outgoing))
-    return "\n".join(out)
+        ev = _event(r, order, live, outgoing)
+        if ev:
+            events.append(ev)
+    return "\n".join(out), events
