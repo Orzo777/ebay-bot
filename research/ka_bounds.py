@@ -22,7 +22,7 @@ import ram_alert as ra
 import ram_mail_check as rmc
 
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ka_bounds.json")
-DRIFT = 0.05
+DRIFT, DROP_DRIFT = 0.05, 0.15
 RAM_TITLES = {   # підписка → типове оголошення, за яким рахуємо межу
     "arbeitsspeicher ddr5": "DDR5 16GB 6000 RAM", "ddr5 16gb": "DDR5 16GB 6000 RAM",
     "ddr5 sodimm 16gb": "DDR5 SO-DIMM 16GB 5600 Laptop RAM", "ddr5 sodimm 32gb": "DDR5 SO-DIMM 32GB (2x16GB) 5600 Laptop",
@@ -86,7 +86,8 @@ def drift(rec: dict | None = None, cur: dict | None = None, th: float = DRIFT) -
     for g in ("ram", "console", "hamburg"):
         for k, v in rec[g].items():
             c = cur[g].get(k)
-            if c and abs(v - c) / c > th:
+            # 13.10: вища межа — бот пропускає угоди (від 5%); нижча — лише зайві листи, бот їх і так відсіює (від 15%)
+            if c and ((v - c) / c > th or (c - v) / c > max(th, DROP_DRIFT)):
                 out.append((g, k, c, v))
     return out
 
