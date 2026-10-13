@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-13b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-13c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -432,7 +432,7 @@ function processLedger() {
   try { fixSalePrice1011_(); } catch (e) { console.log('fixSalePrice1011_: ' + e); }
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
-  try { keyboard1012_(); } catch (e) { console.log('keyboard1012_: ' + e); }
+  try { keyboard1013_(); } catch (e) { console.log('keyboard1013_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
@@ -454,35 +454,71 @@ function weeklyIfDue_(props, now) {
 // ------------------------------------------------------------------ Telegram
 // Облік і продаж — в окремому боті «Облік і продаж» (OFFICE_BOT_TOKEN), щоб не змішувати з картками покупок.
 // Поки другого бота немає — пише в основний, як раніше.
-const OFFICE_KEYBOARD = { keyboard: [[{ text: 'на руках' }, { text: 'облік' }, { text: 'продати' }],
-  [{ text: 'посилки' }, { text: 'звіт' }, { text: 'допомога' }]],
+// 13.10 (крок 8 — простіше): головний екран — те, чим користувач користується найчастіше (посилки, облік, продати, звіт);
+// замість довідки на 20 рядків — «☰ Меню» з розділами кнопками, у кожному 3–5 рядків і кнопки дій. Текстові команди — ті самі.
+const OFFICE_KEYBOARD = { keyboard: [[{ text: '📦 Посилки' }, { text: '📒 Облік' }, { text: '💶 Продати' }],
+  [{ text: '📊 Звіт' }, { text: '🗂 На руках' }, { text: '☰ Меню' }]],
   resize_keyboard: true,
   is_persistent: true };
-const OFFICE_HELP = 'Тут облік і продаж (картки покупок — в основному боті).\n' +
-  '• купив 45 OWC 2x16 DDR4 — записати покупку (додай ebay / самовивіз, якщо не KA)\n' +
-  '• продав 110 OWC — записати продаж\n' +
-  '• на руках — що в тебе зараз: статус, скільки днів, що робити далі (з кнопками)\n' +
-  '• облік — підсумок і посилання на таблицю\n' +
-  '• посилки — де кожна посилка до тебе й від тебе: статус, коли очікується, чи дійшла (eBay + DHL)\n' +
-  '• витрата 50 стенд для тесту RAM — витрата не на товар (обладнання, пакування, пересилка); прибуток після витрат — ' +
-  'у «Підсумку»\n' +
-  '• продати 3 — готове оголошення для eBay: ціна, пороги Preisvorschlag, назва й опис німецькою ' +
-  '(3 — номер у таблиці; «продати» без номера — список того, що на руках)\n' +
-  '• ebay вхід — один раз підключити eBay; тоді на картці «продати 3» кнопка «🚀 Виставити на eBay автоматично» ' +
-  '(з фото, ціною й порогами; eBay спершу перевіряє). ebay тест 3 — лише перевірка, без публікації. Далі теж кнопками: ' +
-  'трек з «відправив 3 трек» іде в eBay сам, «📨 Надіслати» під питанням покупця, «Прийняти / Зустрічна / Відхилити» під ' +
-  'пропозицією, «⬇️ Знизити» в тижневому звіті\n' +
-  '• межі — які «Preis bis» поставити в підписках KA за сьогоднішніми цінами (і кнопка «✅ Межі оновив»)\n' +
-  '• виставив 3 [124] — товар №3 уже на eBay (статус «Виставлено», ціну — в нотатки), щоб звіт не нагадував\n' +
-  '• звіт — тижневий звіт: прибуток, точність прогнозів, залежаний товар, що дають підписки (сам приходить щопонеділка)\n' +
-  '• отримав 3 / перевірив 3 / проблема 3 — посилка №3 прийшла / протестована / щось не так (покажу, як заявити)\n' +
-  '• відправив 3 [трек] — проданий №3 відправлено покупцю; з треком скажу, коли покупець отримає\n' +
-  '• трек 3 00340… — трек-номер посилки №3 (купівля чи продаж), якщо його не було в листі\n' +
-  '• нагадай 20.10 текст — нагадаю того дня; нагадування — що заплановано\n' +
-  '• фото з підписом 3 — фото товару №3 (наклейки, екран MemTest86): збережу, звірю наклейку з покупкою, MemTest86 без ' +
-  'помилок → «Перевірено»; «продати 3» пришле їх альбомом; «фото 3» — показати; «перенеси фото 1 2» — якщо потрапили не туди\n' +
-  'Покупки й продажі з листів eBay/KA записуються самі — сюди прийде повідомлення. Щодня о 10:00 — що треба зробити ' +
-  '(посилка не йде, не перевірено, не відправлено, заплановане).';
+const KEY_ALIAS = { '📦 посилки': 'посилки', '📒 облік': 'облік', '💶 продати': 'продати', '📊 звіт': 'звіт',
+  '🗂 на руках': 'на руках', '☰ меню': 'меню' };
+// кнопки дій у меню: k|<команда> (лише ці)
+const MENU_ACTIONS = { 'посилки': '📦 Посилки', 'облік': '📒 Облік', 'продати': '💶 Продати', 'звіт': '📊 Звіт', 'на руках': '🗂 На руках',
+  'нагадування': '⏰ Нагадування' };
+const MENU = {
+  buy: ['🛒 Купівля', 'Картки угод — в ebay_bot (ПК — у pc_bot); покупки з листів eBay / KA записуються самі.\n' +
+    '• купив 45 OWC 2x16 DDR4 — записати вручну (додай «ebay» або «самовивіз», якщо не KA)\n' +
+    '• отримав 3 — посилка №3 прийшла\n' +
+    '• фото з підписом 3 — наклейки й екран MemTest86; без помилок → «Перевірено»\n' +
+    '• перевірив 3 / проблема 3 — протестовано / щось не так (підкажу, як заявити)\n' +
+    '• межі — межі цін у підписках KA', ['на руках']],
+  sell: ['💶 Продаж', '• продати — що вже можна продавати; продати 3 — готове оголошення (ціна, назва, опис німецькою) ' +
+    'і кнопка «🚀 Виставити на eBay»\n' +
+    '• відправив 3 трек — трек піде в eBay сам, покупцю — подяка\n' +
+    '• виставив 3 124 — якщо виставив сам\n' +
+    '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати']],
+  parcels: ['📦 Посилки', '• посилки — де кожна посилка до тебе й від тебе, коли очікується, чи дійшла\n' +
+    '• сам напишу, коли посилка чекає у відділенні або доставлена (перевіряю раз на 3 години, 8–21)\n' +
+    '• трек 3 номер — додати трек (KA шле трек лише в чат)', ['посилки']],
+  money: ['📒 Гроші', '• облік — прибуток, гроші зараз, товар на руках і посилання на таблицю\n' +
+    '• продав 110 OWC — записати продаж вручну (продажі eBay записуються самі)\n' +
+    '• витрата 14 перехідник DDR4 — витрата не на товар\n' +
+    '• звіт — тижневий звіт (сам приходить щопонеділка)', ['облік', 'звіт']],
+  other: ['⚙️ Інше', '• нагадай 20.10 текст — нагадаю того дня; нагадування — список\n' +
+    '• фото 3 — показати фото №3; перенеси фото 1 2 — якщо потрапили не туди\n' +
+    '• ebay вхід — підключити eBay (ключ діє ~18 місяців)\n' +
+    '• щодня о 10:00 — «На сьогодні»: що зробити\n' +
+    'Питання й поради — у retail_helper.', ['нагадування']] };
+const MENU_ORDER = ['buy', 'sell', 'parcels', 'money', 'other'];
+const OFFICE_HELP = '☰ Меню — обери розділ. Найчастіше потрібне — на кнопках унизу.';
+
+function menuMarkup_() {
+  const b = MENU_ORDER.map(function (k) { return { text: MENU[k][0], callback_data: 'm|' + k }; });
+  return { inline_keyboard: [[b[0], b[1]], [b[2], b[3]], [b[4]]] };
+}
+
+function sectionMarkup_(key) {
+  const acts = MENU[key][2].map(function (c) { return { text: MENU_ACTIONS[c], callback_data: 'k|' + c }; });
+  return { inline_keyboard: [acts, [{ text: '← Меню', callback_data: 'm|menu' }]] };
+}
+
+/** m|розділ — показати розділ меню в тому ж повідомленні; k|команда — виконати дію з меню. */
+function menuCallback_(cq, chat) {
+  const m = String(cq.data || '').match(/^([mk])\|(.+)$/);
+  if (!m) return false;
+  const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
+  tgOffice_('answerCallbackQuery', { callback_query_id: cq.id });
+  if (!chat || String(from) !== String(chat)) return true;
+  if (m[1] === 'k') {
+    if (MENU_ACTIONS[m[2]]) officeMessage({ text: m[2], chat: { id: from }, message_id: 0 });
+    return true;
+  }
+  const key = MENU[m[2]] ? m[2] : 'menu';
+  tgOffice_('editMessageText', { chat_id: chat, message_id: cq.message.message_id,
+    text: key === 'menu' ? OFFICE_HELP : MENU[key][0] + '\n\n' + MENU[key][1],
+    reply_markup: JSON.stringify(key === 'menu' ? menuMarkup_() : sectionMarkup_(key)) });
+  return true;
+}
 
 function officeToken_(props) {
   return props.getProperty('OFFICE_BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
@@ -503,6 +539,8 @@ function notify_(text, markup, mode) {
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
+  const alias = KEY_ALIAS[String(msg.text || '').trim().toLowerCase()];   // кнопки клавіатури з емодзі → команда
+  if (alias) msg = Object.assign({}, msg, { text: alias });
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       onHandCommand_(msg)) return;
   if (parcelsCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
@@ -510,8 +548,13 @@ function officeMessage(msg) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
   }
-  if (/^\/?(допомога|help|start)/i.test(String(msg.text || '').trim())) { notify_(OFFICE_HELP, OFFICE_KEYBOARD); return; }
-  notify_('Не зрозумів. ' + OFFICE_HELP + '\n\nОголошення для оцінки — кидай в основний бот.', OFFICE_KEYBOARD);
+  if (/^\/?(допомога|help|start|меню|menu)$/i.test(String(msg.text || '').trim())) {
+    notify_('🔘 Кнопки внизу — головне.', OFFICE_KEYBOARD);   // оновити постійну клавіатуру
+    notify_(OFFICE_HELP, menuMarkup_());
+    return;
+  }
+  notify_('Не зрозумів 🙂 Натисни «☰ Меню» — там усе, що вміє бот. Оголошення для оцінки — в ebay_bot, питання — в retail_helper.',
+          OFFICE_KEYBOARD);
 }
 
 /**
@@ -530,7 +573,7 @@ function connectOfficeBot() {
     method: 'post', muteHttpExceptions: true,
     payload: { url: base + '?bot=office', allowed_updates: '["message"]', drop_pending_updates: 'true' } });
   console.log('webhook: ' + r.getContentText());
-  const s = notify_('✅ Бот «Облік і продаж» підключено.\n\n' + OFFICE_HELP, OFFICE_KEYBOARD);
+  const s = notify_('✅ Бот «Облік і продаж» підключено. Головне — на кнопках унизу, решта — у «☰ Меню».', OFFICE_KEYBOARD);
   if (s && s.getResponseCode() === 403) console.log('Бот не може написати першим: відкрий його в Telegram і натисни «Start», потім запусти ще раз.');
   else console.log('готово — перевір Telegram');
 }
@@ -1821,12 +1864,14 @@ function moneyBlock1011_() {
   props.setProperty('MONEY_BLOCK_1011', '1');
 }
 
-/** 12.10, один раз: нова кнопка «посилки» на постійній клавіатурі бота (Telegram оновлює її лише з новим повідомленням). */
-function keyboard1012_() {
+/** 13.10, один раз: новий головний екран (Telegram оновлює постійну клавіатуру лише з новим повідомленням) + меню. */
+function keyboard1013_() {
   const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('KEYBOARD_1012') === '1') return;
-  notify_('📦 Нова кнопка внизу — «посилки»: де кожна посилка до тебе й від тебе, коли очікується і чи дійшла.', OFFICE_KEYBOARD);
-  props.setProperty('KEYBOARD_1012', '1');
+  if (props.getProperty('KEYBOARD_1013') === '1') return;
+  props.setProperty('KEYBOARD_1013', '1');
+  notify_('✨ Оновив бот, щоб було простіше:\n• унизу — головне: посилки, облік, продати, звіт, на руках\n' +
+          '• «☰ Меню» — усе інше розділами, замість довгої довідки. Команди текстом працюють як раніше.', OFFICE_KEYBOARD);
+  notify_(OFFICE_HELP, menuMarkup_());
 }
 
 function fixAlbum1010_() {
@@ -2056,7 +2101,7 @@ function digestButtons_(marks) {
 /** Натискання кнопки (doPost, ?bot=office): виконати команду, кнопки з повідомлення прибрати. */
 function officeCallback(cq) {
   const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
-  if (ebayCallback_(cq, chat)) return;
+  if (ebayCallback_(cq, chat) || menuCallback_(cq, chat)) return;
   const m = String(cq.data || '').match(/^c\|([^|]+)\|(\d{1,4})$/);
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + (m[1] === 'посилки' ? '' : ' №' + m[2]) : '' });

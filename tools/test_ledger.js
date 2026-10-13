@@ -113,7 +113,15 @@ let n = said.length;
 office('допомога', 999);
 check('office foreign chat silent', said.length, n);
 office('допомога');
-check('office help', /облік і продаж/i.test(said[said.length - 1]), true);
+check('office help = menu', /☰ Меню — обери розділ/.test(said[said.length - 1]), true);
+// 13.10: кнопки клавіатури з емодзі → ті самі команди
+const realLC = ctx.ledgerCommand;
+vm.runInContext('ledgerCommand = function (m) { __said.push("LC:" + m.text); return true; };', ctx);
+office('📒 Облік');
+check('keyboard alias', said[said.length - 1], 'LC:облік');
+ctx.ledgerCommand = realLC;
+office('☰ Меню');
+check('menu button', /☰ Меню — обери розділ/.test(said[said.length - 1]), true);
 office('https://www.kleinanzeigen.de/s-anzeige/x/1-225-1');
 check('office link not evaluated', /Не зрозумів/.test(said[said.length - 1]), true);
 office('купив 20 Kingston 8GB');

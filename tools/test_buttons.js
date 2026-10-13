@@ -93,6 +93,7 @@ check('setWebhook for both bots once, keeps url, no drop', [sets.length, sets.ev
 
 // doPost: натискання в боті обліку → officeCallback; в основному боті — ігнор
 let called = 0;
+const realOfficeCb = ctx.officeCallback;
 vm.runInContext('officeCallback = function () { __hit(); };', Object.assign(ctx, { __hit: () => { called++; } }));
 const post = (upd, office) => ctx.doPost({ postData: { contents: JSON.stringify(upd) }, parameter: office ? { bot: 'office' } : {} });
 post({ update_id: 1, callback_query: { id: 'x', data: 'c|отримав|1', message: { chat: { id: 7 }, message_id: 1 } } }, true);
@@ -115,6 +116,26 @@ check('office bot told + test buttons', [/📒 Записав покупку №
       [true, ['c|перевірив|5', 'c|проблема|5']]);
 ctx.mainCallback(mcq);
 check('second press → no duplicate', deals.last, rows0 + 1);
+
+// 13.10: «☰ Меню» — розділи кнопками в тому ж повідомленні; дії з меню — ті самі команди
+check('menu: 5 sections', datas(ctx.menuMarkup_()), ['m|buy', 'm|sell', 'm|parcels', 'm|money', 'm|other']);
+check('menu callbacks ≤ 64 bytes', Object.keys(ctx.MENU_ACTIONS || {}).length === 0 ||
+      datas(ctx.sectionMarkup_('other')).every((d) => Buffer.byteLength(d) <= 64), true);
+tg.length = 0;
+realOfficeCb(cb('m|sell'));
+const ed = tg.find((c) => c[0] === 'editMessageText');
+check('section shown in place', [ed && /^💶 Продаж\n\n• продати/.test(ed[1].text), ed && datas(JSON.parse(ed[1].reply_markup))],
+      [true, ['k|продати', 'm|menu']]);
+tg.length = 0;
+realOfficeCb(cb('m|menu'));
+check('back to menu', datas(JSON.parse(tg.find((c) => c[0] === 'editMessageText')[1].reply_markup)).length, 5);
+const m0 = sent.length;
+realOfficeCb(cb('k|на руках'));
+check('menu action runs the command', /^📦 На руках: \d+/.test(sent[sent.length - 1][0]) && sent.length > m0, true);
+realOfficeCb(cb('k|видалити все'));
+check('unknown menu action ignored', sent.length, m0 + 1);
+realOfficeCb(cb('m|sell', 99));
+check('menu: foreign chat ignored', sent.length, m0 + 1);
 ctx.mainCallback(Object.assign({}, mcq, { message: Object.assign({}, mcq.message, { chat: { id: 99 } }) }));
 check('foreign chat → nothing', deals.last, rows0 + 1);
 console.log(bad ? 'FAILED ' + bad : 'OK');
