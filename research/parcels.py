@@ -13,6 +13,10 @@ DHL_URL = "https://www.dhl.de/int-verfolgen/data/search"
 # 12.10: з серверів GitHub публічна сторінка DHL віддає захист від ботів (не JSON) — там потрібен офіційний безкоштовний ключ
 # (developer.dhl.com → «Shipment Tracking - Unified», секрет DHL_API_KEY). Без ключа — публічна сторінка (працює з дому).
 DHL_API = "https://api-eu.dhl.com/track/shipments"
+# 13.10: DHL ключ дає лише на робочу пошту → 17TRACK (секрет TRACK17_KEY): DHL, Hermes, DPD, GLS одним запитом.
+# Квота — за номер, раз при реєстрації (~100 безкоштовно); повторні перевірки того ж номера квоту не беруть.
+T17_API = "https://api.17track.net/track/v2.4"
+T17_NOT_REGISTERED = -18019902
 TRACK_LINK = {"DHL": "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode={}",
               "Hermes": "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation#{}",
               "DPD": "https://tracking.dpd.de/status/de_DE/parcel/{}",
@@ -92,6 +96,51 @@ def dhl_status(num: str, get) -> dict | None:
                 ready=not det.get("istZugestellt") and bool(re.search(r"filiale|packstation|paketshop|abhol", st, re.I))
                 and not re.search(r"abholung .{0,20}erfolgt|abgeholt", st, re.I),
                 eta=" – ".join(_d(x) or x[:16] for x in eta[:2]))
+
+
+def _t17(info: dict) -> dict | None:
+    st = (info.get("latest_status") or {}).get("status") or ""
+    ev = info.get("latest_event") or {}
+    if not ev and st in ("", "NotFound", "InfoReceived"):
+        return None   # перевізник ще нічого не показав
+    text = str(ev.get("description") or st)
+    when = ev.get("time_iso") or ev.get("time_utc") or ""
+    eta = ((info.get("time_metrics") or {}).get("estimated_delivery_date") or {})
+    eta = [x for x in (eta.get("from"), eta.get("to")) if x]
+    return dict(status=text, date=_d(when), delivered=st == "Delivered", ready=st == "AvailableForPickup",
+                eta=" – ".join(_d(x) for x in eta[:2]))
+
+
+def t17_statuses(nums: list[str], post, key: str) -> dict:
+    """{номер: статус} з 17TRACK; незареєстровані номери реєструє (статус з'явиться при наступній перевірці)."""
+    nums = list(dict.fromkeys(n for n in nums if n))[:40]
+    if not nums:
+        return {}
+    hdr = {"17token": key, "Content-Type": "application/json"}
+    out, fresh = {}, []
+    try:
+        r = post(T17_API + "/gettrackinfo", json=[{"number": n} for n in nums], headers=hdr, timeout=20)
+        js = r.json() if r.status_code == 200 else {}
+        if r.status_code != 200 or js.get("code"):
+            print(f"17TRACK {r.status_code} {js.get('code', '')}")
+            return {}
+        data = js.get("data") or {}
+        for a in data.get("accepted") or []:
+            out[str(a.get("number"))] = _t17(a.get("track_info") or {})
+        for x in data.get("rejected") or []:
+            code = (x.get("error") or {}).get("code")
+            if code == T17_NOT_REGISTERED:
+                fresh.append(str(x.get("number")))
+            else:
+                print(f"17TRACK: номер відхилено ({code})")
+        if fresh:
+            r = post(T17_API + "/register", json=[{"number": n} for n in fresh], headers=hdr, timeout=20)
+            bad = ((r.json() if r.status_code == 200 else {}).get("data") or {}).get("rejected") or []
+            print(f"17TRACK: зареєстровано {len(fresh) - len(bad)} з {len(fresh)}"
+                  + (f" (помилка {(bad[0].get('error') or {}).get('code')})" if bad else ""))
+    except Exception as e:
+        print(f"17TRACK: {e.__class__.__name__}")
+    return out
 
 
 def _t(el, path: str, ns: str) -> str:
@@ -178,15 +227,21 @@ def report(d: dict, token: str | None, post, get) -> str:
             sell = ebay_orders(token, post, "Seller")
         except Exception as e:   # eBay недоступний — лишаються DHL і облік
             print(f"eBay GetOrders: {e.__class__.__name__}")
-    out = ["📦 <b>Посилки</b>"]
+    plan = []
     for title, rows, orders, outgoing in (("⬇️ До тебе", rows_in, buy, False), ("⬆️ Від тебе покупцям", rows_out, sell, True)):
-        if not rows:
-            continue
-        out.append(title)
-        for r in rows:
+        for i, r in enumerate(rows):
             order = _match(r, orders) if (outgoing or "ebay" in str(r.get("src", "")).lower()) else None
             num = r.get("track") or (order or {}).get("track", ("", ""))[0]
             carrier = r.get("carrier") or (order or {}).get("track", ("", ""))[1]
-            live = dhl_status(num, get) if num and (not carrier or "dhl" in carrier.lower() or "deutsche post" in carrier.lower()) else None
-            out.append(line_for(r, order, live, outgoing))
+            plan.append((title if i == 0 else None, r, order, num, carrier, outgoing))
+    key17 = re.sub(r"\s+", "", os.getenv("TRACK17_KEY") or "")
+    s17 = t17_statuses([p[3] for p in plan], post, key17) if key17 else {}
+    out = ["📦 <b>Посилки</b>"]
+    for title, r, order, num, carrier, outgoing in plan:
+        if title:
+            out.append(title)
+        live = s17.get(num)
+        if live is None and num and (not carrier or "dhl" in carrier.lower() or "deutsche post" in carrier.lower()):
+            live = dhl_status(num, get)
+        out.append(line_for(r, order, live, outgoing))
     return "\n".join(out)

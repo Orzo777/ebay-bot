@@ -113,6 +113,36 @@ class ParcelsTest(unittest.TestCase):
             s = parcels.dhl_status("00340434111111111111", get)
         self.assertEqual((s["delivered"], s["ready"], s["eta"], s["date"]), (False, False, "13.10 – 13.10", "12.10"))
 
+    def test_17track(self):
+        from unittest import mock
+        sent = []
+
+        def post(url, json=None, headers=None, **kw):
+            sent.append((url.rsplit("/", 1)[1], [x["number"] for x in json], headers["17token"]))
+            if url.endswith("/register"):
+                return R({"code": 0, "data": {"accepted": [{"number": "53284131401093"}], "rejected": []}})
+            return R({"code": 0, "data": {
+                "accepted": [{"number": "00340434000000000001", "track_info": {
+                    "latest_status": {"status": "Delivered"},
+                    "latest_event": {"time_iso": "2026-10-12T11:00:00+02:00", "description": "Zugestellt"}}},
+                    {"number": "H1000000000000000001", "track_info": {
+                        "latest_status": {"status": "AvailableForPickup"},
+                        "latest_event": {"time_iso": "2026-10-13T09:00:00+02:00", "description": "Im PaketShop"}}}],
+                "rejected": [{"number": "53284131401093", "error": {"code": -18019902, "message": "does not register"}}]}})
+
+        d = {"incoming": [{"n": 2, "title": "OWC", "src": "eBay", "track": "H1000000000000000001", "carrier": "Hermes"},
+                          {"n": 3, "title": "Corsair 2133", "src": "Kleinanzeigen", "track": "53284131401093", "carrier": "Hermes"}],
+             "outgoing": [{"n": 1, "title": "Corsair 3200", "src": "eBay", "track": "00340434000000000001", "carrier": "DHL"}]}
+        with mock.patch.dict(os.environ, {"TRACK17_KEY": " key\n"}):
+            t = parcels.report(d, None, post, self.get)
+        self.assertEqual(sent[0], ("gettrackinfo", ["H1000000000000000001", "53284131401093", "00340434000000000001"], "key"))
+        self.assertEqual(sent[1], ("register", ["53284131401093"], "key"))   # новий номер — реєструємо один раз
+        self.assertIn("📬 чекає у відділенні / Packstation з 13.10 — забери", t)   # Hermes тепер з живим статусом
+        self.assertIn("✅ доставлено 12.10", t)
+        self.assertIn("№3 Corsair 2133 (Kleinanzeigen) — 🚚 в дорозі", t)     # щойно зареєстрований — поки посилання
+        self.assertEqual(self.calls, [])                                       # DHL не питаємо, 17TRACK уже відповів
+        self.assertEqual(parcels.t17_statuses(["1"], lambda *a, **k: R({}, 401), "k"), {})   # недійсний ключ — без падіння
+
     def test_nothing_and_no_ebay(self):
         self.assertIn("немає", parcels.report({"incoming": [], "outgoing": []}, None, self.post, self.get))
         t = parcels.report({"incoming": [{"n": 2, "title": "OWC", "src": "eBay", "track": "H1000000000000000001", "carrier": "Hermes"}],

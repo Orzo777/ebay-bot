@@ -55,7 +55,8 @@ jobs:
           EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
           EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
-          DHL_API_KEY: ${{ secrets.DHL_API_KEY }}   # «📦 Де посилки»: офіційний DHL Tracking API (з GitHub публічна сторінка DHL не відповідає)
+          DHL_API_KEY: ${{ secrets.DHL_API_KEY }}
+          TRACK17_KEY: ${{ secrets.TRACK17_KEY }}   # 13.10: 17TRACK — DHL, Hermes, DPD (DHL ключ лише на робочу пошту)   # «📦 Де посилки»: офіційний DHL Tracking API (з GitHub публічна сторінка DHL не відповідає)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EBAY_RUNAME: ${{ secrets.EBAY_RUNAME }}
