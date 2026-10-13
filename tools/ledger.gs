@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-13a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-13b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -52,6 +52,18 @@ function setupLedger() {
   expensesSheet_(ss);
   processLedger();
   console.log('Облік готовий: ' + ss.getUrl());
+}
+
+// 13.10: перемикач «комерційний акаунт eBay» (Kleingewerbe) — ПОКИ ВИМКНЕНО; вмикати разом з BUSINESS_SELLER
+// у research/ram_alert.py. Комісія (5% вживане ×1,19 + 0,95 €) пишеться лише в нові продажі — старі приватні не міняються;
+// «облік» показує податок на прибуток (~30%).
+const BUSINESS_SELLER = false, BIZ_FEE_PCT = 0.0595, BIZ_FEE_FIXED = 0.95, TAX_RATE = 0.30;
+function business_() { return BUSINESS_SELLER; }
+
+/** Продаж записано → з комерційним акаунтом комісія eBay саме цього рядка (без «Налаштування», щоб не чіпати старі). */
+function saleFee_(sh, row, src) {
+  if (!business_() || !/ebay/i.test(String(src || ''))) return;   // KA / самовивіз — без комісії eBay
+  sh.getRange(row, COL.comm).setFormula('=IF(N' + row + '="","",ROUND(N' + row + '*' + BIZ_FEE_PCT + '+' + BIZ_FEE_FIXED + ',2))');
 }
 
 const FEE_NOTE = 'Приватний продавець на eBay.de: продаж у Німеччині без комісії (довідка eBay, 09.10.2026). ' +
@@ -400,6 +412,7 @@ function processLedger() {
           deals.getRange(row, COL.sdate).setValue(p.date);
           deals.getRange(row, COL.sto).setValue(p.src);
           if (p.total != null || p.price != null) deals.getRange(row, COL.sprice).setValue(p.total != null ? p.total : p.price);
+          saleFee_(deals, row, p.src || 'eBay');
           deals.getRange(row, COL.status).setValue('Продано');
           what = 'продаж записано';
           notify_('💰 Продано №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
@@ -569,6 +582,7 @@ function ledgerCommand(msg) {
     sh.getRange(row, COL.sdate).setValue(new Date());
     sh.getRange(row, COL.sto).setValue(src);
     sh.getRange(row, COL.sprice).setValue(amount);
+    saleFee_(sh, row, src);
     sh.getRange(row, COL.status).setValue('Продано');
     SpreadsheetApp.flush();
     const profit = sh.getRange(row, COL.profit).getValue();
@@ -1431,6 +1445,9 @@ function ledgerSummary_(rows, exps) {
   const net = profit - expTotal;
   out.push('📊 Разом: ' + (expTotal ? sgn(profit) + ' − ' + e(expTotal) + ' = ' : '') + sgn(net) +
            (net < 0 ? ' — до нуля ще ' + e(-net) : ''));
+  if (business_() && net > 0) {   // 13.10: Kleingewerbe — податок на прибуток (оцінка; точна ставка — від зарплати)
+    out.push('🏛 Податок на прибуток (~' + Math.round(TAX_RATE * 100) + '%): ≈ −' + e(net * TAX_RATE) + ' → лишається ≈ ' + e(net * (1 - TAX_RATE)));
+  }
   // 11.10: гроші загалом — отримано з продажів мінус усі купівлі (без скасованих) мінус витрати
   const received = sum(sold, function (r) { return r.net != null ? r.net : r.sprice; });
   const bought = sum(rows.filter(function (r) { return r.status !== 'Скасовано'; }), function (r) { return r.spent; });

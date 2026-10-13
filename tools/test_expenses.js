@@ -96,6 +96,17 @@ check('облік with a sale', [/Продано: 1 шт за 149\.00 € \(ку
 // гроші загалом: 137 отримано − (70.63 + 45, скасована PS5 не рахується) − 60.20 витрат = −38.83; з товаром (45) — +6.17
 check('облік: money overall', /💶 Гроші зараз: −38\.83 € · з товаром на руках \(45\.00 €\) — \+6\.17 €/.test(t), true);
 
+// 13.10: перемикач «комерційний акаунт» — вимкнено: податку в «облік» немає; увімкнено: податок ~30% з «Разом»
+check('private: no tax line', /Податок/.test(t), false);
+vm.runInContext('business_ = function () { return true; };', ctx);
+say('облік');
+check('business: tax line', /🏛 Податок на прибуток \(~30%\): ≈ −1\.85 € → лишається ≈ 4\.32 €/.test(sent[sent.length - 1]), true);
+const fsh = { f: {}, getRange: (r, c) => ({ setFormula: (x) => { fsh.f[r + ':' + c] = x; } }) };
+ctx.saleFee_(fsh, 9, 'eBay'); ctx.saleFee_(fsh, 10, 'Kleinanzeigen');
+check('business: eBay fee only on eBay sales', fsh.f, { '9:17': '=IF(N9="","",ROUND(N9*0.0595+0.95,2))' });
+vm.runInContext('business_ = function () { return BUSINESS_SELLER; };', ctx);
+check('switch is off', [ctx.business_(), (ctx.saleFee_(fsh, 11, 'eBay'), Object.keys(fsh.f).length)], [false, 1]);
+
 // «Підсумок»: блок «Гроші загалом» — один раз, під усім, формули на B6/B7/B8 і «Витрати»
 vm.runInContext('moneyBlock1011_()', ctx);
 const sm = ss.sheets['Підсумок'], top = Object.keys(sm.cells).map((k) => +k.split(':')[0]);

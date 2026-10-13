@@ -92,11 +92,34 @@ MAX_SINGLE_GB = {"ddr4": 32, "ddr5": 48}
 # упаковка ~€1; якщо дорожче €500 — DHL-страховка до €2 500 за €6.99 (базова покриває лише €500).
 FEE_SELL, ORDER_FEE_SELL, SHIP_OUT_RAM, PACK_RAM, INSURE_OVER_500 = 0.0, 0.0, 6.19, 1.0, 6.99
 
+# 13.10: перемикач «комерційний акаунт eBay» (Kleingewerbe) — ПОКИ ВИМКНЕНО (рішення користувача 13.10).
+# Увімкнути: "0" → "1" тут і BUSINESS_SELLER = true у tools/ledger.gs (облік: комісія в нових продажах, податок у «облік»).
+# eBay.de для гевербе, «Computer, Tablets & Netzwerk», вживане: 5% від суми з доставкою + 0,45 € за замовлення
+# + 0,35 € за оголошення без магазину; Kleinunternehmer ПДВ не повертає → ×1,19. Повернення (14 днів) — резерв 5% замість 3%.
+# Податок на прибуток (~30%, залежить від зарплати) — лише в показі прибутку, у межі купівлі не входить.
+BIZ_FEE_PCT, BIZ_FEE_FIXED, BIZ_RETURNS, TAX_RATE = 0.05 * 1.19, (0.45 + 0.35) * 1.19, 0.05, 0.30
+
+
+def business() -> bool:
+    return os.getenv("BUSINESS_SELLER", "0") == "1"
+
+
+def sell_fee(sale_price: float) -> tuple[float, float]:
+    """→ (комісія eBay з продажу, частка повернень для резерву)."""
+    if business():
+        return BIZ_FEE_PCT * sale_price + BIZ_FEE_FIXED, BIZ_RETURNS
+    return FEE_SELL * sale_price + ORDER_FEE_SELL, 0.03
+
+
+def after_tax(profit: float) -> float:
+    return profit * (1 - TAX_RATE) if profit > 0 else profit
+
 
 def costs(sale_price: float) -> float:
-    """Комісія + пересилка покупцю (як безкоштовна — консервативно) + упаковка + страховка + 3% резерв повернень."""
-    return (FEE_SELL * sale_price + ORDER_FEE_SELL + SHIP_OUT_RAM + PACK_RAM
-            + (INSURE_OVER_500 if sale_price > 500 else 0) + 0.03 * (2 * SHIP_OUT_RAM + ORDER_FEE_SELL))
+    """Комісія + пересилка покупцю (як безкоштовна — консервативно) + упаковка + страховка + резерв повернень."""
+    fee, ret = sell_fee(sale_price)
+    return (fee + SHIP_OUT_RAM + PACK_RAM
+            + (INSURE_OVER_500 if sale_price > 500 else 0) + ret * (2 * SHIP_OUT_RAM + fee))
 
 
 # Що платить ПОКУПЕЦЬ понад ціну в оголошенні: пересилка продавцю + «Sicher bezahlen» (0,50 € + 4,5%, 2026).

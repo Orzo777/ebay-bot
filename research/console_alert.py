@@ -20,7 +20,7 @@ def alerts_on() -> bool:
     працюють. CONSOLE_ALERTS=1 у робочих процесах ram_mail_alert / ebay_watch вмикає назад."""
     return os.getenv("CONSOLE_ALERTS", "0") == "1"
 
-from ram_alert import buy_cost, caps_from, tier
+from ram_alert import buy_cost, caps_from, sell_fee, tier
 
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.
 # 26.09.2026: 83 продані за 30 днів (класифікація цим же оцінювачем) — p25 545, медіана 571
@@ -190,8 +190,11 @@ INSURE_OVER_500 = 6.99  # DHL базово страхує до €500; Xbox пр
 
 
 def costs(sale_price: float, ship: float = SHIP) -> float:
-    return (FEE * sale_price + ORDER_FEE + ship + PACK + (INSURE_OVER_500 if sale_price > 500 else 0)
-            + 0.03 * (2 * ship + ORDER_FEE))
+    if FEE or ORDER_FEE:   # приватна комісія (зараз 0) — як раніше
+        return (FEE * sale_price + ORDER_FEE + ship + PACK + (INSURE_OVER_500 if sale_price > 500 else 0)
+                + 0.03 * (2 * ship + ORDER_FEE))
+    fee, ret = sell_fee(sale_price)   # 13.10: перемикач «комерційний акаунт» (ram_alert.business)
+    return fee + ship + PACK + (INSURE_OVER_500 if sale_price > 500 else 0) + ret * (2 * ship + fee)
 
 
 def _skip(title: str, price: float, reason: str, wrong_type: bool = True) -> dict:

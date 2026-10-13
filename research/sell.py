@@ -90,6 +90,11 @@ def net_of(r: dict, price: float) -> float:
     return price - ram_alert.costs(price)
 
 
+def _taxed(profit: float) -> str:
+    """13.10: з комерційним акаунтом — ще й прибуток після податку (~30%)."""
+    return f" (після податку ≈ {ram_alert.after_tax(profit):.0f} €)" if ram_alert.business() and profit > 0 else ""
+
+
 def price_for_net(r: dict, net: float) -> float:
     """Найменша ціна продажу, що дає `net` чистими (обернена до net_of; кроком 0,5 €)."""
     p = max(net, 1.0)
@@ -339,7 +344,7 @@ def build_card(row: int | None, title: str, r: dict, pr: dict, comp: list[float]
     # 10.10 (прохання користувача): коротко; «перед публікацією» і поля форми — у покрокових (кнопка «📋 Покроково»)
     lines = [f"🏷 <b>Продаж{' №' + str(row) if row else ''}</b> · <i>{e(title[:80])}</i>",
              f"💶 <b>{ip['item']} €</b> + доставка {money_de(tx['ship'])} €"
-             + (f" · купив за {cost:.0f} € → прибуток ≈ <b>{pr['profit_list']:.0f} €</b>" if cost else ""),
+             + (f" · купив за {cost:.0f} € → прибуток ≈ <b>{pr['profit_list']:.0f} €</b>" + _taxed(pr["profit_list"]) if cost else ""),
              f"🤝 Автоприйняти від {ip['accept']} € · відхиляти нижче {ip['decline']} €",
              f"📊 Продано за 30 днів {r['quick_sale']}–{r['median_sale']} € · "
              + (f"зараз схожих {len(comp)}, від {comp[0]:.0f} €" if comp else "схожих зараз немає"),
@@ -617,7 +622,8 @@ def plan_line(title: str, cost: float | None, row=None) -> str | None:
         return None
     ip = item_prices(p["pr"], p["tx"]["ship"])
     return (f"📈 План: продати за ≈ {ip['item']} € + доставка" +
-            (f" → прибуток ≈ {p['pr']['profit_list']:.0f} €" if cost and p["pr"].get("profit_list") is not None else ""))
+            (f" → прибуток ≈ {p['pr']['profit_list']:.0f} €" + _taxed(p["pr"]["profit_list"])
+             if cost and p["pr"].get("profit_list") is not None else ""))
 
 
 def plan_mode(d: dict, key: str, post=None) -> bool:

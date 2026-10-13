@@ -7,6 +7,7 @@ import unittest
 os.environ["RAM_PRICES_OFF"] = "1"   # фіксовані цифри Terapeak: щотижневе оновлення цін не змінює очікувані вердикти
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
+import ram_alert
 from ram_alert import buyer_message, evaluate, format_html, seller_template
 from ram_mail_check import _ad_key, build_keyboard
 
@@ -192,6 +193,31 @@ class TestSwitchTabletDesc(unittest.TestCase):
         self.assertEqual(refine_by_desc(r, r["title"], 85, False, "Die Switch kommt ohne Zubehör.", ev)["verdict"], "SKIP")
         self.assertEqual(refine_by_desc(r, r["title"], 85, False, "Lieferung ohne Joycons, Dock und Ladekabel", ev)["verdict"],
                          "SKIP")
+
+
+class BusinessSwitchTest(unittest.TestCase):
+    """13.10: перемикач «комерційний акаунт eBay» — поки вимкнено; увімкнений додає комісію (5% ×1,19 + 0,95 €)."""
+
+    def test_off_by_default(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("BUSINESS_SELLER", None)
+            self.assertFalse(ram_alert.business())
+            self.assertAlmostEqual(ram_alert.costs(150), 6.19 + 1.0 + 0.03 * 2 * 6.19, places=6)
+
+    def test_on_adds_fees(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"BUSINESS_SELLER": "1"}):
+            fee = 0.05 * 1.19 * 155.49 + 0.80 * 1.19
+            self.assertAlmostEqual(ram_alert.sell_fee(155.49)[0], fee, places=6)    # ≈ 10,20 € — приклад №2
+            self.assertAlmostEqual(round(fee, 2), 10.20)
+            self.assertAlmostEqual(ram_alert.costs(150), 0.0595 * 150 + 0.952 + 7.19 + 0.05 * (12.38 + 0.0595 * 150 + 0.952), places=6)
+            self.assertAlmostEqual(ram_alert.after_tax(67.47), 47.229, places=3)
+            self.assertEqual(ram_alert.after_tax(-5), -5)
+            # межі купівлі нижчі: від тієї ж медіани лишається менше
+        with mock.patch.dict(os.environ, {"BUSINESS_SELLER": "0"}):
+            private = ram_alert.costs(150)
+        self.assertLess(private, 9)
 
 
 if __name__ == "__main__":
