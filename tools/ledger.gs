@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-13d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-13e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -488,7 +488,7 @@ const MENU = {
   other: ['⚙️ Інше', '• нагадай 20.10 текст — нагадаю того дня; нагадування — список\n' +
     '• фото 3 — показати фото №3; перенеси фото 1 2 — якщо потрапили не туди\n' +
     '• ebay вхід — підключити eBay (ключ діє ~18 місяців)\n' +
-    '• щодня о 10:00 — «На сьогодні»: що зробити\n' +
+    '• щодня о 10:00 — «☀️ Ранковий огляд»: гроші, посилки й що зробити сьогодні\n' +
     'Боти: ebay_bot — угоди RAM · pc_bot — ПК на розбір · retail_helper — питання й поради · цей — облік і продаж.',
     ['нагадування']] };
 const MENU_ORDER = ['buy', 'sell', 'parcels', 'money', 'other'];
@@ -1230,19 +1230,18 @@ function dueReminders_(rows, ev, today) {
     if (!r.date || r.src === 'Самовивіз Гамбург') return;
     if (r.status === 'Оплачено' || r.status === 'В дорозі') {
       const base = e.shipped || r.date, d = days_(base, today), from = e.shipped ? 'від відправки' : 'від покупки';
-      const tail = (e.track ? ' Трек: ' + trackLink_({ num: e.track, carrier: e.carrier }) + ' .' : ' Є трек — «трек ' + r.n + ' номер».') +
-        ' Уже отримав — «отримав ' + r.n + '».';
+      // 13.10: коротко — строк і що зробити; «отримав N» — кнопкою під оглядом
+      const tail = e.track ? ' Трек: ' + trackLink_({ num: e.track, carrier: e.carrier }) : ' Трек — «трек ' + r.n + ' номер».';
       if (r.src === 'Kleinanzeigen') {
-        if (d >= 8) once(r.n, 'ka8', '⚠️ ' + name + ' — досі не отримано (' + d + ' дн. ' + from + '). Проблему в «Sicher bezahlen» ' +
-          'можна заявити лише до ' + addDays_(base, 10) + ', а на 14-й день гроші самі підуть продавцю. Посилки немає — «Problem melden» ' +
-          'у KA зараз.' + tail);
-        else if (d >= 5 && !rem.ka8) once(r.n, 'ka5', '📦 ' + name + ' — ' + d + ' дн. ' + from + ', посилки ще немає. Глянь трек; ' +
-          'якщо не відправлено або трек стоїть — напиши продавцю (строк для проблеми — до ' + addDays_(base, 10) + ').' + tail);
+        if (d >= 8) once(r.n, 'ka8', '⚠️ ' + name + ' — ' + d + ' дн. ' + from + ', не отримано: «Problem melden» у KA до ' +
+          addDays_(base, 10) + ', на 14-й день гроші самі підуть продавцю.' + tail);
+        else if (d >= 5 && !rem.ka8) once(r.n, 'ka5', '📦 ' + name + ' — ' + d + ' дн. ' + from + ', посилки ще немає: напиши продавцю ' +
+          '(проблему в KA — до ' + addDays_(base, 10) + ').' + tail);
       } else {
-        if (d >= 20) once(r.n, 'eb20', '⚠️ ' + name + ' — ' + d + ' дн. без доставки. Відкрий «Artikel nicht erhalten» у Mein eBay → ' +
-          'Käufe (строк — 30 днів після останньої очікуваної дати доставки, далі захист пропадає).' + tail);
-        else if (d >= 10 && !rem.eb20) once(r.n, 'eb10', '📦 ' + name + ' — ' + d + ' дн. ' + from + ', не доставлено. Глянь трек; ' +
-          'стоїть — напиши продавцю, після очікуваної дати доставки можна відкрити «Artikel nicht erhalten».' + tail);
+        if (d >= 20) once(r.n, 'eb20', '⚠️ ' + name + ' — ' + d + ' дн. без доставки: «Artikel nicht erhalten» у Mein eBay → Käufe ' +
+          '(до 30 днів після очікуваної доставки).' + tail);
+        else if (d >= 10 && !rem.eb20) once(r.n, 'eb10', '📦 ' + name + ' — ' + d + ' дн. ' + from + ', не доставлено: напиши продавцю, ' +
+          'після очікуваної дати — «Artikel nicht erhalten».' + tail);
       }
     } else if (r.status === 'Отримано') {
       if (!e.got) got.push(r.n);
@@ -1280,7 +1279,64 @@ function dueTodos_(todos, ev, today) {
 
 function userTodos_() { return JSON.parse(PropertiesService.getScriptProperties().getProperty('USER_TODO') || '[]'); }
 
-// Щодня з 10:00 за Берліном — одне повідомлення «На сьогодні», лише якщо є що робити
+// 13.10 (крок 8): «☀️ Ранковий огляд» замість «На сьогодні» з довгими абзацами. Зверху — стан одним поглядом (гроші,
+// посилки, на руках), далі «Зробити сьогодні» коротко з кнопками (щодня, поки не зроблено: протестувати, виставити,
+// відправити), «Увага» — строки, що спливають (посилка не йде, захист KA / eBay; як і раніше — раз), і нагадування.
+const WARN_KEYS = ['ka5', 'ka8', 'eb10', 'eb20', 'out7', 'salesup'];
+
+function moneyNow_(rows, exps, today) {
+  const sum = function (list, f) { return list.reduce(function (a, r) { return a + (Number(f(r)) || 0); }, 0); };
+  const sold = rows.filter(function (r) { return r.status === 'Продано' && r.sprice != null; });
+  const open = rows.filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; });
+  const received = sum(sold, function (r) { return r.net != null ? r.net : r.sprice; });
+  const bought = sum(rows.filter(function (r) { return r.status !== 'Скасовано'; }), function (r) { return r.spent; });
+  const month = sum(sold.filter(function (r) { return String(iso_(r.sdate)).slice(0, 7) === today.slice(0, 7); }),
+    function (r) { return r.profit != null ? r.profit : r.sprice - (r.spent || 0); });
+  return { cash: received - bought - sum(exps, function (x) { return x.amount; }), stock: sum(open, function (r) { return r.spent; }),
+           month: month, open: open.length };
+}
+
+/** Чисте: рядки, події, сьогодні, попередження/нагадування (рядки), витрати → {text, markup} або null (нема що робити). */
+function morningDigest_(rows, ev, today, warn, todos, exps, got) {
+  const eur = function (x) { return (x < 0 ? '−' : x > 0 ? '+' : '') + Math.abs(Math.round(x)) + ' €'; };
+  const name = function (r) { return '№' + r.n + ' «' + String(r.title).slice(0, 34).trim() + '»'; };
+  const acts = [], btn = [];
+  rows.forEach(function (r) {
+    const e = ev[r.n] || {};
+    if (r.status === 'Отримано') {
+      const d = e.got ? days_(e.got, today) : 0;
+      acts.push('🧪 Протестуй ' + name(r) + (d ? ' — ' + d + ' дн.' : '') +
+                (r.src === 'Kleinanzeigen' ? ' · проблему в KA — до ' + addDays_(e.shipped || r.date, 10) : ''));
+      btn.push(['перевірив', r.n]);
+    } else if (r.status === 'Перевірено') {
+      acts.push('💶 Виставити ' + name(r));
+      btn.push(['продати', r.n]);
+    } else if (r.status === 'Продано' && r.sdate && !e.sent && days_(r.sdate, today) <= 7) {
+      const d = days_(r.sdate, today);
+      acts.push('📮 Відправ ' + name(r) + ' — продано ' + (d === 0 ? 'сьогодні' : d === 1 ? 'вчора' : d + ' дн. тому'));
+      btn.push(['відправив', r.n]);
+    } else if (r.status === 'Проблема') {
+      acts.push('🚩 ' + name(r) + ' — проблема: заявлено продавцю / eBay / KA?');
+    }
+  });
+  if (!acts.length && !warn.length && !todos.length) return null;
+  const m = moneyNow_(rows, exps, today);
+  const pin = rows.filter(function (r) { return ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0; }).length;
+  const pout = rows.filter(function (r) { const e = ev[r.n] || {}; return r.status === 'Продано' && e.sent && !e.outDelivered; }).length;
+  const out = ['☀️ Ранковий огляд · ' + today.slice(8, 10) + '.' + today.slice(5, 7),
+    '💶 Гроші зараз ' + eur(m.cash) + ' · у товарі ' + Math.round(m.stock) + ' € · за місяць ' + eur(m.month),
+    '🗂 На руках ' + m.open + (pin || pout ? ' · 📦 посилки: ' + pin + ' до тебе, ' + pout + ' від тебе' : '')];
+  if (acts.length) out.push('', '✅ Зробити сьогодні:', acts.slice(0, 8).map(function (a, i) { return (i + 1) + '. ' + a; }).join('\n') +
+                            (acts.length > 8 ? '\n… ще ' + (acts.length - 8) + ' — «на руках»' : ''));
+  if (warn.length) out.push('', '⚠️ Увага:', warn.join('\n\n'));
+  if (todos.length) out.push('', todos.join('\n'));
+  (got || []).forEach(function (n) { if (!btn.some(function (b) { return b[1] === n; })) btn.push(['отримав', n]); });
+  const kb = btn.length ? btns_(btn.slice(0, 8)) : { inline_keyboard: [] };
+  kb.inline_keyboard.push([PARCELS_BTN, { text: '📒 Облік', callback_data: 'k|облік' }]);
+  return { text: out.join('\n'), markup: kb };
+}
+
+// Щодня з 10:00 за Берліном — «☀️ Ранковий огляд», лише якщо є що робити
 function remindersIfDue_(props, now) {
   const key = Utilities.formatDate(now, 'Europe/Berlin', 'yyyy-MM-dd');
   if (Number(Utilities.formatDate(now, 'Europe/Berlin', 'H')) < 10 || props.getProperty('REMIND_SENT') === key) return false;
@@ -1298,9 +1354,15 @@ function remindersIfDue_(props, now) {
                                     (r.sdate && days_(r.sdate, key) > 30))))) delete ev[r.n];
   });
   saveEvents_(ev);
-  const lines = a.lines.concat(b.lines);
-  if (lines.length) notify_('📋 На сьогодні:\n\n' + lines.join('\n\n'), digestButtons_(a.marks));
-  return lines.length > 0;
+  // протестувати / відправити — тепер щоденні пункти «Зробити»; у «Увага» лише строки, що спливають
+  const warn = a.lines.filter(function (l, i) { return WARN_KEYS.indexOf(a.marks[i][1]) >= 0; });
+  const waiting = a.marks.filter(function (m) { return ['ka5', 'ka8', 'eb10', 'eb20'].indexOf(m[1]) >= 0; })
+    .map(function (m) { return m[0]; });   // посилка не йде → кнопка «📦 Отримав», якщо вже прийшла
+  let exps = [];
+  try { exps = expenseRows_(); } catch (e) { exps = []; }
+  const d = morningDigest_(rows, ev, key, warn, b.lines, exps, waiting);
+  if (d) notify_(d.text, d.markup);
+  return !!d;
 }
 
 // «отримав 3» / «перевірив 3» / «проблема 3» / «відправив 3»
@@ -2111,18 +2173,6 @@ function btns_(list, extra) {
   });
   if (extra) rows.push(extra);
   return { inline_keyboard: rows };
-}
-
-/** Кнопки до «На сьогодні»: по одній головній дії на рядок обліку (до 8). */
-function digestButtons_(marks) {
-  const act = { ka5: 'отримав', ka8: 'отримав', eb10: 'отримав', eb20: 'отримав', test0: 'перевірив', test2: 'перевірив',
-    ship1: 'відправив', ship2: 'відправив' };
-  const seen = {}, list = [];
-  marks.forEach(function (m) {
-    const a = act[m[1]];
-    if (a && m[0] !== '_' && !seen[m[0]]) { seen[m[0]] = 1; list.push([a, m[0]]); }
-  });
-  return list.length ? btns_(list.slice(0, 8), [PARCELS_BTN]) : { inline_keyboard: [[PARCELS_BTN]] };
 }
 
 /** Натискання кнопки (doPost, ?bot=office): виконати команду, кнопки з повідомлення прибрати. */

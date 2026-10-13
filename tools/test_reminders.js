@@ -84,7 +84,11 @@ check('9:00 — not yet', ctx.remindersIfDue_(ctx.PropertiesService.getScriptPro
 now = { 'yyyy-MM-dd': '2026-10-06', H: '10' };
 store.LEDGER_EVENTS = JSON.stringify({ 2: { shipped: '2026-09-27' }, 9: { sent: '2026-09-02' } });
 check('10:00 — sends', ctx.remindersIfDue_(ctx.PropertiesService.getScriptProperties(), new Date()), true);
-check('one message', [sent.length, /^📋 На сьогодні/.test(sent[0]), (sent[0].match(/№\d/g) || []).length], [1, true, 6]);
+// 13.10: «☀️ Ранковий огляд» — стан, «Зробити сьогодні» (щодня, поки не зроблено), «Увага» (строки — раз), кнопки
+check('one message', [sent.length, /^☀️ Ранковий огляд · 06\.10\n💶 Гроші зараз/.test(sent[0]), (sent[0].match(/№\d/g) || []).length], [1, true, 6]);
+has('to do', sent[0], /✅ Зробити сьогодні:\n1\. 🧪 Протестуй №4 .*проблему в KA — до 08\.10\n2\. 🧪 Протестуй №5 .*\n3\. 📮 Відправ №6 .* — продано вчора/);
+has('warnings short', sent[0], /⚠️ Увага:\n📦 №1 .*напиши продавцю \(проблему в KA — до 11\.10\)/);
+check('warnings: one line each', sent[0].split('⚠️ Увага:')[1].trim().split('\n\n').every((l) => !l.includes('\n')), true);
 const saved = JSON.parse(store.LEDGER_EVENTS);
 check('saved: got date, marks, old sale pruned', [saved[5].got, saved[1].rem.ka5, saved[9]], ['2026-10-06', 1, undefined]);
 check('again same day — no', ctx.remindersIfDue_(ctx.PropertiesService.getScriptProperties(), new Date()), false);
