@@ -17,6 +17,24 @@ DHL_API = "https://api-eu.dhl.com/track/shipments"
 # Квота — за номер, раз при реєстрації (~100 безкоштовно); повторні перевірки того ж номера квоту не беруть.
 T17_API = "https://api.17track.net/track/v2.4"
 T17_NOT_REGISTERED = -18019902
+# 13.10: без коду перевізника 17TRACK не впізнав 4 з 5 номерів (-18019903) → код з обліку / за виглядом номера
+# (res.17track.net/asset/carrier/info/apicarrier.all.json).
+T17_CARRIER = {"dhl": 7041, "deutsche post": 7044, "hermes": 100031, "dpd": 100007, "gls": 101070, "ups": 100002}
+
+
+def t17_carrier(num: str, carrier: str) -> int | None:
+    c = str(carrier or "").lower()
+    hit = next((v for k, v in T17_CARRIER.items() if k in c), None)
+    if hit:
+        return hit
+    n = re.sub(r"\s+", "", str(num or "")).upper()
+    if re.fullmatch(r"H\d{19}|[1-9]\d{13}", n):
+        return T17_CARRIER["hermes"]
+    if re.fullmatch(r"0\d{13}", n):
+        return T17_CARRIER["dpd"]
+    if re.fullmatch(r"\d{12}|00340\d{15}|JJD\d+", n):
+        return T17_CARRIER["dhl"]
+    return None
 TRACK_LINK = {"DHL": "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode={}",
               "Hermes": "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation#{}",
               "DPD": "https://tracking.dpd.de/status/de_DE/parcel/{}",
@@ -112,9 +130,12 @@ def _t17(info: dict) -> dict | None:
                 eta=" – ".join(_d(x) for x in eta[:2]))
 
 
-def t17_statuses(nums: list[str], post, key: str) -> dict:
-    """{номер: статус} з 17TRACK; незареєстровані номери реєструє (статус з'явиться при наступній перевірці)."""
-    nums = list(dict.fromkeys(n for n in nums if n))[:40]
+def t17_statuses(nums: list, post, key: str) -> dict:
+    """{номер: статус} з 17TRACK; незареєстровані номери реєструє (статус з'явиться при наступній перевірці).
+    nums — номери або пари (номер, перевізник)."""
+    pairs = [(x, "") if isinstance(x, str) else tuple(x) for x in nums]
+    carrier_of = {n: c for n, c in pairs if n}
+    nums = list(carrier_of)[:40]
     if not nums:
         return {}
     hdr = {"17token": key, "Content-Type": "application/json"}
@@ -135,7 +156,8 @@ def t17_statuses(nums: list[str], post, key: str) -> dict:
             else:
                 print(f"17TRACK: номер відхилено ({code})")
         if fresh:
-            r = post(T17_API + "/register", json=[{"number": n} for n in fresh], headers=hdr, timeout=20)
+            body = [dict({"number": n}, **({"carrier": c} if (c := t17_carrier(n, carrier_of.get(n))) else {})) for n in fresh]
+            r = post(T17_API + "/register", json=body, headers=hdr, timeout=20)
             bad = ((r.json() if r.status_code == 200 else {}).get("data") or {}).get("rejected") or []
             print(f"17TRACK: зареєстровано {len(fresh) - len(bad)} з {len(fresh)}"
                   + (f" (помилка {(bad[0].get('error') or {}).get('code')})" if bad else ""))
@@ -255,13 +277,14 @@ def check(d: dict, token: str | None, post, get) -> tuple[str, list[dict]]:
             carrier = r.get("carrier") or (order or {}).get("track", ("", ""))[1]
             plan.append((title if i == 0 else None, r, order, num, carrier, outgoing))
     key17 = re.sub(r"\s+", "", os.getenv("TRACK17_KEY") or "")
-    s17 = t17_statuses([p[3] for p in plan], post, key17) if key17 else {}
+    s17 = t17_statuses([(p[3], p[4]) for p in plan], post, key17) if key17 else {}
     out, events = ["📦 <b>Посилки</b>"], []
     for title, r, order, num, carrier, outgoing in plan:
         if title:
             out.append(title)
         live = s17.get(num)
-        if live is None and num and (not carrier or "dhl" in carrier.lower() or "deutsche post" in carrier.lower()):
+        # з GitHub публічна сторінка DHL не відповідає — з ключем 17TRACK її не питаємо
+        if live is None and num and not key17 and (not carrier or "dhl" in carrier.lower() or "deutsche post" in carrier.lower()):
             live = dhl_status(num, get)
         out.append(line_for(r, order, live, outgoing))
         ev = _event(r, order, live, outgoing)

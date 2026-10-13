@@ -120,6 +120,8 @@ class ParcelsTest(unittest.TestCase):
         def post(url, json=None, headers=None, **kw):
             sent.append((url.rsplit("/", 1)[1], [x["number"] for x in json], headers["17token"]))
             if url.endswith("/register"):
+                self.assertEqual(json, [{"number": "53284131401093", "carrier": 100031}])   # Hermes — з кодом перевізника
+            if url.endswith("/register"):
                 return R({"code": 0, "data": {"accepted": [{"number": "53284131401093"}], "rejected": []}})
             return R({"code": 0, "data": {
                 "accepted": [{"number": "00340434000000000001", "track_info": {
@@ -145,6 +147,13 @@ class ParcelsTest(unittest.TestCase):
         self.assertIn("№3 Corsair 2133 (Kleinanzeigen) — 🚚 в дорозі", t)     # щойно зареєстрований — поки посилання
         self.assertEqual(self.calls, [])                                       # DHL не питаємо, 17TRACK уже відповів
         self.assertEqual(parcels.t17_statuses(["1"], lambda *a, **k: R({}, 401), "k"), {})   # недійсний ключ — без падіння
+
+    def test_17track_carrier_codes(self):
+        c = parcels.t17_carrier
+        self.assertEqual([c("1", "DHL"), c("1", "Deutsche Post"), c("1", "Hermes"), c("1", "GLS")], [7041, 7044, 100031, 101070])
+        self.assertEqual([c("53284131401093", ""), c("H1000000000000000001", ""), c("01234567890123", ""),
+                          c("990502112245", ""), c("00340434111111111111", ""), c("XYZ", "")],
+                         [100031, 100031, 100007, 7041, 7041, None])
 
     def test_events_from_ebay(self):
         o = {"track": ("", ""), "shipped": "", "eta_min": "", "eta_max": "", "delivered": "2026-10-12T15:00:00.000Z"}
