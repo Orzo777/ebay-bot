@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-13c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-13d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -433,6 +433,7 @@ function processLedger() {
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
   try { keyboard1013_(); } catch (e) { console.log('keyboard1013_: ' + e); }
+  try { tidySheet1013_(); } catch (e) { console.log('tidySheet1013_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
@@ -488,7 +489,8 @@ const MENU = {
     '• фото 3 — показати фото №3; перенеси фото 1 2 — якщо потрапили не туди\n' +
     '• ebay вхід — підключити eBay (ключ діє ~18 місяців)\n' +
     '• щодня о 10:00 — «На сьогодні»: що зробити\n' +
-    'Питання й поради — у retail_helper.', ['нагадування']] };
+    'Боти: ebay_bot — угоди RAM · pc_bot — ПК на розбір · retail_helper — питання й поради · цей — облік і продаж.',
+    ['нагадування']] };
 const MENU_ORDER = ['buy', 'sell', 'parcels', 'money', 'other'];
 const OFFICE_HELP = '☰ Меню — обери розділ. Найчастіше потрібне — на кнопках унизу.';
 
@@ -1862,6 +1864,31 @@ function moneyBlock1011_() {
     sum.getRange(r + 1 + i, 2).setFormula(x[1]).setNumberFormat(x[2]).setFontWeight('bold').setBackground('#F2F2F2');
   });
   props.setProperty('MONEY_BLOCK_1011', '1');
+}
+
+// 13.10 (крок 8): таблиця читається з першого погляду — деталі згорнуті в групи «+», кожен статус свого кольору,
+// службові аркуші сховані (Розкрити: «+» над колонками; аркуші — меню «Вигляд → Приховані аркуші»). Дані й формули не чіпаємо.
+const STATUS_COLORS = [['Перевірено', '#E2EFDA'], ['Виставлено', '#DDEBF7'], ['Отримано', '#FFF2CC'], ['В дорозі', '#EDEDED'],
+  ['Оплачено', '#EDEDED'], ['Скасовано', '#D9D9D9']];
+const DETAIL_GROUPS = [[COL.link, COL.fee], [COL.sship, COL.net]];   // F–I: посилання, ціна, пересилка, збір; O–R: продаж
+
+function tidySheet1013_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('TIDY_1013') === '1' || !props.getProperty('LEDGER_ID')) return;
+  const ss = ledger_(), deals = ss.getSheetByName('Угоди');
+  if (!deals) return;
+  const cf = deals.getConditionalFormatRules();
+  STATUS_COLORS.forEach(function (c) {
+    cf.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(c[0]).setBackground(c[1])
+      .setRanges([deals.getRange('K5:K1000')]).build());
+  });
+  deals.setConditionalFormatRules(cf);
+  DETAIL_GROUPS.forEach(function (g) {
+    deals.getRange(1, g[0], 1, g[1] - g[0] + 1).shiftColumnGroupDepth(1);
+    deals.getColumnGroup(g[0], 1).collapse();
+  });
+  ['Лог листів', 'Налаштування'].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) sh.hideSheet(); });
+  props.setProperty('TIDY_1013', '1');
 }
 
 /** 13.10, один раз: новий головний екран (Telegram оновлює постійну клавіатуру лише з новим повідомленням) + меню. */
