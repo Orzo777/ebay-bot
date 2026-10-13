@@ -227,7 +227,7 @@ class TestNegotiateFixedPrice(unittest.TestCase):
 
     def test_fixed_price_negotiate_has_offer_text(self):
         from ebay_watch import ebay_message, keyboard, offer_ebay
-        lst = item("Microsoft Xbox Series X 1TB Konsole", 470, ship="10.99", offer=False)   # 10.10: правило «≥ 50 € за медіаною»
+        lst = item("Microsoft Xbox Series X 1TB Konsole", 450, ship="10.99", offer=False)   # 13.10: фікс. ціна −5% → ≥ 25%
         r = evaluate_ebay(lst)
         self.assertEqual(r["verdict"], "NEGOTIATE")
         o = offer_ebay(r)

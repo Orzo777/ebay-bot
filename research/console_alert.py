@@ -229,7 +229,7 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
     net_q = real["med"] - costs(real["med"])   # 10.10: від медіани, ≥ 50 € і ≥ 20% (ram_alert.caps_from)
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
-    verdict = tier(cost, cap, good, excellent, vb)
+    verdict = tier(cost, cap, good, excellent, vb, net_q)
     notes = ["Перевір привід, контролер, блокування · лише «Sicher bezahlen» або самовивіз"]
     if total < SUSPICIOUS_BELOW:
         notes.insert(0, "Підозріло дешево — частина таких оголошень шахраї, жодних переказів наперед")
@@ -313,7 +313,7 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
     net_q = real["med"] - costs(real["med"])   # 10.10: від медіани, ≥ 50 € і ≥ 20% (ram_alert.caps_from)
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
-    verdict = tier(cost, cap, good, excellent, vb)
+    verdict = tier(cost, cap, good, excellent, vb, net_q)
     notes = ["Перевір: " + ("" if digital else "працює дисковод, ") + "контролер, немає PSN-блокування. "
              "Лише «Sicher bezahlen» або самовивіз."]
     if price < PS5_SUSPICIOUS_BELOW:
@@ -416,7 +416,7 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
     net_q = real["med"] - costs(real["med"], real["ship"])
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
-    verdict = tier(cost, cap, good, excellent, vb)
+    verdict = tier(cost, cap, good, excellent, vb, net_q)
     two = real is SWITCH2
     notes = [("Перевір: консоль і Joy-Con 2 працюють" if two else "Перевір: Joy-Con без дрифту, екран і роз'єм цілі")
              + ", немає блокування акаунта Nintendo. Сильно вживана (подряпини, дрифт) продається дешевше за «швидку» ціну. "

@@ -157,7 +157,7 @@ def apply_pickup(r: dict) -> dict:
         return r
     cost = r["price"] + PICKUP_COST
     r.update(pickup=True, buy_cost=cost, ship_in=0.0, profit_est=r["net_q"] - cost,
-             verdict=tier(cost, r["cap"], r["good"], r["excellent"], r.get("vb", False)))
+             verdict=tier(cost, r["cap"], r["good"], r["excellent"], r.get("vb", False), r["net_q"]))
     return r
 
 
@@ -284,7 +284,7 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     profit_est = net_q - cost
-    verdict = tier(cost, cap, good, excellent, vb)
+    verdict = tier(cost, cap, good, excellent, vb, net_q)
     brand_flag = "невідомий/сумнівний бренд" if (p["brand"] in NOISE_BRANDS or not p["brand"]) else p["brand"]
     # Одна планка (modules==1) — назва каже лише сумарний обсяг, і за текстом НЕМОЖЛИВО
     # перевірити, чи це справді одна фізична планка, чи продавець просто не написав "2x8"
@@ -305,23 +305,35 @@ ECC_UDIMM_NOTE = ("ECC без буфера (UDIMM): у звичайних ПК �
                   "купують і під сервери/NAS. Продавай з «ECC Unbuffered» у назві; оцінка — звичайна −15%.")
 
 
-# Вердикти, на які йде картка. NEGOTIATE — трохи понад стелю: після торгу стає вигідним.
-# «VB» (Verhandlungsbasis) — продавець сам готовий торгуватись: до +15%; фіксована ціна — лише до +8%.
+# Вердикти, на які йде картка. NEGOTIATE — понад стелю, але після реального торгу стає вигідним (див. HAGGLE_* нижче).
+# «VB» (Verhandlungsbasis) — продавець сам готовий торгуватись: −10%; фіксована ціна — лише −5%.
 SEND_VERDICTS = ("BUY-EXCELLENT", "BUY-GOOD", "BUY", "NEGOTIATE")
 NEGOTIATE_UP, NEGOTIATE_UP_FIXED = 1.15, 1.08
+# 13.10 (користувач): «торгуйся» — коли торг помітно міняє ВІДСОТОК: 120 → 100 € відчутно, а 300 → 280 € при +30–40 € ні
+# (великі гроші в товарі на 2 тижні). Тепер — лише якщо після реального торгу (VB −10%, фіксована ціна −5%) заробіток
+# ≥ 25% від вкладеного і ≥ 20 €. Раніше: будь-що до +15% понад стелю, тож на дорогих лотах після торгу лишалось ледь 20%,
+# а дешеві (заробіток < 50 €) не приходили зовсім.
+HAGGLE_OFF = {True: 0.10, False: 0.05}
+HAGGLE_ROI, HAGGLE_MIN = 0.25, 20.0
 
 
-def tier(total: float, cap: float, good: float, excellent: float, vb: bool = False) -> str:
-    """total — ПОВНА вартість покупки (товар + пересилка + Sicher bezahlen)."""
+def tier(total: float, cap: float, good: float, excellent: float, vb: bool = False, net: float | None = None) -> str:
+    """total — ПОВНА вартість покупки (товар + пересилка + Sicher bezahlen); net — чистими після продажу (для «торгуйся»)."""
     if total <= excellent:
         return "BUY-EXCELLENT"
     if total <= good:
         return "BUY-GOOD"
     if total <= cap:
         return "BUY"
-    if total <= cap * (NEGOTIATE_UP if vb else NEGOTIATE_UP_FIXED):
-        return "NEGOTIATE"
-    return "SKIP"
+    if net is None:   # старі виклики без чистого — колишня смуга понад стелю
+        return "NEGOTIATE" if total <= cap * (NEGOTIATE_UP if vb else NEGOTIATE_UP_FIXED) else "SKIP"
+    after = total * (1 - HAGGLE_OFF[bool(vb)])
+    return "NEGOTIATE" if net - after >= max(HAGGLE_MIN, HAGGLE_ROI * after) else "SKIP"
+
+
+def cost_of(r: dict, item: float) -> float:
+    """Повна вартість покупки за такою ціною в оголошенні (пересилка й Sicher bezahlen або самовивіз)."""
+    return item + PICKUP_COST if r.get("pickup") else buy_cost(item, r.get("ship_in", 0.0))
 
 
 def offer_price(r: dict) -> int | None:
@@ -330,10 +342,11 @@ def offer_price(r: dict) -> int | None:
     округлюємо ВНИЗ до цілих 5 € — продавець бачить круглу суму, а разом виходить не більше цілі."""
     if r.get("verdict") not in ("BUY", "NEGOTIATE"):
         return None
-    target = min(r["cap"], max(r["good"], r.get("buy_cost", r["price"]) * 0.9))
-    offer = int(item_for(r, target) // 5 * 5)
-    if r["verdict"] == "NEGOTIATE":   # «торгуйся» без суми безглуздий: щонайменше −5% від ціни
-        offer = min(offer, int(r["price"] * 0.95 // 5 * 5))
+    if r["verdict"] == "NEGOTIATE":   # 13.10: реальний торг — VB −10%, фіксована −5% (саме з цього рахується вердикт)
+        offer = int(r["price"] * (1 - HAGGLE_OFF[bool(r.get("vb"))]) // 5 * 5)
+    else:
+        target = min(r["cap"], max(r["good"], r.get("buy_cost", r["price"]) * 0.9))
+        offer = int(item_for(r, target) // 5 * 5)
     return offer if 0 < offer <= r["price"] * 0.95 else None   # торг на 5 € виглядає дріб'язково — купуй як є
 
 
@@ -637,8 +650,14 @@ def _item_cap(r: dict, key: str) -> int:
 def verdict_head(r: dict) -> str:
     """10.10: перший рядок — рішення і заробіток (раніше «МОЖНА — вигода помірна» навіть при +157 €)."""
     pct = f" (+{100 * r['profit_est'] / r['buy_cost']:.0f}%)" if r.get("buy_cost") else ""
-    if r["verdict"] == "NEGOTIATE":
-        return f"💬 <b>ТОРГУЙСЯ</b> · за цією ціною ≈ {r['profit_est']:.0f} € (менше 30%)"
+    if r["verdict"] == "NEGOTIATE":   # 13.10: що дає торг — заробіток і % зараз і після
+        o = offer_price(r)
+        now = f"зараз ≈ {r['profit_est']:.0f} €{pct}"
+        if o is None:
+            return f"💬 <b>ТОРГУЙСЯ</b> · {now}"
+        c = cost_of(r, o)
+        p2 = r["net_q"] - c
+        return f"💬 <b>ТОРГУЙСЯ</b> · {now} → за {o} € ≈ <b>{p2:.0f} €</b> (+{100 * p2 / c:.0f}%)"
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ДУЖЕ ВИГІДНО</b>", "BUY-GOOD": "🟢 <b>ВИГІДНО</b>", "BUY": "🟡 <b>БЕРИ</b>"}[r["verdict"]]
     return f"{tag} · заробіток ≈ <b>{r['profit_est']:.0f} €</b>{pct}"
 
@@ -689,7 +708,7 @@ def format_message(r: dict) -> str:
     if r["verdict"] in ("UNKNOWN", "SKIP"):
         return f"⏭ {r['title'][:70]}\n{r.get('reason', '')} (ціна {r['price']:.0f}€)"
     tag = {"BUY-EXCELLENT": "🟢🟢 ВІДМІННО, БЕРИ", "BUY-GOOD": "🟢 ДОБРЕ, БЕРИ", "BUY": "🟡 CHECK (тонка маржа)",
-           "NEGOTIATE": "💬 ТОРГУЙСЯ (до +15% над стелею)"}[r["verdict"]]
+           "NEGOTIATE": "💬 ТОРГУЙСЯ (після торгу ≥ 25%)"}[r["verdict"]]
     warn = ("\n⚠️ У назві вказано лише сумарний обсяг — уточніть у продавця, що це РІВНО ОДНА планка, "
             "а не 2+ менших модулі разом (наприклад 2×8 замість однієї 16 ГБ).") if r.get("single_module_warning") else ""
     return (f"{tag}: {r['type']}\n"

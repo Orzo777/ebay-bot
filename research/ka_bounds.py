@@ -48,8 +48,12 @@ def _top(fn, lo: int, hi: int) -> int | None:
     return best
 
 
-def _pickup(med: float, costs: float) -> int:   # стеля «торгуйся» без пересилки (10.10: від медіани, ra.caps_from)
-    return int(ra.caps_from(med - costs)[0] * ra.NEGOTIATE_UP - ra.PICKUP_COST)
+def _pickup(med: float, costs: float) -> int:
+    """Найвища ціна самовивозу, що ще дає картку: «бери» (ra.caps_from) або «торгуйся» (13.10: після торгу VB −10%
+    заробіток ≥ 25% і ≥ 20 € — ra.tier)."""
+    net = med - costs
+    hag = min(net - ra.HAGGLE_MIN, net / (1 + ra.HAGGLE_ROI)) / (1 - ra.HAGGLE_OFF[True])
+    return int(max(ra.caps_from(net)[0], hag) - ra.PICKUP_COST)
 
 
 def recommended() -> dict:

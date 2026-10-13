@@ -118,7 +118,7 @@ def evaluate_ebay(lst: dict) -> dict:
         return r
     cost = lst["price"] + ship
     r.update(buy_cost=cost, ship_in=ship, profit_est=r["net_q"] - cost, pickup=pickup,
-             verdict=tier(cost, r["cap"], r["good"], r["excellent"], vb))
+             verdict=tier(cost, r["cap"], r["good"], r["excellent"], vb, r["net_q"]))
     r["notes"] = [_SB_NOTE.sub("", n).strip() for n in r.get("notes", [])]
     r["notes"] = [n for n in r["notes"] if n]
     return r
