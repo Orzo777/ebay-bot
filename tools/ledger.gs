@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-13e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-14b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -537,12 +537,26 @@ function notify_(text, markup, mode) {
     method: 'post', payload: payload, muteHttpExceptions: true });
 }
 
+// 14.10: «Забрав 2» не спрацювало — синоніми першого слова → команда (у всіх ботах, де приймаємо команди обліку)
+const CMD_SYNONYMS = { 'забрав': 'отримав', 'забрала': 'отримав', 'забрали': 'отримав', 'прийшло': 'отримав', 'прийшла': 'отримав',
+  'прийшов': 'отримав', 'дійшло': 'отримав', 'дійшла': 'отримав', 'отримала': 'отримав', 'отримали': 'отримав',
+  'протестував': 'перевірив', 'протестувала': 'перевірив', 'перевірила': 'перевірив', 'тест': 'перевірив',
+  'надіслав': 'відправив', 'надіслала': 'відправив', 'відіслав': 'відправив', 'відправила': 'відправив' };
+
+/** «Забрав 2» → «отримав 2»; решта тексту без змін. */
+function canonCmd_(text) {
+  const t = String(text || '').trim(), m = t.match(/^\/?(\S+)([\s\S]*)$/);
+  const syn = m && CMD_SYNONYMS[m[1].toLowerCase()];
+  return syn && /^\s+\d{1,4}(?=\s|$)/.test(m[2]) ? syn + m[2] : t;   // лише з номером: «прийшло 3», не «прийшло щось»
+}
+
 /** Усе, що пишуть боту «Облік і продаж» (doPost у Code.gs з ?bot=office). Посилання тут не оцінюються. */
 function officeMessage(msg) {
   const chat = PropertiesService.getScriptProperties().getProperty('TELEGRAM_CHAT_ID');
   if (!chat || String(msg.chat.id) !== String(chat)) return;   // чужий чат — мовчки
   const alias = KEY_ALIAS[String(msg.text || '').trim().toLowerCase()];   // кнопки клавіатури з емодзі → команда
   if (alias) msg = Object.assign({}, msg, { text: alias });
+  else if (canonCmd_(msg.text) !== String(msg.text || '').trim()) msg = Object.assign({}, msg, { text: canonCmd_(msg.text) });
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       onHandCommand_(msg)) return;
   if (parcelsCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
@@ -960,6 +974,12 @@ function assistMessage(msg) {
   const urls = [].concat(msg.entities || [], msg.caption_entities || []).map(function (en) { return en.url || ''; }).filter(Boolean);
   const text = [msg.text, msg.caption].concat(urls).filter(Boolean).join(' ').trim();
   if (/^\/?(?:start|допомога|help)$/i.test(text)) { tgAssist_('sendMessage', { chat_id: chat, text: ASSIST_HELP }); return; }
+  // 14.10: «отримав 3» машинально в помічника — це команда обліку, а не питання: виконуємо, відповідь — у боті обліку
+  if (/^\/?(отримав|отримала|перевірив|перевірила|проблема|відправив|відправила|трек|виставив|виставила|нагадай|нагадування)(?=\s|$)/i.test(canonCmd_(text))) {
+    officeMessage(msg);
+    tgAssist_('sendMessage', { chat_id: chat, text: '📒 Це команда обліку — виконав, відповідь у боті «Облік і продаж».' });
+    return;
+  }
   if (/^\/?(?:нове|забудь|reset|new)$/i.test(text)) {
     props.deleteProperty('ASSIST_HIST');
     tgAssist_('sendMessage', { chat_id: chat, text: '🆕 Почали з чистого аркуша.' });

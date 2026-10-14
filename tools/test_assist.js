@@ -54,6 +54,15 @@ check('foreign chat ignored', [tg.length, gh.length], [0, 0]);
 say({ text: '/start' });
 check('help', /помічник з перепродажу/.test(assistCalls('sendMessage').pop()[2].text), true);
 
+// 14.10: «отримав 3» у помічнику — команда обліку, не питання
+const om = [];
+const realOM = ctx.officeMessage;
+vm.runInContext('officeMessage = function (m) { __om.push(m.text); };', Object.assign(ctx, { __om: om }));
+const gh0 = gh.length;
+say({ text: 'отримав 3' });
+check('ledger command routed', [om, gh.length - gh0, /команда обліку/.test(assistCalls('sendMessage').pop()[2].text)], [['отримав 3'], 0, true]);
+ctx.officeMessage = realOM;
+
 // питання текстом → «Думаю…» + assist.yml з питанням, обліком, id повідомлення
 store.LEDGER_ID = 'L';
 say({ text: 'ПК за 160: i5-9400F, 2x8 DDR4, SSD 250 — вигідно?' });

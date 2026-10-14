@@ -100,6 +100,10 @@ say('отримав 1');
 check('отримав → status', cells['5:11'], 'Отримано');
 has('отримав → how to test + KA deadline', sent[0], /Протестуй.*MemTest86.*до 11\.10.*перевірив 1/s);
 check('отримав → date + test0', [JSON.parse(store.LEDGER_EVENTS)[1].got, JSON.parse(store.LEDGER_EVENTS)[1].rem.test0], ['2026-10-06', 1]);
+// 14.10: синоніми — «Забрав 1» = «отримав 1»; без номера — не команда
+check('synonyms', [ctx.canonCmd_('Забрав 2'), ctx.canonCmd_('прийшло 3 сьогодні'), ctx.canonCmd_('протестувала 4'),
+  ctx.canonCmd_('прийшло щось дивне'), ctx.canonCmd_('продати 3')],
+  ['отримав 2', 'отримав 3 сьогодні', 'перевірив 4', 'прийшло щось дивне', 'продати 3']);
 say('перевірила 1');
 check('перевірив → status', [cells['5:11'], /підтвердити отримання в KA/.test(sent[1])], ['Перевірено', true]);
 say('проблема 3');
