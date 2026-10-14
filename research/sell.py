@@ -337,12 +337,15 @@ def item_prices(pr: dict, ship: float) -> dict:
                 decline=max(1, round(pr["decline"] - ship)))
 
 
-def build_card(row: int | None, title: str, r: dict, pr: dict, comp: list[float], tx: dict, cost: float | None) -> str:
+def build_card(row: int | None, title: str, r: dict, pr: dict, comp: list[float], tx: dict, cost: float | None,
+               edited: list[str] | None = None) -> str:
     """Перше повідомлення — загальне, українською: скільки ставити, скільки лишиться, що на ринку."""
     e = lambda x: html.escape(x, quote=False)   # noqa: E731
     ip = item_prices(pr, tx["ship"])
     # 10.10 (прохання користувача): коротко; «перед публікацією» і поля форми — у покрокових (кнопка «📋 Покроково»)
-    lines = [f"🏷 <b>Продаж{' №' + str(row) if row else ''}</b> · <i>{e(title[:80])}</i>",
+    lines = [f"🏷 <b>Продаж{' №' + str(row) if row else ''}</b> · <i>{e(title[:80])}</i>"
+             + (f" · ✏️ змінено: {', '.join(edited)}" if edited else ""),
+             f"📝 На eBay: <i>{e(tx['title'])}</i>",   # 14.10: видно, що саме піде в оголошення
              f"💶 <b>{ip['item']} €</b> + доставка {money_de(tx['ship'])} €"
              + (f" · купив за {cost:.0f} € → прибуток ≈ <b>{pr['profit_list']:.0f} €</b>" + _taxed(pr["profit_list"]) if cost else ""),
              f"🤝 Автоприйняти від {ip['accept']} € · відхиляти нижче {ip['decline']} €",
@@ -393,6 +396,7 @@ def keyboard(tx: dict, r: dict, row: int | None = None, ebay: bool = False) -> d
     rows = []
     if row and ebay:
         rows.append([{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}])
+        rows.append([{"text": "✏️ Змінити ціну / назву / опис", "callback_data": f"c|змінити|{row}"}])
     if row:
         rows.append([{"text": "📋 Покроково (вручну) + фото", "callback_data": f"c|кроки|{row}"}])
     rows.append([{"text": "🔎 Конкуренти на eBay",
@@ -410,7 +414,35 @@ def steps_keyboard(tx: dict, r: dict) -> dict:
         [{"text": "➕ Відкрити форму eBay", "url": "https://www.ebay.de/sl/prelist/suggest"}]]}
 
 
-def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=competitors) -> dict | None:
+def apply_edits(r: dict, pr: dict, tx: dict, cost: float | None, ed: dict | None) -> list[str]:
+    """14.10 (користувач: «хочу підправити перед фінальним пушем, з телефона»): правки з бота — «ціна N X» (ціна товару без
+    доставки), «назва N …» (назва на eBay), «опис N …» (дописати в опис). Пороги Preisvorschlag — від нової ціни, як у
+    plan_price, але не вище за неї. → що змінено (для картки)."""
+    ed = ed or {}
+    done = []
+    if ed.get("price"):
+        lst = float(ed["price"]) + tx["ship"]
+        floor = math.ceil(pr["floor"]) if cost else 0
+        pr["accept"] = min(lst, max(floor, round(lst * ACCEPT_SHARE)))
+        pr["decline"] = min(pr["accept"], max(floor, round(min(r["quick_sale"] * DECLINE_SHARE, lst * 0.87))))
+        pr["list"] = lst
+        pr["warn"] = [w for w in pr["warn"] if "три найдешевші" not in w]
+        if cost:
+            pr["profit_list"], pr["profit_accept"] = net_of(r, lst) - cost, net_of(r, pr["accept"]) - cost
+            if pr["profit_list"] < 0:
+                pr["warn"].insert(0, f"за цією ціною — мінус {-pr['profit_list']:.0f} €")
+        pr["net_list"] = net_of(r, lst)
+        done.append("ціна")
+    if ed.get("title"):
+        tx["title"] = str(ed["title"]).strip()[:80]
+        done.append("назва")
+    if ed.get("desc"):
+        tx["desc"] = tx["desc"].rstrip() + "\n\n" + str(ed["desc"]).strip()[:1000]
+        done.append("опис")
+    return done
+
+
+def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, edits: dict | None = None) -> dict | None:
     """Товар → ринок, ціна, німецькі тексти (спільне для картки й автопублікації). None — не впізнали."""
     r = identify(title)
     if not r:
@@ -425,17 +457,19 @@ def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=comp
         pr["warn"].insert(0, f"з назви не видно, скільки планок — порахував як ОДНУ на {r['spec']['total']} ГБ. "
                              f"Якщо це кіт, напиши: продати {row or 'N'} <назва з 2x…GB>")
     tx = ram_texts(title, r) if r["kind"] == "ram" else console_texts(title, r)
-    return dict(r=r, pr=pr, comp=comp, tx=tx)
+    edited = apply_edits(r, pr, tx, cost, edits)
+    return dict(r=r, pr=pr, comp=comp, tx=tx, edited=edited)
 
 
-def make(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, ebay: bool = False) -> tuple[str, dict | None]:
-    p = prepare(title, cost, row, comp_fn)
+def make(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, ebay: bool = False,
+         edits: dict | None = None) -> tuple[str, dict | None]:
+    p = prepare(title, cost, row, comp_fn, edits)
     if not p:
         return (f"🤔 Не впізнав товар «{html.escape(title[:80])}».\nНапиши повніше, наприклад:\n"
                 f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None, "")
     r, pr, comp, tx = p["r"], p["pr"], p["comp"], p["tx"]
     make.steps_kb = steps_keyboard(tx, r)
-    return build_card(row, title, r, pr, comp, tx, cost), keyboard(tx, r, row, ebay), build_steps(row, pr, tx)
+    return build_card(row, title, r, pr, comp, tx, cost, p["edited"]), keyboard(tx, r, row, ebay), build_steps(row, pr, tx)
 
 
 def office_send_html(text: str, markup: dict | None) -> bool:
@@ -569,7 +603,8 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
     what = f"№{row}" if row else "товару"
     if not d.get("rt"):
         return send("🔑 eBay ще не підключено — напиши «ebay вхід».", None)
-    p = prepare(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, row, comp_fn)
+    p = prepare(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, row, comp_fn,
+                d.get("edits"))
     if not p:
         return send(f"🤔 Не впізнав товар {what} — виставляти автоматично не буду. Напиши «продати {row} &lt;назва повніше&gt;».", None)
     tx, pr = p["tx"], p["pr"]
@@ -681,10 +716,11 @@ def main():
             return
         title, cost, row = d.get("title") or "", d.get("cost"), d.get("row")
         photos, ebay, steps_only = d.get("photos") or [], bool(d.get("ebay")), bool(d.get("steps"))
+        edits = d.get("edits")
     else:
-        title, cost, row, photos = a.title or "", a.cost, None, []
+        title, cost, row, photos, edits = a.title or "", a.cost, None, [], None
     try:
-        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row, ebay=ebay)
+        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row, ebay=ebay, edits=edits)
     except Exception as e:   # картку-помилку — у бот, щоб не чекати мовчки
         office_send_html(f"⚠️ Не вийшло підготувати оголошення: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise

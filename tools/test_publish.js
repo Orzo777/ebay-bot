@@ -106,8 +106,25 @@ ctx.officeCallback({ id: 'q', data: 'c|авто|1', message: { chat: { id: 7 }, 
 check('confirm asked, card buttons kept', [/Виставити №1 на eBay автоматично/.test(last()[0]),
   last()[1].inline_keyboard[0][0].callback_data, tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 60)],
   [true, 'c|так-авто|1', false]);
+// 14.10: ✏️ правки перед «🚀» — ціна, назва, опис; після кожної — нова картка з правками; публікація бере їх
+ctx.officeCallback({ id: 'q', data: 'c|змінити|1', message: { chat: { id: 7 }, message_id: 62 } });
+check('edit help', [/✏️ <b>Змінити оголошення №1<\/b>/.test(last()[0]), /<code>ціна 1 <\/code>/.test(last()[0]),
+  tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 62)], [true, true, false]);
+say('ціна 1 139,50');
+check('price edit → card with edits', [opened().row, opened().edits], [1, { price: 140 }]);
+say('назва 1 Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200 CL16 getestet');
+say('опис 1 Mit Originalverpackung.');
+check('title + desc kept with price', opened().edits,
+  { price: 140, title: 'Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200 CL16 getestet', desc: 'Mit Originalverpackung.' });
+const g0 = gh.length;
+say('ціна 1 сто');
+check('bad price refused', [gh.length, /числом/.test(last()[0])], [g0, true]);
+say('назва 1 ' + 'X'.repeat(90));
+check('title cut to 80', [JSON.parse(store.SELL_EDITS)[1].title.length, /80 знаків/.test(sent[sent.length - 2][0])], [80, true]);
+say('назва 1 Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200 CL16 getestet');
 ctx.officeCallback({ id: 'q', data: 'c|так-авто|1', message: { chat: { id: 7 }, message_id: 61 } });
 const p = opened();
+check('publish carries edits', p.edits.price, 140);
 check('publish dispatched', [p.mode, p.dry, p.row, p.title, p.cost, p.photos.length, p.rt],
   ['publish', false, 1, 'Corsair Vengeance LPX 2x16GB DDR4 3200 CMK32GX4M2B3200C16', 70.63, 1, 'v^1.1#RT']);
 check('confirm button removed', tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 61), true);
@@ -124,6 +141,7 @@ check('no photos refused', [gh.length, /немає фото/.test(last()[0])], [
 // GitHub повернув «виставлено» → статус, ціна й номер eBay у нотатках
 ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'listed', row: 1, price: 96, item_id: '1234567890' }, '123:ABC', 'n3') }) },
   parameter: { bot: 'office' } });
+check('edits cleared after listing', JSON.parse(store.SELL_EDITS)[1], undefined);
 check('listed recorded', [deals.cells['5:11'], /виставлено за 96 € 09.10 \(eBay 1234567890\)/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)])],
   ['Виставлено', true]);
 say('опублікувати 1');

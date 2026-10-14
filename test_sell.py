@@ -207,6 +207,34 @@ class AlbumTest(unittest.TestCase):
         self.assertEqual(len(json.loads(posted[1][1]["media"])), 2)
 
 
+class EditsTest(unittest.TestCase):
+    """14.10: правки з бота перед «🚀» — ціна (без доставки), назва на eBay, опис; пороги — від нової ціни."""
+
+    def test_edits_apply_to_card_and_listing(self):
+        title = "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200 CMK32GX4M2B3200C16"
+        base = sell.prepare(title, 70.63, 1, lambda r: [])
+        p = sell.prepare(title, 70.63, 1, lambda r: [], {"price": 139, "title": "Corsair LPX 2x16GB DDR4 3200 getestet",
+                                                          "desc": "Mit OVP."})
+        ip = sell.item_prices(p["pr"], p["tx"]["ship"])
+        self.assertEqual(ip["item"], 139)
+        self.assertLessEqual(p["pr"]["accept"], p["pr"]["list"])
+        self.assertLessEqual(p["pr"]["decline"], p["pr"]["accept"])
+        self.assertEqual(p["tx"]["title"], "Corsair LPX 2x16GB DDR4 3200 getestet")
+        self.assertTrue(p["tx"]["desc"].endswith("Mit OVP."))
+        self.assertEqual(p["edited"], ["ціна", "назва", "опис"])
+        self.assertNotEqual(base["pr"]["list"], p["pr"]["list"])
+        card = sell.build_card(1, title, p["r"], p["pr"], [], p["tx"], 70.63, p["edited"])
+        self.assertIn("✏️ змінено: ціна, назва, опис", card)
+        self.assertIn("📝 На eBay: <i>Corsair LPX 2x16GB DDR4 3200 getestet</i>", card)
+        self.assertIn("<b>139 €</b>", card)
+        low = sell.prepare(title, 70.63, 1, lambda r: [], {"price": 50})
+        self.assertTrue(any("мінус" in w for w in low["pr"]["warn"]))   # нижче закупівлі — попередження
+
+    def test_edit_button(self):
+        kb = sell.keyboard({}, sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"), 3, True)
+        self.assertIn("c|змінити|3", [b.get("callback_data") for row in kb["inline_keyboard"] for b in row])
+
+
 if __name__ == "__main__":
     unittest.main()
 

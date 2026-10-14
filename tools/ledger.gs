@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-14c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-14d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -474,7 +474,7 @@ const MENU = {
     '• перевірив 3 / проблема 3 — протестовано / щось не так (підкажу, як заявити)\n' +
     '• межі — межі цін у підписках KA', ['на руках']],
   sell: ['💶 Продаж', '• продати — що вже можна продавати; продати 3 — готове оголошення (ціна, назва, опис німецькою) ' +
-    'і кнопка «🚀 Виставити на eBay»\n' +
+    'і кнопка «🚀 Виставити на eBay»; ✏️ — змінити ціну, назву чи опис перед 🚀 («ціна 3 145»)\n' +
     '• відправив 3 трек — трек піде в eBay сам, покупцю — подяка\n' +
     '• виставив 3 124 — якщо виставив сам\n' +
     '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати']],
@@ -559,7 +559,7 @@ function officeMessage(msg) {
   else if (canonCmd_(msg.text) !== String(msg.text || '').trim()) msg = Object.assign({}, msg, { text: canonCmd_(msg.text) });
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       onHandCommand_(msg)) return;
-  if (parcelsCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
+  if (parcelsCommand_(msg) || editCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
@@ -700,10 +700,52 @@ function sellCommand_(msg) {
     t[idx + 1] = title.slice(0, 150);
     props.setProperty('SELL_TITLES', JSON.stringify(t));
   }
-  const code = sellDispatch_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1), ebay: !!props.getProperty('EBAY_RT') });
+  const code = sellDispatch_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1), ebay: !!props.getProperty('EBAY_RT'),
+    edits: sellEdits_()[idx + 1] || null });
   notify_(code === 204
     ? '⏳ Готую оголошення для №' + (idx + 1) + ' «' + title + '» — приблизно хвилина.'
     : '⚠️ Не зміг запустити підготовку оголошення (GitHub ' + code + ').');
+  return true;
+}
+
+// 14.10 (користувач): підправити оголошення з телефона перед «🚀» — ціна, назва на eBay, дописати в опис. Правки живуть
+// до публікації (SELL_EDITS), застосовуються однаково до картки, покрокових і автопублікації; після кожної — нова картка.
+function sellEdits_() { return JSON.parse(PropertiesService.getScriptProperties().getProperty('SELL_EDITS') || '{}'); }
+
+function editCommand_(msg) {
+  const t = String(msg.text || '').trim();
+  const m = t.match(/^\/?(змінити|ціна|назва|опис|скинути)\s+(\d{1,4})(?:\s+([\s\S]+))?$/i);
+  if (!m) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID'))) return true;
+  const cmd = m[1].toLowerCase(), n = Number(m[2]), arg = (m[3] || '').trim(), r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
+  const ed = sellEdits_(), cur = ed[n] || {};
+  if (cmd === 'змінити' || (!arg && cmd !== 'скинути')) {
+    const has = [cur.price ? 'ціна ' + cur.price + ' €' : '', cur.title ? 'назва «' + h_(cur.title) + '»' : '', cur.desc ? 'опис дописано' : '']
+      .filter(Boolean);
+    notify_('✏️ <b>Змінити оголошення №' + n + '</b>' + (has.length ? '\nЗараз: ' + has.join(' · ') : '') +
+      '\n\nНатисни команду — скопіюється, допиши й надішли:\n<blockquote>' +
+      '<code>ціна ' + n + ' </code>— ціна товару без доставки, напр. «ціна ' + n + ' 145»\n' +
+      '<code>назва ' + n + ' </code>— назва на eBay (до 80 знаків)\n' +
+      '<code>опис ' + n + ' </code>— дописати в опис (німецькою)\n' +
+      '<code>скинути ' + n + '</code> — повернути, як порахував бот</blockquote>\n' +
+      'Після кожної правки пришлю оновлену картку — тоді 🚀.', null, 'HTML');
+    return true;
+  }
+  if (cmd === 'скинути') delete ed[n];
+  else if (cmd === 'ціна') {
+    const p = Number(arg.replace(/€/g, '').replace(',', '.').trim());
+    if (!(p >= 1 && p <= 5000)) { notify_('Ціна — числом, без доставки: «ціна ' + n + ' 145».'); return true; }
+    ed[n] = Object.assign(cur, { price: Math.round(p) });
+  } else if (cmd === 'назва') {
+    ed[n] = Object.assign(cur, { title: arg.slice(0, 80) });
+    if (arg.length > 80) notify_('✂️ eBay приймає до 80 знаків — обрізав: «' + arg.slice(0, 80) + '».');
+  } else {
+    ed[n] = Object.assign(cur, { desc: arg.slice(0, 1000) });
+  }
+  props.setProperty('SELL_EDITS', JSON.stringify(ed));
+  sellCommand_({ text: 'продати ' + n, chat: msg.chat });   // оновлена картка з правками
   return true;
 }
 
@@ -723,7 +765,8 @@ function stepsCommand_(msg) {
   if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
   const props = PropertiesService.getScriptProperties();
   const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
-  const code = sellDispatch_({ row: n, title: String(title), cost: r.spent, photos: cleanPhotos_(n), steps: true, ebay: !!props.getProperty('EBAY_RT') });
+  const code = sellDispatch_({ row: n, title: String(title), cost: r.spent, photos: cleanPhotos_(n), steps: true, ebay: !!props.getProperty('EBAY_RT'),
+    edits: sellEdits_()[n] || null });
   if (code !== 204) notify_('⚠️ Не зміг запустити (GitHub ' + code + ').');
   return true;
 }
@@ -1075,7 +1118,8 @@ function publishCommand_(n, dry) {
   const pub = JSON.parse(props.getProperty('EBAY_PUB') || '{}'), now = Date.now();
   if (!dry && pub[n] && now - pub[n] < 15 * 60 * 1000) { notify_('⏳ №' + n + ' уже виставляється — дочекайся відповіді.'); return; }
   const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
-  const code = sellDispatch_({ mode: 'publish', dry: !!dry, row: n, title: title, cost: r.spent, photos: photos, rt: rt });
+  const code = sellDispatch_({ mode: 'publish', dry: !!dry, row: n, title: title, cost: r.spent, photos: photos, rt: rt,
+    edits: sellEdits_()[n] || null });
   if (code === 204 && !dry) { pub[n] = now; props.setProperty('EBAY_PUB', JSON.stringify(pub)); }
   notify_(code !== 204 ? '⚠️ Не зміг запустити (GitHub ' + code + ').'
     : dry ? '🧪 Перевіряю оголошення №' + n + ' на eBay (без публікації) — 1–2 хвилини.' : '⏳ Виставляю №' + n + ' на eBay — 1–2 хвилини.');
@@ -1110,6 +1154,8 @@ function sealedPost(s) {
     parcelEvents_(d.events);
   } else if (d.kind === 'listed' && d.row) {
     const chat = props.getProperty('TELEGRAM_CHAT_ID');
+    const ed = sellEdits_();
+    if (ed[d.row]) { delete ed[d.row]; props.setProperty('SELL_EDITS', JSON.stringify(ed)); }
     listedCommand_({ text: 'виставив ' + d.row + (d.price ? ' ' + d.price : ''), chat: { id: chat } }, d.item_id);
   }
 }
@@ -2184,7 +2230,7 @@ function sendAlbum_(list, caption) {
 // Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
-  'кроки': '📋 Покроково', 'посилки': '📦 Посилки' };
+  'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {
@@ -2205,7 +2251,7 @@ function officeCallback(cq) {
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + (m[1] === 'посилки' ? '' : ' №' + m[2]) : '' });
   if (!m || !chat || String(from) !== String(chat) || !BTN[m[1]]) return;
-  if (['продати', 'фото', 'авто', 'кроки', 'посилки'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
+  if (['продати', 'фото', 'авто', 'кроки', 'посилки', 'змінити'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
     tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
   }
   officeMessage({ text: m[1] + ' ' + m[2], chat: { id: from }, message_id: 0 });
