@@ -164,11 +164,12 @@ def ebay_fetch(q: str, cond: str, cat: str | None = None) -> list[dict]:
     return out
 
 
-def _cap(med: float, console: bool, ship: float | None = None) -> float:
-    """Стеля купівлі (повна вартість), як у ram_alert / console_alert: від медіани, ≥ 50 € і ≥ 20% (10.10)."""
+def _cap(p25: float, med: float, console: bool, ship: float | None = None) -> float:
+    """Стеля купівлі (повна вартість), як у ram_alert / console_alert: від ціни між p25 і медіаною (14.10), ≥ 50 € і ≥ 20%."""
     import console_alert
     import ram_alert
-    net = med - (console_alert.costs(med, ship or console_alert.SHIP) if console else ram_alert.costs(med))
+    sb = ram_alert.sale_basis(p25, med)
+    net = sb - (console_alert.costs(sb, ship or console_alert.SHIP) if console else ram_alert.costs(sb))
     return ram_alert.caps_from(net)[0]
 
 
@@ -208,7 +209,8 @@ def _update(e: dict, base: dict, ask: float | None, sellers: int, today: str, mi
         e["last_alert"], e["alert_p25"] = today, e["p25"]
         arrow = "📉" if change < 0 else "📈"
         return (f"{arrow} {base['name']}: {100 * change:+.0f}% за тиждень — швидкий продаж {then} → {e['p25']} €, "
-                f"стеля купівлі {_cap(then * e['med'] / e['p25'], console, ship):.0f} → {_cap(e['med'], console, ship):.0f} €")
+                f"стеля купівлі {_cap(then, then * e['med'] / e['p25'], console, ship):.0f} → "
+                f"{_cap(e['p25'], e['med'], console, ship):.0f} €")
     return None
 
 

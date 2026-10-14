@@ -32,10 +32,10 @@ class TestConsoleListings(unittest.TestCase):
         self.assertEqual(verdict("Xbox Series X 1 TB, 2 Controller, 15 Spiele", 250), "BUY-EXCELLENT")   # 10.10: правило «≥ 50 € за медіаною» — межі вищі
         self.assertEqual(verdict("Xbox Series X 1TB + 2 Spiele + Controller + OVP - Top Zustand", 390), "BUY")
         self.assertEqual(verdict("Xbox Series X Konsole (1TB) mit Rechnung und drei Controller!", 410), "BUY")
-        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 430), "NEGOTIATE")
-        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 450), "SKIP")   # 13.10: фікс. ціна −5% → < 25%
+        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 420), "NEGOTIATE")
+        self.assertEqual(verdict("Xbox Series X mit Originell Kontroller", 430), "SKIP")   # 14.10: −10 € торгу не робить «бери»
         self.assertEqual(verdict("Microsoft Xbox Series X 1TB Black 4K Wi-Fi inkl. Controller", 490), "SKIP")
-        self.assertEqual(evaluate_console("Microsoft Xbox Series X 1TB Black", 450, vb=True)["verdict"], "NEGOTIATE")   # VB −10% → ≥ 25%
+        self.assertEqual(evaluate_console("Microsoft Xbox Series X 1TB Black", 420, vb=True)["verdict"], "NEGOTIATE")   # 14.10: VB −15 € → «бери»
 
     def test_market_price_is_skip(self):
         self.assertEqual(verdict("Xbox Series X Konsole mit Controller und OVP", 500), "SKIP")
@@ -70,26 +70,28 @@ class TestConsoleListings(unittest.TestCase):
 class TestNegotiate(unittest.TestCase):
     def test_negotiate_offer_whole_sum(self):
         # 26.09 (вечір, ціни Terapeak p25 545): трохи понад стелю → торг; 09.10 комісія 0: стеля 403, 390 € → пропозиція 345
-        r = evaluate_console("Xbox Series X Console", 430)   # 13.10: торг рахується від реальної знижки (фікс. −5%)
+        r = evaluate_console("Xbox Series X Console", 420)   # 14.10: торг −10 € з фіксованою ціною
         self.assertEqual(r["verdict"], "NEGOTIATE")
-        self.assertEqual(offer_price(r), 405)
+        self.assertEqual(offer_price(r), 410)
         self.assertIsNone(offer_template(r))   # «торгуйся»: один текст, одразу з пропозицією (29.09)
         t = seller_template(r)
-        self.assertIn("405 €", t)
-        self.assertTrue(t.startswith("Hallo, ich würde die Xbox Series X gern für 405 € nehmen"))   # одразу рішення і сума
+        self.assertIn("410 €", t)
+        self.assertTrue(t.startswith("Hallo, ich würde die Xbox Series X gern für 410 € nehmen"))   # одразу рішення і сума
         self.assertIn("reservierst", t)
         self.assertIn("Versand und Gebühr übernehme ich", t)
         self.assertNotIn("noch da", t)
         self.assertIn("Xbox Series X", t)
         self.assertLessEqual(len(t), 256)
-        self.assertIn("Запропонуй <b>405 €</b>", format_html(r))
+        self.assertIn("Запропонуй <b>410 €</b>", format_html(r))
 
-    def test_negotiate_offer_gives_25_percent(self):
-        # 13.10: «торгуйся» — лише коли після торгу (VB −10%) заробіток ≥ 25% від вкладеного
-        r = evaluate_console("Xbox Series X 1TB", 450, vb=True)
+    def test_negotiate_offer_makes_it_a_buy(self):
+        # 14.10: «торгуйся» — лише коли після торгу (VB −15 €) це звичайне «бери» (≥ 50 € і ≥ 20%)
+        r = evaluate_console("Xbox Series X 1TB", 420, vb=True)
         self.assertEqual(r["verdict"], "NEGOTIATE")
+        self.assertEqual(offer_price(r), 405)
         c = buy_cost(offer_price(r), r["ship_in"])
-        self.assertGreaterEqual(r["net_q"] - c, 0.25 * c)
+        self.assertLessEqual(c, r["cap"])
+        self.assertEqual(evaluate_console("Xbox Series X 1TB", 430, vb=True)["verdict"], "SKIP")
         self.assertEqual(offer_price(r) % 5, 0)
         self.assertIn("ТОРГУЙСЯ", format_html(r))
         self.assertIn("🤝 Запропонуй <b>405 €</b> → <b>+", format_html(r))   # 14.10: торг — заробіток і % у рядку пропозиції
@@ -153,7 +155,7 @@ class TestPS5(unittest.TestCase):
             self.assertEqual(evaluate_console(t, p)["verdict"], "SKIP", t)
 
     def test_negotiate_zone_and_offer(self):
-        r = evaluate_console("PS5 Slim Disc Edition 1TB", 370, vb=True)   # 10.10: правило «≥ 50 € за медіаною» — межі вищі
+        r = evaluate_console("PS5 Slim Disc Edition 1TB", 360, vb=True)   # 14.10: торг −15 € (VB) → «бери»
         self.assertEqual(r["verdict"], "NEGOTIATE")
         self.assertIn("die PS5", seller_template(r))
         self.assertIn("PSN", seller_template(r))
@@ -333,15 +335,16 @@ class TestPass12Regressions(unittest.TestCase):
         return r["verdict"]
 
     def test_weak_switch_confirmed_by_description(self):
-        self.assertNotEqual(self._ev("Nintendo Switch mit Schutztasche", 55, "Die Konsole funktioniert, mit Dock und Joy-Cons"), "SKIP")
-        self.assertNotEqual(self._ev("Nintendo Switch Grau sehr guter Zustand", 55, "Nintendo Switch Konsole mit Ladekabel"), "SKIP")
+        # 14.10: ціна 50 € (від середини p25–медіана 55 € уже не вигідно) — перевіряємо розпізнавання, не межу
+        self.assertNotEqual(self._ev("Nintendo Switch mit Schutztasche", 50, "Die Konsole funktioniert, mit Dock und Joy-Cons"), "SKIP")
+        self.assertNotEqual(self._ev("Nintendo Switch Grau sehr guter Zustand", 50, "Nintendo Switch Konsole mit Ladekabel"), "SKIP")
 
     def test_not_rejected(self):
         for t, p in [("Microsoft Xbox Series X 1TB Videospielkonsole - Schwarz", 250), ("PS5 Slim Disc + 2 Controller + 3 Videospiele", 250),
                      ("Nintendo Switch OLED Konvolut mit 5 Spielen", 80), ("Xbox Series X 1TB – kein Riss, keine Kratzer", 250),
                      ("Nintendo Switch 2 NEU OVP Siegel nicht gebrochen", 250), ("PS5 Disc Edition Siegel ungebrochen NEU OVP", 250),
                      ("Nintendo Switch OLED + Ring Fit Adventure + 2 Spiele", 80), ("Xbox Series X Konvolut mit 2 Controllern", 250),
-                     ("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 80), ("Nintendo Switch V2 nur Konsole, keine Spiele", 55),
+                     ("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 80), ("Nintendo Switch V2 nur Konsole, keine Spiele", 50),
                      ]:
             self.assertNotEqual(self._ev(t, p), "SKIP", t)
         # 10.10: Switch Lite (продається за ~80–100 €) не дає 50 € навіть за безцінь — перевіряємо лише, що консоль розпізнано
@@ -351,8 +354,8 @@ class TestPass12Regressions(unittest.TestCase):
     def test_description_not_incomplete(self):
         for d in ["Funktioniert einwandfrei ohne Probleme im Dock", "laufen ohne Joy-Con Drift", "Switch wie neu, ohne Kratzer am Dock",
                   "Versand ohne Dock möglich", "Verkauft wird nur die Konsole, Dock, Joy-Cons und Netzteil"]:
-            self.assertNotEqual(self._ev("Nintendo Switch Konsole V2 32GB", 55, d), "SKIP", d)
-        self.assertEqual(self._ev("Nintendo Switch Konsole V2 32GB", 55, "Lieferung ohne Joycons, Dock und Ladekabel"), "SKIP")
+            self.assertNotEqual(self._ev("Nintendo Switch Konsole V2 32GB", 50, d), "SKIP", d)
+        self.assertEqual(self._ev("Nintendo Switch Konsole V2 32GB", 50, "Lieferung ohne Joycons, Dock und Ladekabel"), "SKIP")
 
 
 class TestSwitch2Games0110(unittest.TestCase):

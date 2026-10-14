@@ -51,9 +51,8 @@ def _top(fn, lo: int, hi: int) -> int | None:
 def _pickup(med: float, costs: float) -> int:
     """Найвища ціна самовивозу, що ще дає картку: «бери» (ra.caps_from) або «торгуйся» (13.10: після торгу VB −10%
     заробіток ≥ 25% і ≥ 20 € — ra.tier)."""
-    net = med - costs
-    hag = min(net - ra.HAGGLE_MIN, net / (1 + ra.HAGGLE_ROI)) / (1 - ra.HAGGLE_OFF[True])
-    return int(max(ra.caps_from(net)[0], hag) - ra.PICKUP_COST)
+    # 14.10: «торгуйся» — коли після торгу −15 € (VB) це «бери»; med — уже ціна продажу для розрахунку (ra.sale_basis)
+    return int(ra.caps_from(med - costs)[0] + ra.HAGGLE_EUR[True] - ra.PICKUP_COST)
 
 
 def recommended() -> dict:
@@ -63,12 +62,13 @@ def recommended() -> dict:
     con = {k: _top(lambda p, t=t: ca.evaluate_console(t, p, vb=True), 150, int(cur["console"].get(k, 400) * 1.6) + 60)
            for k, t in CONSOLE_TITLES.items()}
     def med(k, v):   # найдорожчий сегмент (фірмові / швидкі) — межа підписки не має відрізати найкращі набори
-        sg = ra.SEGMENT.get(k)
-        return v["med"] * max([1.0] + [f[1] for f in (sg or {}).values()])
+        sg = (ra.SEGMENT.get(k) or {}).values()
+        return ra.sale_basis(v["p25"] * max([1.0] + [f[0] for f in sg]), v["med"] * max([1.0] + [f[1] for f in sg]))
+    cb = lambda x: ra.sale_basis(x["p25"], x["med"])   # noqa: E731 — консолі
     ham = {g: max(_pickup(med(k, v), ra.costs(med(k, v))) for k, v in ra.REAL.items() if k[0] == g) for g in ("ddr5", "ddr4")}
-    ham.update(xbox=_pickup(ca.XBOX_SERIES_X["med"], ca.costs(ca.XBOX_SERIES_X["med"])),
-               ps5=_pickup(ca.PS5_DISC["med"], ca.costs(ca.PS5_DISC["med"])),
-               switch2=_pickup(ca.SWITCH2["med"], ca.costs(ca.SWITCH2["med"], ca.SHIP_SWITCH)))
+    ham.update(xbox=_pickup(cb(ca.XBOX_SERIES_X), ca.costs(cb(ca.XBOX_SERIES_X))),
+               ps5=_pickup(cb(ca.PS5_DISC), ca.costs(cb(ca.PS5_DISC))),
+               switch2=_pickup(cb(ca.SWITCH2), ca.costs(cb(ca.SWITCH2), ca.SHIP_SWITCH)))
     return {"ram": {k: v for k, v in ram.items() if v}, "console": {k: v for k, v in con.items() if v}, "hamburg": ham}
 
 

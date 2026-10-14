@@ -92,14 +92,14 @@ class TestAmbiguousKit(unittest.TestCase):
 
 class TestNewTypes(unittest.TestCase):
     def test_ddr5_sodimm_2x16_kit(self):
-        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 205)   # 11.10: ціна росте (14 днів)
+        r = evaluate("Crucial 32GB Kit DDR5-4800 CL40 CT2K16G48C40S5 2x16GB SODIMM", 190)   # 14.10: від середини p25–медіана
         self.assertTrue(r["type"].startswith("DDR5 SO-DIMM 32 ГБ (2×16) кіт"))
         self.assertEqual(r["verdict"], "BUY")
-        # 13.10: «торгуйся» — якщо після торгу (фікс. −5%, VB −10%) заробіток ≥ 25% і ≥ 20 €
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 220)["verdict"], "NEGOTIATE")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 230)["verdict"], "SKIP")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 235, vb=True)["verdict"], "NEGOTIATE")
-        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 250, vb=True)["verdict"], "SKIP")
+        # 14.10: «торгуйся» — якщо після торгу (фікс. −10 €, VB −15 €) це «бери»
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 205)["verdict"], "NEGOTIATE")
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 215)["verdict"], "SKIP")
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 215, vb=True)["verdict"], "NEGOTIATE")
+        self.assertEqual(evaluate("2x16 GB DDR5 RAM SODIMM Arbeitsspeicher", 220, vb=True)["verdict"], "SKIP")
 
     def test_ddr5_sodimm_2x32_kit(self):
         # 26.09: поділились у бот Kingston FURY Impact 64GB (2x32) SO-DIMM за 420 € — бот не знав типу
@@ -108,8 +108,8 @@ class TestNewTypes(unittest.TestCase):
         self.assertTrue(r["type"].startswith("DDR5 SO-DIMM 64 ГБ (2×32) кіт"))
         self.assertEqual(r["verdict"], "SKIP")
         self.assertTrue(evaluate(t, 270)["verdict"].startswith("BUY"))
-        self.assertEqual(evaluate(t, 500, vb=True)["verdict"], "NEGOTIATE")
-        self.assertEqual(evaluate(t, 540, vb=True)["verdict"], "SKIP")   # 13.10: 540 → 485 дає < 25% — великі гроші, мала вигода
+        self.assertEqual(evaluate(t, 450, vb=True)["verdict"], "NEGOTIATE")
+        self.assertEqual(evaluate(t, 460, vb=True)["verdict"], "SKIP")   # 14.10: −15 € торгу не робить «бери»
 
     def test_types_added_26_09(self):
         # заміряні 26.09, коли з'ясувалось, що їх бракує
@@ -133,7 +133,7 @@ class TestNewTypes(unittest.TestCase):
 
 class TestPrices(unittest.TestCase):
     def test_tiers(self):
-        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 165)["verdict"], "BUY-GOOD")   # 11.10: повний замір Terapeak, сегменти й швидкість
+        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 150)["verdict"], "BUY-GOOD")   # 14.10: від середини p25–медіана
         self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 450)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate("Crucial DDR5 16GB 5600 SODIMM", 145)["verdict"], "SKIP")
 
@@ -210,16 +210,23 @@ class HaggleTest(unittest.TestCase):
         self.assertEqual(evaluate(t, p)["verdict"], "SKIP")
         self.assertEqual(evaluate(t, p, vb=True)["verdict"], "SKIP")
 
-    def test_cheap_haggle_with_percent(self):
+    def test_haggle_ten_or_fifteen_euro(self):
+        # 14.10 (користувач): німці скидають 10–15 € незалежно від суми — «торгуйся» лише коли після цього це «бери»
         import re
         t = "Corsair Vengeance LPX DDR4 32GB (2x16GB) 3200"
         r0 = evaluate(t, 100)
-        p = int(ram_alert.item_for_cost(r0["net_q"] / 1.21, r0["ship_in"]))   # зараз +21%, але < 50 € — не «бери»
+        p = int(ram_alert.item_for_cost(r0["cap"] + 6, r0["ship_in"]))   # на 6–7 € дорожче за «бери до»
         r = evaluate(t, p)
-        self.assertEqual(r["verdict"], "NEGOTIATE")                         # торг −5% дає ≥ 25%
+        self.assertEqual(r["verdict"], "NEGOTIATE")
+        self.assertEqual(ram_alert.offer_price(r), int(5 * round((p - 10) / 5)))   # −10 € з фіксованою ціною
         text = re.sub("<[^>]+>", "", ram_alert.format_html(r))
-        self.assertRegex(text, r"^💬 ТОРГУЙСЯ · зараз \+\d+ € \(\+2\d%\)")
-        self.assertRegex(text, r"🤝 Запропонуй \d+ € → \+\d+ € \(\+\d+%\)")
+        self.assertRegex(text, r"^💬 ТОРГУЙСЯ · зараз \+\d+ € \(\+\d+%\)")
+        m = re.search(r"🤝 Запропонуй \d+ € → \+(\d+) € \(\+(\d+)%\)", text)
+        self.assertTrue(m and int(m.group(1)) >= 48 and int(m.group(2)) >= 19)   # після торгу — «бери» (≥ 50 € і ≥ 20%)
+        p2 = int(ram_alert.item_for_cost(r0["cap"] + 12, r0["ship_in"]))
+        self.assertEqual(evaluate(t, p2)["verdict"], "SKIP")              # −10 € не вистачає
+        self.assertEqual(evaluate(t, p2, vb=True)["verdict"], "NEGOTIATE")   # з VB −15 € — вистачає
+        self.assertEqual(ram_alert.offer_price(evaluate(t, p2, vb=True)), int(5 * round((p2 - 15) / 5)))
 
     def test_card_blocks(self):
         # 14.10: три блоки — що це, гроші, перевірки (у цитаті); рядок «📷» — у блок перевірок
@@ -280,8 +287,8 @@ class TestPickup(unittest.TestCase):
     def test_pickup_can_turn_skip_into_negotiate(self):
         from ram_alert import apply_pickup
         from console_alert import evaluate_console
-        self.assertEqual(evaluate_console("Xbox Series X 1TB Konsole", 480, vb=True)["verdict"], "SKIP")
-        self.assertIn(apply_pickup(evaluate_console("Xbox Series X 1TB Konsole", 480, vb=True))["verdict"],
+        self.assertEqual(evaluate_console("Xbox Series X 1TB Konsole", 450, vb=True)["verdict"], "SKIP")
+        self.assertIn(apply_pickup(evaluate_console("Xbox Series X 1TB Konsole", 450, vb=True))["verdict"],
                       ("BUY", "NEGOTIATE"))
 
     def test_hamburg_caps_match_model(self):
@@ -290,7 +297,8 @@ class TestPickup(unittest.TestCase):
         import console_alert as ca
         import ka_bounds as kb
         # стеля для самовивозу — найвища ціна, що ще дає картку (13.10: «торгуйся» за новим правилом)
-        x = ca.XBOX_SERIES_X["med"]
+        from ram_alert import sale_basis
+        x = sale_basis(ca.XBOX_SERIES_X["p25"], ca.XBOX_SERIES_X["med"])   # 14.10: між швидким продажем і медіаною
         top = m.HAMBURG_MAX["xbox"]
         self.assertEqual(top, kb._pickup(x, ca.costs(x)))
         self.assertNotEqual(apply_pickup(ca.evaluate_console("Xbox Series X 1TB", top, vb=True))["verdict"], "SKIP")
@@ -352,13 +360,14 @@ class TestQuadKits1010(unittest.TestCase):
     а як «дві пари» бот рахував ~338 € — завищено); 4×32 — як дві пари 2×32 (5% знижки)."""
 
     def test_quad_is_two_pairs(self):
-        from ram_alert import QUAD_SHARE, REAL, SEGMENT, costs, evaluate
+        from ram_alert import QUAD_SHARE, REAL, SEGMENT, costs, evaluate, sale_basis
         key = ("ddr4", "udimm", False, 64, 2)
         pair = REAL[key]
         r = evaluate("Corsair Vengeance 128GB (4x32GB) DDR4 3200", 505)
         self.assertEqual(r["verdict"], "BUY")
         med = round(pair["med"] * SEGMENT[key]["brand_fast"][1])   # фірмові швидкі 2×32
-        self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (med - costs(med)))
+        b = sale_basis(round(pair["p25"] * SEGMENT[key]["brand_fast"][0]), med)   # 14.10: між p25 і медіаною
+        self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (b - costs(b)))
         self.assertIn("4×32", r["type"])
         self.assertIn("2 пари", r["type"])
         self.assertEqual(r["quick_sale"], 2 * round(pair["p25"] * SEGMENT[key]["brand_fast"][0]))

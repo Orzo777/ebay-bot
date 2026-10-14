@@ -1,4 +1,5 @@
 """Кейси аудитів eBay/KA (кола 12–13, 29.09): регресії, які вже раз ламались. Без мережі."""
+# 14.10: ціни першої Switch 55 → 50 € — від середини p25–медіана 55 € уже не вигідно; кейси стережуть розпізнавання, не межу
 import os as _os
 _os.environ.setdefault("RAM_PRICES_OFF", "1")   # цифри Terapeak, а не щоденні ціни сторожа (research/ram_prices.json)
 import sys
@@ -33,7 +34,7 @@ for d in ["Verkauft wird nur das Tablet, ohne Dock und ohne Joy-Con 2", "ohne Do
 for t, p in [("Nintendo Switch OLED nur Konsole, keine Joy-Cons", 90), ("Nintendo Switch V2 nur Konsole keine Joy-Con kein Dock", 70),
              ("Nintendo Switch nur Konsole mit Ladekabel", 70), ("Nintendo Switch OLED nur Konsole + Hülle", 90)]:
     chk(t, p, False)
-for t, p in [("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 80), ("Nintendo Switch V2 nur Konsole, keine Spiele", 55)]:
+for t, p in [("Nintendo Switch OLED nur Konsole mit Dock und Joy-Cons", 80), ("Nintendo Switch V2 nur Konsole, keine Spiele", 50)]:
     chk(t, p, True)
 for t, p in [("Xbox Series X Videospiele", 150), ("PS5 Videospiele Paket 8 Stück", 150), ("Nintendo Switch 2 Videospiele Bundle 3 Stück", 200),
              ("CRKD Nitro Deck Switch OLED", 70), ("Nitro Deck Nintendo Switch & Switch OLED Handheld Controller", 65),
@@ -45,16 +46,16 @@ for t, p in [("PS5 Slim Disc + 2 Controller + 3 Videospiele", 250), ("Nintendo S
     chk(t, p, True)
 chk("Konsolen Spiele Konvolut / Xbox360, Ps4 und Nintendo Switch - gebraucht", 60, False)
 # 9 + нові 1–2
-for t, p, d in [("Mario Kart 8 Deluxe Nintendo Switch Zustand gut", 55, "Spiel in OVP, Konsole nicht enthalten."),
-                ("Nintendo Switch Edition Pokemon Let's Go Pikachu", 55, "Die Konsole ist nicht Teil des Angebots"),
+for t, p, d in [("Mario Kart 8 Deluxe Nintendo Switch Zustand gut", 50, "Spiel in OVP, Konsole nicht enthalten."),
+                ("Nintendo Switch Edition Pokemon Let's Go Pikachu", 50, "Die Konsole ist nicht Teil des Angebots"),
                 ("Hyrule Warriors Nintendo Switch Edition", 60, "Top Spiel, auch im Handheld-Modus super"),
-                ("Super Mario Party Nintendo Switch gebraucht", 55, "Kompatibel mit Switch und Switch OLED"),
+                ("Super Mario Party Nintendo Switch gebraucht", 50, "Kompatibel mit Switch und Switch OLED"),
                 ("Switch Sports Edition mit Beingurt Nintendo Switch", 60, "Für die Joy-Con, Beingurt dabei")]:
     chk(t, p, False, d)
 for t, p, d in [("Nintendo Switch - Pikachu & Evoli Edition Spielepacket+ 2 Controller u. Pokeball", 50,
                  "Nintendo Switch Konsole mit Dockingstation. Das Spiel Renzo Racing (nur Modul) ist dabei."),
-                ("Nintendo Switch In Topzustand", 55, "Mit Ladestation, Netzkabel und zusätzlichen Controllern"),
-                ("Nintendo Switch mit Schutztasche", 55, "Die Konsole funktioniert einwandfrei")]:
+                ("Nintendo Switch In Topzustand", 50, "Mit Ladestation, Netzkabel und zusätzlichen Controllern"),
+                ("Nintendo Switch mit Schutztasche", 50, "Die Konsole funktioniert einwandfrei")]:
     chk(t, p, True, d)
 (lambda *a, **k: None)("RAM:")
 cases = {"Kingston Fury DDR5 32GB (2x16GB) – keine Einzelriegel": (32, 2), "Kingston Fury DDR5 32GB (2x16GB), Einzelriegel auch möglich": (32, 2),
@@ -86,18 +87,18 @@ for t, p in [("Nintendo Switch OLED Reparatur", 100), ("PS5 Reparatur HDMI", 150
              ("PS5 Konsole zu vermieten", 150), ("Xbox Series X lässt sich nicht einschalten", 150), ("Switch OLED Wasserschaden", 60),
              ("Nintendo Switch OLED keine Kratzer, Display hat einen Riss", 100), ("Nintendo Switch OLED Riss nicht störend", 100),
              ("PS5 Slim Disc Riss kein Problem", 250), ("PS5 Disc Konsolenspiele Paket 10 Stück", 150),
-             ("PS5 Slim Spiele Konvolut Konsolenspiele", 150), ("Nintendo Switch Sports + Ring Fit Adventure", 55),
-             ("CRKD Nitro Deck für Nintendo Switch OLED Konsole", 60), ("Ring Fit Adventure für Nintendo Switch Konsole", 55),
+             ("PS5 Slim Spiele Konvolut Konsolenspiele", 150), ("Nintendo Switch Sports + Ring Fit Adventure", 50),
+             ("CRKD Nitro Deck für Nintendo Switch OLED Konsole", 60), ("Ring Fit Adventure für Nintendo Switch Konsole", 50),
              ("Switch OLED Display Haarriss", 100), ("PS5 Slim Display zersprungen", 250)]:
     chk(t, p, False)
 for t, p in [("Xbox Series X 1TB + 3 Konsolenspiele", 250), ("Nintendo Switch OLED ohne Kratzer, Dellen, Brüche oder Risse", 80),
-             ("Nintendo Switch, 3 Controller, RingFit, Tasche und Dock", 55), ("Nintendo Switch OLED weiß, CRKD Nitro Deck", 80),
-             ("Nintendo Switch nur Konsole & Dock", 55), ("Nintendo Switch nur Konsole, Joy-Cons und Dock", 55),
+             ("Nintendo Switch, 3 Controller, RingFit, Tasche und Dock", 50), ("Nintendo Switch OLED weiß, CRKD Nitro Deck", 80),
+             ("Nintendo Switch nur Konsole & Dock", 50), ("Nintendo Switch nur Konsole, Joy-Cons und Dock", 50),
              ("PS5 Slim Disc 1TB, Preis pro Stück", 280), ("PS5 Konsole unbeschädigt", 280),
              ("Xbox Series X Verkauf geht aus gesundheitlichen Gründen", 280)]:
     chk(t, p, True)
-for t, p, d in [("Nintendo Switch mit Schutztasche", 55, "Konsole keine Kratzer und im Top-Zustand, TV- und Handheld-Modus"),
-                ("Nintendo Switch mit Schutztasche", 55, "Die Konsole ist nicht im Originalkarton, Dock und Joy-Cons dabei")]:
+for t, p, d in [("Nintendo Switch mit Schutztasche", 50, "Konsole keine Kratzer und im Top-Zustand, TV- und Handheld-Modus"),
+                ("Nintendo Switch mit Schutztasche", 50, "Die Konsole ist nicht im Originalkarton, Dock und Joy-Cons dabei")]:
     chk(t, p, True, d)
 cases14 = {"DDR5 32GB Einzelriegel (aus 2x32GB Kit) Corsair": (32, 1), "Kingston Fury DDR5 16GB Einzelmodul aus 2x16GB Kit": (16, 1),
            "G.Skill DDR5 16GB Einzelriegel (1x16GB aus 2x16GB)": (16, 1), "G.Skill DDR4 32GB aus Set 2x16GB": (32, 2)}

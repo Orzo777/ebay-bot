@@ -172,6 +172,17 @@ QUAD_SHARE = 0.95
 MIN_PROFIT, GOOD_PROFIT, EXC_PROFIT, MIN_ROI = 50.0, 80.0, 110.0, 0.20
 
 
+# 14.10 (рішення користувача): заробіток і межі — від середини між швидким продажем (p25) і медіаною, а не від медіани:
+# у сегментах з великим розкидом (DDR4 2×16 фірмові до 2666: 124 / 176 €) медіана завищувала заробіток; наш перший продаж —
+# ~87% медіани. Після 5+ власних продажів — калібрування від них (крок 1). Ціни продажу в оголошеннях (sell.py) — не чіпаємо.
+SALE_BASIS = 0.5
+
+
+def sale_basis(p25: float, med: float) -> float:
+    """Ціна продажу, від якої рахуємо заробіток: між швидкою (p25) і медіаною."""
+    return p25 + SALE_BASIS * (med - p25)
+
+
 def caps_from(net: float) -> tuple[float, float, float]:
     """Чистими після продажу за медіаною → межі повної вартості купівлі: (бери, вигідно, дуже вигідно)."""
     return (min(net - MIN_PROFIT, net / (1 + MIN_ROI)), min(net - GOOD_PROFIT, net / 1.35), min(net - EXC_PROFIT, net / 1.5))
@@ -279,8 +290,10 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
             real["name"] = real["name"] + (" · фірмовий" if seg == "brand" else " · звичайні планки") + \
                 ((f" · від {FAST_FROM[p['gen']]} МГц" if spd == "fast" else f" · до {SLOW_TO[p['gen']]} МГц")
                  if cell and "_" in cell else "")
-    net_q = (QUAD_SHARE * 2 * (quad["med"] - costs(quad["med"])) if quad   # дві продажі пар — кожна зі своїми витратами
-             else real["med"] - costs(real["med"]))
+    qb = sale_basis(quad["p25"], quad["med"]) if quad else None
+    rb = sale_basis(real["p25"], real["med"])
+    net_q = (QUAD_SHARE * 2 * (qb - costs(qb)) if quad   # дві продажі пар — кожна зі своїми витратами
+             else rb - costs(rb))
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     profit_est = net_q - cost
@@ -313,8 +326,9 @@ NEGOTIATE_UP, NEGOTIATE_UP_FIXED = 1.15, 1.08
 # (великі гроші в товарі на 2 тижні). Тепер — лише якщо після реального торгу (VB −10%, фіксована ціна −5%) заробіток
 # ≥ 25% від вкладеного і ≥ 20 €. Раніше: будь-що до +15% понад стелю, тож на дорогих лотах після торгу лишалось ледь 20%,
 # а дешеві (заробіток < 50 €) не приходили зовсім.
-HAGGLE_OFF = {True: 0.10, False: 0.05}
-HAGGLE_ROI, HAGGLE_MIN = 0.25, 20.0
+# 14.10 (користувач): німці скидають 10–15 € незалежно від суми — торг у євро, не у відсотках; і «торгуйся» лише коли
+# після такого торгу це звичайне «бери» (≥ 50 € і ≥ 20%): заробіток 20–30 € не вартий зусиль.
+HAGGLE_EUR = {True: 15.0, False: 10.0}   # VB / фіксована ціна
 
 
 def tier(total: float, cap: float, good: float, excellent: float, vb: bool = False, net: float | None = None) -> str:
@@ -327,8 +341,7 @@ def tier(total: float, cap: float, good: float, excellent: float, vb: bool = Fal
         return "BUY"
     if net is None:   # старі виклики без чистого — колишня смуга понад стелю
         return "NEGOTIATE" if total <= cap * (NEGOTIATE_UP if vb else NEGOTIATE_UP_FIXED) else "SKIP"
-    after = total * (1 - HAGGLE_OFF[bool(vb)])
-    return "NEGOTIATE" if net - after >= max(HAGGLE_MIN, HAGGLE_ROI * after) else "SKIP"
+    return "NEGOTIATE" if total - HAGGLE_EUR[bool(vb)] <= cap else "SKIP"
 
 
 def cost_of(r: dict, item: float) -> float:
@@ -342,12 +355,9 @@ def offer_price(r: dict) -> int | None:
     округлюємо ВНИЗ до цілих 5 € — продавець бачить круглу суму, а разом виходить не більше цілі."""
     if r.get("verdict") not in ("BUY", "NEGOTIATE"):
         return None
-    if r["verdict"] == "NEGOTIATE":   # 13.10: реальний торг — VB −10%, фіксована −5% (саме з цього рахується вердикт)
-        offer = int(r["price"] * (1 - HAGGLE_OFF[bool(r.get("vb"))]) // 5 * 5)
-    else:
-        target = min(r["cap"], max(r["good"], r.get("buy_cost", r["price"]) * 0.9))
-        offer = int(item_for(r, target) // 5 * 5)
-    return offer if 0 < offer <= r["price"] * 0.95 else None   # торг на 5 € виглядає дріб'язково — купуй як є
+    # 14.10: реальний торг — −15 € з VB, −10 € з фіксованою ціною (саме з цього рахується вердикт), кругла сума
+    offer = int(5 * round((r["price"] - HAGGLE_EUR[bool(r.get("vb"))]) / 5))
+    return offer if offer > 0 else None
 
 
 # Ціна нижче третини ринку (28.09: «ADATA DDR5 2×8» за €30 при ринку €150–180 → «ВІДМІННО — БЕРИ»). Так буває,
@@ -725,7 +735,7 @@ def format_message(r: dict) -> str:
     if r["verdict"] in ("UNKNOWN", "SKIP"):
         return f"⏭ {r['title'][:70]}\n{r.get('reason', '')} (ціна {r['price']:.0f}€)"
     tag = {"BUY-EXCELLENT": "🟢🟢 ВІДМІННО, БЕРИ", "BUY-GOOD": "🟢 ДОБРЕ, БЕРИ", "BUY": "🟡 CHECK (тонка маржа)",
-           "NEGOTIATE": "💬 ТОРГУЙСЯ (після торгу ≥ 25%)"}[r["verdict"]]
+           "NEGOTIATE": "💬 ТОРГУЙСЯ (після торгу −10/15 € — «бери»)"}[r["verdict"]]
     warn = ("\n⚠️ У назві вказано лише сумарний обсяг — уточніть у продавця, що це РІВНО ОДНА планка, "
             "а не 2+ менших модулі разом (наприклад 2×8 замість однієї 16 ГБ).") if r.get("single_module_warning") else ""
     return (f"{tag}: {r['type']}\n"

@@ -152,11 +152,9 @@ def offer_ebay(r: dict) -> int | None:
     питанням продавцю (він може знизити ціну в оголошенні). Для «МОЖНА» без Preisvorschlag не торгуємось — купуй."""
     if r.get("verdict") not in ("BUY", "NEGOTIATE") or (r["verdict"] == "BUY" and not r.get("vb")):
         return None
-    target = min(r["cap"], max(r["good"], r["buy_cost"] * 0.9))
-    offer = int((target - r["ship_in"]) // 5 * 5)
-    if r["verdict"] == "NEGOTIATE":
-        offer = min(offer, int(r["price"] * 0.95 // 5 * 5))
-    return offer if 0 < offer <= r["price"] * 0.95 else None
+    from ram_alert import HAGGLE_EUR   # 14.10: реальний торг у євро (−15 з Preisvorschlag, −10 без), кругла сума
+    offer = int(5 * round((r["price"] - HAGGLE_EUR[bool(r.get("vb"))]) / 5))
+    return offer if offer > 0 else None
 
 
 def ebay_message(r: dict, offer: int | None = None) -> str:
@@ -555,6 +553,7 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
 AUCTION_QUERIES = [("(ddr5, ddr4)", RAM_CAT, 1, 540),
                    ("(xbox series x, ps5, playstation 5, switch 2)", CONSOLE_CAT, 1, 420)]
 AUCTION_MINUTES = (2, 20)
+AUCTION_BID_SHARE = 0.70
 
 
 def active(queries: list) -> list:
@@ -588,7 +587,9 @@ def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict]
         return None
     r = auction_eval(lst)
     # На останніх хвилинах запас не потрібен: максимальна ставка = межа; переб'ють — нічого не втрачаєш (30.09; було 0.9×)
-    if "net_q" not in r or lst["price"] + r["ship_in"] >= r["cap"]:
+    # 14.10 (рішення користувача): аукціони закінчуються біля ринку (G.Skill: 141 € при нашому максимумі 116 €) — картка
+    # лише коли ставка ще ≤ 70% нашого максимуму: за останні 20 хв ставки зазвичай ростуть на 20–30%.
+    if "net_q" not in r or lst["price"] > AUCTION_BID_SHARE * (r["cap"] - r["ship_in"]):
         return None
     done[it["itemId"]] = now.isoformat()
     return lst, r

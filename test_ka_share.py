@@ -55,7 +55,7 @@ class TestParse(unittest.TestCase):
 
 class TestEvaluate(unittest.TestCase):
     def test_negotiate_card_with_risk(self):
-        msg, res = evaluate_listing(page("Xbox Series X 1TB + OVP", "430 €"), "u")   # 13.10: торг −5% → ≥ 25%
+        msg, res = evaluate_listing(page("Xbox Series X 1TB + OVP", "420 €"), "u")   # 14.10: торг −10 € → «бери»
         self.assertEqual(res["verdict"], "NEGOTIATE")
         self.assertIn("ТОРГУЙСЯ", msg)
         self.assertIn("Ризик шахрайства", msg)
@@ -72,7 +72,7 @@ class TestEvaluate(unittest.TestCase):
         self.assertIn("вигідно лише до", msg)
 
     def test_ram_listing_and_pickup_note(self):
-        msg, res = evaluate_listing(page("Crucial 16GB DDR5-4800 UDIMM Arbeitsspeicher RAM", "65 €",
+        msg, res = evaluate_listing(page("Crucial 16GB DDR5-4800 UDIMM Arbeitsspeicher RAM", "55 €",
                                          shipping="Nur Abholung"), "u")
         self.assertIn(res["verdict"], ("BUY-EXCELLENT", "BUY-GOOD"))
         self.assertIn("самовивіз", msg)

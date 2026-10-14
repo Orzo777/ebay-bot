@@ -20,7 +20,7 @@ def alerts_on() -> bool:
     працюють. CONSOLE_ALERTS=1 у робочих процесах ram_mail_alert / ebay_watch вмикає назад."""
     return os.getenv("CONSOLE_ALERTS", "0") == "1"
 
-from ram_alert import buy_cost, caps_from, sell_fee, tier
+from ram_alert import buy_cost, caps_from, sale_basis, sell_fee, tier
 
 # Terapeak eBay.de, SOLD, conditionId=3000 (вживані), 30 днів до 24.09.2026.
 # 26.09.2026: 83 продані за 30 днів (класифікація цим же оцінювачем) — p25 545, медіана 571
@@ -226,7 +226,8 @@ def evaluate_console(title: str, price: float, shipping: float | None = None, vb
     if total < MIN_PRICE:
         return _skip(title, total, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
     real = XBOX_SERIES_X
-    net_q = real["med"] - costs(real["med"])   # 10.10: від медіани, ≥ 50 € і ≥ 20% (ram_alert.caps_from)
+    sb = sale_basis(real["p25"], real["med"])   # 14.10: між швидким продажем і медіаною (ram_alert.sale_basis)
+    net_q = sb - costs(sb)
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb, net_q)
@@ -310,7 +311,8 @@ def evaluate_ps5(title: str, price: float, shipping: float | None = None, vb: bo
     if price < MIN_PRICE:
         return _skip(title, price, f"дешевше €{MIN_PRICE} — аксесуар, шахрайство або помилка в ціні", False)
     real = PS5_DIGITAL if digital else PS5_DISC
-    net_q = real["med"] - costs(real["med"])   # 10.10: від медіани, ≥ 50 € і ≥ 20% (ram_alert.caps_from)
+    sb = sale_basis(real["p25"], real["med"])   # 14.10: між швидким продажем і медіаною (ram_alert.sale_basis)
+    net_q = sb - costs(sb)
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb, net_q)
@@ -413,7 +415,8 @@ def evaluate_switch(title: str, price: float, shipping: float | None = None, vb:
         return _skip(title, price, "схоже на гру чи аксесуар, а не на консоль")
     if price < real["min"]:
         return _skip(title, price, f"дешевше €{real['min']} — гра, аксесуар, шахрайство або помилка в ціні", False)
-    net_q = real["med"] - costs(real["med"], real["ship"])
+    sb = sale_basis(real["p25"], real["med"])
+    net_q = sb - costs(sb, real["ship"])
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     verdict = tier(cost, cap, good, excellent, vb, net_q)
