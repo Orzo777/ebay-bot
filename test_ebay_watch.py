@@ -188,8 +188,10 @@ class TestSellerMessage(unittest.TestCase):
         r["desc"] = "Läuft einwandfrei, Rechnung vorhanden."
         txt = format_card(r, lst, risk_of(lst, r["desc"], 545), "new", NOW)
         self.assertNotIn("<code>", txt)   # 10.10: тексти продавцю — лише в кнопках «📋»
-        self.assertTrue(txt.startswith("🛒 <b>eBay</b> · 🟡 <b>БЕРИ</b> · заробіток ≈ <b>"))
-        self.assertLessEqual(txt.count("\n"), 9)   # коротка картка
+        self.assertTrue(txt.startswith("🛒 <b>eBay</b> · 🟡 <b>БЕРИ</b> · <b>+"))
+        self.assertLessEqual(txt.count("\n"), 11)   # коротка картка (14.10: +2 порожні рядки між блоками)
+        self.assertEqual(txt.count("\n\n"), 2)       # три блоки: що це → гроші → перевірки
+        self.assertTrue(txt.endswith("</blockquote>") and "<blockquote>👤" in txt)
         msg = ebay_message(r)
         self.assertLessEqual(len(msg), 256)
         self.assertIn("über eBay", msg)
@@ -303,7 +305,7 @@ class TestAuctions(unittest.TestCase):
         card = dict(ew.auction_card(it, r, "🛒 <b>eBay</b>\n<i>Corsair</i>\n", "🏷 Продати: 300–330 €"), m=77, kb="{}")
         first = ew.live_text(card, NOW)
         self.assertIn("🟢 <b>Іде</b>", first)
-        self.assertIn("зараз 140 € (4 ставок)", first)
+        self.assertIn("🔨 Зараз <b>140 €</b> (4 ставок)", first)
         self.assertIn("🏷 Продати", first)
         max_bid = int((r["cap"] - r["ship_in"]) // 1)
         edits, answers = [], [dict(it, currentBidPrice={"value": str(max_bid + 10)}, bidCount=9), None]
@@ -315,12 +317,12 @@ class TestAuctions(unittest.TestCase):
         st = {"auction_cards": {"v1|3|0": card}}
         try:
             ew.update_auction_cards(type("C", (), {"_headers": lambda self: {}})(), st, NOW + timedelta(minutes=5))
-            self.assertIn(f"зараз {max_bid + 10} € (9 ставок)", edits[-1][1])
+            self.assertIn(f"🔨 Зараз <b>{max_bid + 10} €</b> (9 ставок)", edits[-1][1])
             self.assertIn("Уже дорожче вигідного", edits[-1][1])
             self.assertIn("v1|3|0", st["auction_cards"])
             ew.update_auction_cards(type("C", (), {"_headers": lambda self: {}})(), st, NOW + timedelta(minutes=16))   # 404 після кінця
-            self.assertIn("🏁 <b>Аукціон завершено</b>", edits[-1][1])
-            self.assertIn(f"фінальна ставка {max_bid + 10} €", edits[-1][1])
+            self.assertIn("🏁 <b>Завершено</b>", edits[-1][1])
+            self.assertIn(f"фінал <b>{max_bid + 10} €</b>", edits[-1][1])
             self.assertIn("дорожче за наш максимум", edits[-1][1])
             self.assertEqual(st["auction_cards"], {})   # фінал показали — забули
             self.assertEqual(st["auction_results"][0]["final"], max_bid + 10)   # для тижневого звіту
@@ -368,8 +370,10 @@ class ShareAuctionTest(unittest.TestCase):
             main._request_with_backoff, ew.fetch_desc = old_req, old_desc
         self.assertEqual(r["verdict"], "AUCTION")
         self.assertNotIn("заглушка", msg)
-        self.assertIn("🔨 <b>Аукціон</b>: зараз 1 €", msg)
-        self.assertRegex(msg, r"максимальну ставку \d+ €")
+        self.assertIn("🔨 <b>Аукціон eBay</b>", msg)
+        self.assertIn("🔨 Зараз <b>1 €</b>", msg)
+        self.assertRegex(msg, r"Постав максимум <b>\d+ €</b>")
+        self.assertIn("<blockquote>🏷 Продаси за", msg)   # 14.10: продаж і продавець — у блоці перевірок
         self.assertEqual(lst["url"], "https://www.ebay.de/itm/307224749417")
         # 10.10: ставок немає, до кінця 5 днів → попросити «Sofort-Kaufen» між «вигідно» і максимумом
         self.assertIn("Sofort-Kaufen", msg)

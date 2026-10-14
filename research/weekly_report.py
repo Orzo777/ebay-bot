@@ -44,13 +44,13 @@ def money(rows: list[dict], today: date) -> list[str]:
     open_ = [r for r in rows if r["status"] not in CLOSED]
     profit_all = sum(r["profit"] or 0 for r in sold)
     spent_sold = sum(r["spent"] or 0 for r in sold)
-    out = ["💰 <b>Гроші</b>",
-           f"• За тиждень продано: {len(sold_w)} шт на {_eur(sum(r['sprice'] or 0 for r in sold_w))}, "
-           f"прибуток <b>{_eur(sum(r['profit'] or 0 for r in sold_w))}</b>",
-           f"• За тиждень куплено: {len(bought_w)} шт на {_eur(sum(r['spent'] or 0 for r in bought_w))}",
-           f"• Усього продано: {len(sold)} шт, прибуток <b>{_eur(profit_all)}</b>"
-           + (f" (віддача {100 * profit_all / spent_sold:.0f}% на вкладене)" if spent_sold else ""),
-           f"• На руках: {len(open_)} шт, у них {_eur(sum(r['spent'] or 0 for r in open_))}"]
+    out = ["💰 <b>Гроші</b>",   # 14.10: коротко; «на руках» — у «Головне»
+           f"• Тиждень: продано {len(sold_w)} на {_eur(sum(r['sprice'] or 0 for r in sold_w))} → "
+           f"<b>+{_eur(sum(r['profit'] or 0 for r in sold_w))}</b> · куплено {len(bought_w)} на "
+           f"{_eur(sum(r['spent'] or 0 for r in bought_w))}",
+           f"• Усього: продано {len(sold)} → <b>+{_eur(profit_all)}</b>"
+           + (f" (+{100 * profit_all / spent_sold:.0f}% на вкладене)" if spent_sold else "")]
+    del open_
     out += month_lines(sold, today)
     out += tax_lines(sold, today)
     return out
@@ -65,9 +65,9 @@ def month_lines(sold: list[dict], today: date) -> list[str]:
     cats: dict = {}
     for r in m:
         cats[r.get("cat") or "Інше"] = cats.get(r.get("cat") or "Інше", 0) + (r["profit"] or 0)
-    return [f"• За 30 днів: продано {len(m)} шт, прибуток <b>{_eur(sum(r['profit'] or 0 for r in m))}</b>"
-            + (f", товар лежав у середньому {sum(days) / len(days):.0f} дн." if days else ""),
-            "  по категоріях: " + ", ".join(f"{c} {_eur(v)}" for c, v in sorted(cats.items(), key=lambda kv: -kv[1]))]
+    return [f"• 30 днів: продано {len(m)} → <b>+{_eur(sum(r['profit'] or 0 for r in m))}</b>"
+            + (f" · лежав у середньому {sum(days) / len(days):.0f} дн." if days else "")
+            + " · " + ", ".join(f"{c} +{_eur(v)}" for c, v in sorted(cats.items(), key=lambda kv: -kv[1]))]
 
 
 # 09.10: податкові пороги — пасивний лічильник, нічого не вирішує. DAC7: eBay повідомляє податковій про продавця від
@@ -78,7 +78,7 @@ DAC7_SALES, DAC7_TURNOVER, PRIVATE_PROFIT = 30, 2000.0, 1000.0
 def tax_lines(sold: list[dict], today: date) -> list[str]:
     year = [r for r in sold if (_d(r["sdate"]) or date.min).year == today.year]
     n, turnover, profit = len(year), sum(r["sprice"] or 0 for r in year), sum(r["profit"] or 0 for r in year)
-    line = (f"• Податкові пороги {today.year}: продажів {n}/{DAC7_SALES}, оборот {_eur(turnover)} / {_eur(DAC7_TURNOVER)} (DAC7), "
+    line = (f"• Податки {today.year}: продажів {n}/{DAC7_SALES} · оборот {_eur(turnover)} / {_eur(DAC7_TURNOVER)} (DAC7) · "
             f"прибуток {_eur(profit)} / {_eur(PRIVATE_PROFIT)}")
     near = n >= 0.8 * DAC7_SALES or turnover >= 0.8 * DAC7_TURNOVER or profit >= 0.8 * PRIVATE_PROFIT
     return [line] + (["  ⚠️ Близько до порогу — варто порадитися зі Steuerberater (це не податкова порада)."] if near else [])
@@ -132,10 +132,9 @@ def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | N
         age = (today - _d(r["date"])).days if _d(r["date"]) else 0
         name = f"№{r['n']} {html.escape(r['title'][:34])}"
         if r["status"] in ("Оплачено", "В дорозі") and age >= NOT_ARRIVED_DAYS:
-            out.append(f"• {name} — куплено {age} дн. тому, досі «{r['status']}»: перевір доставку, якщо треба — спір на eBay/KA")
+            out.append(f"• {name} — куплено {age} дн. тому, досі «{r['status']}» → перевір доставку / спір на eBay чи KA")
         elif r["status"] != "Виставлено" and age >= NOT_LISTED_DAYS:
-            out.append(f"• {name} — {age} дн. на руках і ще не виставлено → «продати {r['n']}» "
-                       f"(якщо вже на eBay — «виставив {r['n']}»)")
+            out.append(f"• {name} — {age} дн. на руках і ще не виставлено → «продати {r['n']}»")
         elif age >= STALE_DAYS:
             ident = sell.identify(r["title"])
             if not ident:
@@ -155,8 +154,8 @@ def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | N
             if cuts is not None and r["status"] == "Виставлено":
                 cuts.append((r["n"], item))
             out.append(f"• {name} — {age} дн. і не продано → постав <b>{item} €</b> + доставка {sell.money_de(ship)} €"
-                       + (f" (3 найдешевші зараз {', '.join(f'{c:.0f}' for c in comp[:3])} €)" if comp else "")
-                       + (f", прибуток ще ≈ {pr['profit_list']:.0f} €" if pr.get("profit_list") is not None else ""))
+                       + (f" · ще +{pr['profit_list']:.0f} €" if pr.get("profit_list") is not None else "")
+                       + (f" (найдешевші {', '.join(f'{c:.0f}' for c in comp[:3])} €)" if comp else ""))
     return (["📦 <b>Що зробити з товаром</b>"] + out) if out else ["📦 <b>Товар</b>: залежаного немає ✓"]
 
 
@@ -215,9 +214,9 @@ def headline(rows: list[dict], today: date, todo: list[str], bl: list[str]) -> l
     out = ["⭐ <b>Головне</b>",
            f"• Тиждень: продано {len(sold_w)} шт, прибуток <b>{_eur(sum(r['profit'] or 0 for r in sold_w))}</b> · "
            f"на руках {len(open_)} шт на {_eur(sum(r['spent'] or 0 for r in open_))}",
-           f"• Зробити: {len(acts)} " + ("(див. «Що зробити з товаром»)" if acts else "— нічого, усе в русі ✓")]
+           f"• Зробити: {len(acts)} " + ("— нижче" if acts else "— нічого, усе в русі ✓")]
     if bl:
-        out.append(f"• Підписки KA: змінити межі в {sum(1 for x in bl if x.startswith('•'))} (внизу)")
+        out.append(f"• Підписки KA: змінити межі в {sum(1 for x in bl if x.startswith('•'))} — нижче")
     import ram_alert   # 11.10: ціни ростуть — 30-денна медіана відстає; замір Terapeak — раз на 2 тижні
     age = (today - date.fromisoformat(ram_alert.TERAPEAK_DATE)).days
     if age >= ram_alert.TERAPEAK_EVERY:
@@ -257,28 +256,33 @@ def bounds() -> list[str]:
         return []
 
 
+def section(lines: list[str], fold: bool = False) -> str:
+    """14.10 (крок 8): заголовок розділу видно, пункти — у цитаті (сіра смуга); другорядне — згорнуте (fold), розкривається тапом.
+    Розділ з одного рядка — як є."""
+    if len(lines) < 2:
+        return "\n".join(lines)
+    return lines[0] + "\n" + ("<blockquote expandable>" if fold else "<blockquote>") + "\n".join(lines[1:]) + "</blockquote>"
+
+
 def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.competitors, kb: list | None = None,
           ebay_on: bool = False, bounds_fn=bounds, shortage_fn=shortage, services_fn=services) -> str:
     """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»."""
     acc, _ = accuracy(rows, today)
     cuts, bl = [], bounds_fn()
     todo = stale(rows, today, market, cuts)
-    parts = [[f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}"], headline(rows, today, todo, bl),
-             todo, money(rows, today), acc, search(ebay, ka, rows, today) + auctions(ebay, today)]
-    if bl:
-        parts.append(bl)
-    sl = shortage_fn()
-    if sl:
-        parts.append(sl)
-    sv = services_fn()
-    if sv:
-        parts.append(sv)
+    # 14.10: головне й дії — розгорнуті; точність, пошук, дефіцит і сервіси — згорнуті (деталі на тап)
+    parts = [(f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}", False),
+             *[(x, False) for x in (headline(rows, today, todo, bl), todo, money(rows, today))],
+             *([(bl, False)] if bl else []), (acc, True), (search(ebay, ka, rows, today) + auctions(ebay, today), True)]
+    for extra in (shortage_fn(), services_fn()):
+        if extra:
+            parts.append((extra, True))
     if kb is not None:
         if ebay_on:
             kb += [[{"text": f"⬇️ №{n} → {item} €", "callback_data": f"p|{n}|{item}"}] for n, item in cuts[:6]]
         if bl:
             kb.append([{"text": "✅ Межі в KA оновив", "callback_data": "c|межі|1"}])
-    return "\n\n".join("\n".join(p) for p in parts)
+    return "\n\n".join(p if isinstance(p, str) else section(p, fold) for p, fold in parts)
 
 
 def chunks(text: str, limit: int = 3900) -> list[str]:

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-14b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-14c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -608,7 +608,7 @@ function ledgerCommand(msg) {
   if (!chat || String(msg.chat.id) !== String(chat) || !props.getProperty('LEDGER_ID')) return true;   // чужий чат — мовчки
   const cmd = m[1].toLowerCase(), rest = m[2] || '';
   if (cmd === 'облік') {
-    notify_(ledgerSummary_(ledgerRows_(), expenseRows_()) + '\n' + ledger_().getUrl());
+    notify_(ledgerSummary_(ledgerRows_(), expenseRows_()) + '\n\n<a href="' + ledger_().getUrl() + '">📊 Таблиця</a>', null, 'HTML');
     return true;
   }
   // сума — першим словом («купив 45 OWC 2x16») або після «за» («купив OWC 2x16 за 45»), а не «2» з «2x16»
@@ -1319,7 +1319,7 @@ function moneyNow_(rows, exps, today) {
 /** Чисте: рядки, події, сьогодні, попередження/нагадування (рядки), витрати → {text, markup} або null (нема що робити). */
 function morningDigest_(rows, ev, today, warn, todos, exps, got) {
   const eur = function (x) { return (x < 0 ? '−' : x > 0 ? '+' : '') + Math.abs(Math.round(x)) + ' €'; };
-  const name = function (r) { return '№' + r.n + ' «' + String(r.title).slice(0, 34).trim() + '»'; };
+  const name = function (r) { return '№' + r.n + ' «' + h_(String(r.title).slice(0, 34).trim()) + '»'; };
   const acts = [], btn = [];
   rows.forEach(function (r) {
     const e = ev[r.n] || {};
@@ -1343,13 +1343,13 @@ function morningDigest_(rows, ev, today, warn, todos, exps, got) {
   const m = moneyNow_(rows, exps, today);
   const pin = rows.filter(function (r) { return ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0; }).length;
   const pout = rows.filter(function (r) { const e = ev[r.n] || {}; return r.status === 'Продано' && e.sent && !e.outDelivered; }).length;
-  const out = ['☀️ Ранковий огляд · ' + today.slice(8, 10) + '.' + today.slice(5, 7),
+  const out = ['☀️ <b>Ранковий огляд</b> · ' + today.slice(8, 10) + '.' + today.slice(5, 7),
     '💶 Гроші зараз ' + eur(m.cash) + ' · у товарі ' + Math.round(m.stock) + ' € · за місяць ' + eur(m.month),
     '🗂 На руках ' + m.open + (pin || pout ? ' · 📦 посилки: ' + pin + ' до тебе, ' + pout + ' від тебе' : '')];
-  if (acts.length) out.push('', '✅ Зробити сьогодні:', acts.slice(0, 8).map(function (a, i) { return (i + 1) + '. ' + a; }).join('\n') +
+  if (acts.length) out.push('', '<b>✅ Зробити сьогодні</b>', acts.slice(0, 8).map(function (a, i) { return (i + 1) + '. ' + a; }).join('\n') +
                             (acts.length > 8 ? '\n… ще ' + (acts.length - 8) + ' — «на руках»' : ''));
-  if (warn.length) out.push('', '⚠️ Увага:', warn.join('\n\n'));
-  if (todos.length) out.push('', todos.join('\n'));
+  if (warn.length) out.push('', '<b>⚠️ Увага</b>', '<blockquote>' + warn.map(h_).join('\n\n') + '</blockquote>');
+  if (todos.length) out.push('', h_(todos.join('\n')));
   (got || []).forEach(function (n) { if (!btn.some(function (b) { return b[1] === n; })) btn.push(['отримав', n]); });
   const kb = btn.length ? btns_(btn.slice(0, 8)) : { inline_keyboard: [] };
   kb.inline_keyboard.push([PARCELS_BTN, { text: '📒 Облік', callback_data: 'k|облік' }]);
@@ -1381,7 +1381,7 @@ function remindersIfDue_(props, now) {
   let exps = [];
   try { exps = expenseRows_(); } catch (e) { exps = []; }
   const d = morningDigest_(rows, ev, key, warn, b.lines, exps, waiting);
-  if (d) notify_(d.text, d.markup);
+  if (d) notify_(d.text, d.markup, 'HTML');
   return !!d;
 }
 
@@ -1537,6 +1537,9 @@ function expenseRows_() {
 
 /** «облік» (11.10): кожен продаж — куплено → продано → заробив; разом виручка, собівартість, витрати на продаж,
  *  операційні витрати по категоріях і підсумок (скільки ще до нуля, якщо в мінусі). */
+function h_(x) { return String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+/** «облік» (HTML). 14.10 (крок 8): блоки через порожній рядок — гроші зверху, продажі з деталями в цитаті, товар і витрати. */
 function ledgerSummary_(rows, exps) {
   const e = function (x) { return (Math.round(x * 100) / 100).toFixed(2) + ' €'; };
   const sgn = function (x) { return (x >= 0 ? '+' : '−') + e(Math.abs(x)); };
@@ -1546,42 +1549,41 @@ function ledgerSummary_(rows, exps) {
   const revenue = sum(sold, function (r) { return r.sprice; }), cost = sum(sold, function (r) { return r.spent; });
   const profit = sum(sold, function (r) { return r.profit != null ? r.profit : (r.net != null ? r.net : r.sprice) - (r.spent || 0); });
   const sellCosts = revenue - cost - profit;   // пересилка покупцю, пакування, комісія
-  const out = ['📒 Облік'];
-  if (sold.length) {
-    out.push('💰 Продано: ' + sold.length + ' шт за ' + e(revenue) + ' (куплено за ' + e(cost) + ')');
-    if (sellCosts > 0.005) out.push('   пересилка покупцям і пакування: −' + e(sellCosts));
-    out.push('   заробив на товарі: ' + sgn(profit) + (cost ? ' (' + (profit >= 0 ? '+' : '') + Math.round(100 * profit / cost) + '%)' : ''));
-    sold.slice().sort(function (a, b) { return String(b.sdate).localeCompare(String(a.sdate)); }).slice(0, 5).forEach(function (r) {
-      const p = r.profit != null ? r.profit : r.sprice - (r.spent || 0);
-      const d = r.date && r.sdate ? days_(r.date, r.sdate) : null;
-      out.push('   • №' + r.n + ' ' + String(r.title).slice(0, 36).trim() + ': ' + e(r.spent || 0) + ' → ' + e(r.sprice) + ' = ' + sgn(p) +
-               (d != null && d >= 0 ? ' · ' + d + ' дн.' : ''));
-    });
-    if (sold.length > 5) out.push('   … ще ' + (sold.length - 5) + ' — у таблиці');
-  } else {
-    out.push('💰 Продажів ще немає');
-  }
-  out.push('📦 На руках: ' + open.length + ' шт, у товарі ' + e(sum(open, function (r) { return r.spent; })));
   const expTotal = sum(exps, function (x) { return x.amount; });
-  if (expTotal) {
-    const byCat = {};
-    exps.forEach(function (x) { byCat[x.cat] = (byCat[x.cat] || 0) + x.amount; });
-    out.push('🧾 Витрати: ' + e(expTotal) + ' (' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; })
-      .map(function (c) { return c.toLowerCase() + ' ' + e(byCat[c]); }).join(' · ') + ')');
-  }
   const net = profit - expTotal;
-  out.push('📊 Разом: ' + (expTotal ? sgn(profit) + ' − ' + e(expTotal) + ' = ' : '') + sgn(net) +
-           (net < 0 ? ' — до нуля ще ' + e(-net) : ''));
-  if (business_() && net > 0) {   // 13.10: Kleingewerbe — податок на прибуток (оцінка; точна ставка — від зарплати)
-    out.push('🏛 Податок на прибуток (~' + Math.round(TAX_RATE * 100) + '%): ≈ −' + e(net * TAX_RATE) + ' → лишається ≈ ' + e(net * (1 - TAX_RATE)));
-  }
   // 11.10: гроші загалом — отримано з продажів мінус усі купівлі (без скасованих) мінус витрати
   const received = sum(sold, function (r) { return r.net != null ? r.net : r.sprice; });
   const bought = sum(rows.filter(function (r) { return r.status !== 'Скасовано'; }), function (r) { return r.spent; });
   const stock = sum(open, function (r) { return r.spent; });
   const cash = received - bought - expTotal;
-  out.push('💶 Гроші зараз: ' + sgn(cash) + (stock ? ' · з товаром на руках (' + e(stock) + ') — ' + sgn(cash + stock) : ''));
-  return out.join('\n');
+  const money = ['💶 Гроші зараз: <b>' + sgn(cash) + '</b>' + (stock ? ' · з товаром на руках (' + e(stock) + ') — ' + sgn(cash + stock) : ''),
+    '📊 Разом: ' + (expTotal ? sgn(profit) + ' − ' + e(expTotal) + ' = ' : '') + '<b>' + sgn(net) + '</b>' +
+    (net < 0 ? ' — до нуля ще ' + e(-net) : '')];
+  if (business_() && net > 0) {   // 13.10: Kleingewerbe — податок на прибуток (оцінка; точна ставка — від зарплати)
+    money.push('🏛 Податок на прибуток (~' + Math.round(TAX_RATE * 100) + '%): ≈ −' + e(net * TAX_RATE) + ' → лишається ≈ ' + e(net * (1 - TAX_RATE)));
+  }
+  let sales = '💰 Продажів ще немає';
+  if (sold.length) {
+    const det = [];
+    if (sellCosts > 0.005) det.push('пересилка покупцям і пакування: −' + e(sellCosts));
+    det.push('заробив на товарі: ' + sgn(profit) + (cost ? ' (' + (profit >= 0 ? '+' : '') + Math.round(100 * profit / cost) + '%)' : ''));
+    sold.slice().sort(function (a, b) { return String(b.sdate).localeCompare(String(a.sdate)); }).slice(0, 5).forEach(function (r) {
+      const p = r.profit != null ? r.profit : r.sprice - (r.spent || 0);
+      const d = r.date && r.sdate ? days_(r.date, r.sdate) : null;
+      det.push('• №' + r.n + ' ' + h_(String(r.title).slice(0, 36).trim()) + ': ' + e(r.spent || 0) + ' → ' + e(r.sprice) + ' = ' + sgn(p) +
+               (d != null && d >= 0 ? ' · ' + d + ' дн.' : ''));
+    });
+    if (sold.length > 5) det.push('… ще ' + (sold.length - 5) + ' — у таблиці');
+    sales = '💰 Продано: ' + sold.length + ' шт за ' + e(revenue) + ' (куплено за ' + e(cost) + ')\n<blockquote>' + det.join('\n') + '</blockquote>';
+  }
+  const stockLines = ['📦 На руках: ' + open.length + ' шт, у товарі ' + e(stock)];
+  if (expTotal) {
+    const byCat = {};
+    exps.forEach(function (x) { byCat[x.cat] = (byCat[x.cat] || 0) + x.amount; });
+    stockLines.push('🧾 Витрати: ' + e(expTotal) + ' (' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; })
+      .map(function (c) { return h_(String(c).toLowerCase()) + ' ' + e(byCat[c]); }).join(' · ') + ')');
+  }
+  return ['📒 <b>Облік</b>', money.join('\n'), sales, stockLines.join('\n')].join('\n\n');
 }
 
 function expenseTotal_() {
@@ -2215,19 +2217,26 @@ function onHandCommand_(msg) {
   const today = iso_(new Date()), ev = events_();
   const open = ledgerRows_().filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; });
   if (!open.length) { notify_('На руках нічого — усе продано. 👍'); return true; }
-  const next = { 'Оплачено': ['чекаю відправки', 'отримав'], 'В дорозі': ['в дорозі', 'отримав'], 'Отримано': ['протестуй', 'перевірив'],
-    'Перевірено': ['можна продавати', 'продати'], 'Проблема': ['заяви проблему продавцю / eBay / KA', ''], 'Виставлено': ['на eBay, чекає покупця', ''] };
-  const acts = [];
-  const lines = open.map(function (r) {
-    const d = r.date ? days_(r.date, today) : null, nx = next[r.status] || ['', ''];
-    if (nx[1]) acts.push([nx[1], r.n]);
-    const e = ev[r.n] || {};
-    return '№' + r.n + ' ' + String(r.title).slice(0, 45) + '\n   ' + r.status + (d != null ? ' · ' + d + ' дн. від покупки' : '') +
-      (nx[0] ? ' → ' + nx[0] : '') + (e.track && ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0 ? ' · трек ' + e.track : '');
+  // 14.10 (крок 8): згруповано за наступною дією — що робити видно з заголовка групи, без «→ …» у кожному рядку
+  const groups = [['🧪 Протестувати', ['Отримано'], 'перевірив'], ['💶 Можна продавати', ['Перевірено'], 'продати'],
+    ['🚚 Ще йде до тебе', ['Оплачено', 'В дорозі'], 'отримав'], ['🏷 На eBay, чекає покупця', ['Виставлено'], ''],
+    ['🚩 Проблема — заяви продавцю / eBay / KA', ['Проблема'], '']];
+  const acts = [], blocks = [];
+  groups.forEach(function (g) {
+    const list = open.filter(function (r) { return g[1].indexOf(r.status) >= 0; });
+    if (!list.length) return;
+    blocks.push('<b>' + g[0] + '</b>\n<blockquote>' + list.map(function (r) {
+      const d = r.date ? days_(r.date, today) : null, e = ev[r.n] || {};
+      if (g[2]) acts.push([g[2], r.n]);
+      return '№' + r.n + ' ' + h_(String(r.title).slice(0, 40).trim()) + (d != null ? ' · ' + d + ' дн.' : '') +
+        (e.track && g[2] === 'отримав' ? ' · трек ' + h_(e.track) : '');
+    }).join('\n') + '</blockquote>');
   });
+  const rest = open.filter(function (r) { return !groups.some(function (g) { return g[1].indexOf(r.status) >= 0; }); });
+  if (rest.length) blocks.push('<b>Інше</b>\n<blockquote>' + rest.map(function (r) { return '№' + r.n + ' ' + h_(String(r.title).slice(0, 40)) + ' · ' + h_(r.status); }).join('\n') + '</blockquote>');
   const spent = open.reduce(function (a, r) { return a + (Number(r.spent) || 0); }, 0);
-  notify_('📦 На руках: ' + open.length + ' · у товарі ≈ ' + spent.toFixed(0) + ' €\n\n' + lines.join('\n'),
-          acts.length ? btns_(acts.slice(0, 10), [PARCELS_BTN]) : { inline_keyboard: [[PARCELS_BTN]] });
+  notify_('📦 На руках: ' + open.length + ' · у товарі ≈ ' + spent.toFixed(0) + ' €\n\n' + blocks.join('\n\n'),
+          acts.length ? btns_(acts.slice(0, 10), [PARCELS_BTN]) : { inline_keyboard: [[PARCELS_BTN]] }, 'HTML');
   return true;
 }
 

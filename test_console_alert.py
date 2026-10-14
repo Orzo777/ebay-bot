@@ -92,7 +92,7 @@ class TestNegotiate(unittest.TestCase):
         self.assertGreaterEqual(r["net_q"] - c, 0.25 * c)
         self.assertEqual(offer_price(r) % 5, 0)
         self.assertIn("ТОРГУЙСЯ", format_html(r))
-        self.assertIn("→ за 405 €", format_html(r))   # заробіток і % зараз → після торгу
+        self.assertIn("🤝 Запропонуй <b>405 €</b> → <b>+", format_html(r))   # 14.10: торг — заробіток і % у рядку пропозиції
 
     def test_good_and_excellent_have_no_offer(self):
         self.assertIsNone(offer_price(evaluate_console("Xbox Series X 1TB", 260)))

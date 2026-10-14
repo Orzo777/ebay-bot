@@ -30,9 +30,12 @@ ROWS = [row(1, "OWC 2x16GB DDR4 SO-DIMM 2666", "Продано", 50, "2026-09-25
 class WeeklyTest(unittest.TestCase):
     def test_money(self):
         t = "\n".join(wr.money(ROWS, TODAY))
-        self.assertIn("За тиждень продано: 1 шт на 100 €, прибуток <b>40 €</b>", t)
-        self.assertIn("Усього продано: 3 шт, прибуток <b>135 €</b>", t)
-        self.assertIn("На руках: 3 шт, у них 790 €", t)
+        self.assertIn("Тиждень: продано 1 на 100 € → <b>+40 €</b> · куплено 1 на 90 €", t)   # 14.10: коротко
+        self.assertIn("Усього: продано 3 → <b>+135 €</b> (+75% на вкладене)", t)
+        full = wr.build(ROWS, TODAY, {}, {}, lambda r: [], bounds_fn=lambda: [], shortage_fn=lambda: [], services_fn=lambda: [])
+        self.assertIn("на руках 3 шт на 790 €", full)                                  # у «Головне»
+        self.assertIn("💰 <b>Гроші</b>\n<blockquote>", full)                            # пункти — у цитаті
+        self.assertIn("🎯 <b>Точність прогнозу</b> (продане за 90 днів)\n<blockquote expandable>", full)   # деталі — згорнуті
 
     def test_accuracy_flags_optimistic_ceilings(self):
         lines, mean = wr.accuracy(ROWS, TODAY)
@@ -109,9 +112,9 @@ class MonthLinesTest(unittest.TestCase):
                 {"sdate": "2026-10-01", "date": "2026-09-21", "sprice": 420.0, "profit": 95.0, "cat": "Консоль", "status": "Продано"},
                 {"sdate": "2026-08-01", "date": "2026-07-21", "sprice": 99.0, "profit": 9.0, "cat": "RAM", "status": "Продано"}]
         lines = wr.month_lines(sold, date(2026, 10, 9))
-        self.assertIn("продано 2 шт", lines[0])
+        self.assertIn("продано 2 → <b>+", lines[0])
         self.assertIn("лежав у середньому 8 дн.", lines[0])
-        self.assertTrue(lines[1].strip().startswith("по категоріях: Консоль"))
+        self.assertIn("· Консоль +95 €, RAM +75 €", lines[0])   # 14.10: категорії — у тому ж рядку
         self.assertEqual(wr.month_lines([], date(2026, 10, 9)), [])
 
 

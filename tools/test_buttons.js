@@ -79,8 +79,11 @@ check('foreign chat / bad data ignored', [sent.length, deals.cells['5:11']], [n0
 // «на руках»
 vm.runInContext('officeMessage(__m)', Object.assign(ctx, { __m: { text: 'на руках', chat: { id: 7 } } }));
 const oh = sent[sent.length - 1];
-check('on hand: 3 open rows, sold excluded', [/На руках: 3/.test(oh[0]), /OWC/.test(oh[0]), /№3 .*\n\s+Перевірено.*можна продавати/.test(oh[0])], [true, false, true]);
-check('on hand buttons', datas(oh[1]), ['c|отримав|1', 'c|продати|2', 'c|продати|3', 'c|посилки|0']);
+// 14.10: згруповано за наступною дією (заголовок групи + цитата), кнопки — у тому ж порядку
+check('on hand: 3 open rows, sold excluded', [/На руках: 3/.test(oh[0]), /OWC/.test(oh[0]),
+  /<b>💶 Можна продавати<\/b>\n<blockquote>№2 .*\n№3 /.test(oh[0]), /<b>🚚 Ще йде до тебе<\/b>\n<blockquote>№1 /.test(oh[0])],
+  [true, false, true, true]);
+check('on hand buttons', datas(oh[1]), ['c|продати|2', 'c|продати|3', 'c|отримав|1', 'c|посилки|0']);
 
 // вебхуки: один раз дозволити натискання, без скидання черги
 ctx.enableButtons_(); ctx.enableButtons_();

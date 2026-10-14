@@ -286,4 +286,4 @@ class TestCompactCards0410(unittest.TestCase):
         text = "\n".join(lines)
         self.assertNotIn("нічого не означає", text)
         self.assertNotIn("конкуренти не встигнуть", text)
-        self.assertTrue(lines[-1].startswith("Виграєш за"))
+        self.assertTrue(lines[-1].startswith("🏆 Виграєш за"))

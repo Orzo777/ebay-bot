@@ -217,8 +217,21 @@ class HaggleTest(unittest.TestCase):
         p = int(ram_alert.item_for_cost(r0["net_q"] / 1.21, r0["ship_in"]))   # зараз +21%, але < 50 € — не «бери»
         r = evaluate(t, p)
         self.assertEqual(r["verdict"], "NEGOTIATE")                         # торг −5% дає ≥ 25%
-        head = re.sub("<[^>]+>", "", ram_alert.verdict_head(r))
-        self.assertRegex(head, r"ТОРГУЙСЯ · зараз ≈ \d+ € \(\+2\d%\) → за \d+ € ≈ \d+ € \(\+\d+%\)")
+        text = re.sub("<[^>]+>", "", ram_alert.format_html(r))
+        self.assertRegex(text, r"^💬 ТОРГУЙСЯ · зараз \+\d+ € \(\+2\d%\)")
+        self.assertRegex(text, r"🤝 Запропонуй \d+ € → \+\d+ € \(\+\d+%\)")
+
+    def test_card_blocks(self):
+        # 14.10: три блоки — що це, гроші, перевірки (у цитаті); рядок «📷» — у блок перевірок
+        r = evaluate("Corsair Vengeance LPX DDR4 32GB (2x16GB) 3200", 80)
+        r["risk_lines"] = ["🛡 Ризик шахрайства: 🟢 низький"]
+        t = ram_alert.format_html(r)
+        self.assertEqual(t.count("\n\n"), 2)
+        self.assertIn("\n\n💶 <b>80 €</b>", t)
+        self.assertTrue(t.endswith("</blockquote>"))
+        t2 = ram_alert.add_check(t, "📷 Фото збігається з назвою ✓")
+        self.assertTrue(t2.endswith("\n📷 Фото збігається з назвою ✓</blockquote>"))
+        self.assertEqual(ram_alert.add_check("без перевірок", "📷 x"), "без перевірок\n\n📷 x")
 
 
 class BusinessSwitchTest(unittest.TestCase):

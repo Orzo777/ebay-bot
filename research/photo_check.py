@@ -240,7 +240,8 @@ def add_to_card(message_id: int | None, html_text: str, reply_markup: str | None
 
     import config
     from html import escape
-    text = (line + "\n\n" + html_text) if bad else (html_text + "\n\n" + line)
+    from ram_alert import add_check
+    text = (line + "\n\n" + html_text) if bad else add_check(html_text, line)   # 14.10: у блок перевірок картки
     folded = collapse_server and bad and escape(SERVER_MSG) in line
     if folded:   # 03.10: користувач хоче, щоб такі картки відсіювались, а не висіли з ⛔
         text = (f"🗑 <b>Відсіяно: {escape(SERVER_MSG)}</b> — у звичайний ПК не піде\n"

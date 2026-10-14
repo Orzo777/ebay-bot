@@ -33,7 +33,7 @@ import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import ebay_images, photo_line
 from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
-                       evaluate, refine_by_desc, tier)
+                       add_check, checks_block, evaluate, refine_by_desc, tier)
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 # (запит, категорія, мін. ціна, макс. ціна). Верх — трохи вище найбільшої стелі «торгуйся» серед типів групи.
@@ -240,33 +240,33 @@ def _age_label(lst: dict, now: datetime) -> str:
 
 def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
     """10.10: коротка картка, як на KA; тексти продавцю — лише в кнопках «📋» (keyboard)."""
-    from ram_alert import verdict_head
+    from ram_alert import card, gain, verdict_head
     esc = html.escape
     offer = offer_ebay(r)
     dist = f" ({lst['dist']:.0f} км)" if lst.get("dist") else ""
     ship_txt = (f"🚶 самовивіз{dist}" if r.get("pickup") else f"+ {r['ship_in']:.2f} €".replace(".", ","))
     seller = f"{esc(lst['seller'])} ({lst['fb']}" + (f", {lst['pct']:.0f}%" if lst["pct"] is not None else "") + ")"
-    lines = ["🛒 <b>eBay</b> · " + verdict_head(r) + (" · 📉 ЗДЕШЕВШАЛО" if why == "drop" else "")]
-    if too_cheap(r):
-        lines.append(cheap_headline(r, ebay=True))
-    lines += [f"<i>{esc(r['title'][:90])}</i>",
-              f"{esc(r['type'])} · <b>{lst['price']:.0f} €</b> {ship_txt} → разом {r['buy_cost']:.0f} €"
-              + (" · Preisvorschlag ✓" if lst["offer"] else ""),
-              *([(f"🤝 Preisvorschlag <b>{offer} €</b>" if lst["offer"] else f"🤝 Напиши продавцю: <b>{offer} €</b>")
-                 + f" → заробіток ≈ <b>{r['net_q'] - offer - r['ship_in']:.0f} €</b>"] if offer is not None else []),
-              f"📏 Бери до {r['cap']:.0f} € разом · вигідно ≤ {r['good']:.0f} €",
-              f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}",
-              f"👤 {seller}" + (f" · {_age_label(lst, now)}" if _age_label(lst, now) else "")]
-    lines += [f"⚠️ {esc(s)}" for s in risk["soft"]]
+    head = ["🛒 <b>eBay</b> · " + verdict_head(r) + (" · 📉 ЗДЕШЕВШАЛО" if why == "drop" else ""),
+            *([cheap_headline(r, ebay=True)] if too_cheap(r) else []),
+            f"<i>{esc(r['title'][:90])}</i>", esc(r["type"])]
+    money = [f"💶 <b>{lst['price']:.0f} €</b> {ship_txt} → разом {r['buy_cost']:.0f} €" + (" · Preisvorschlag ✓" if lst["offer"] else "")]
+    if offer is not None:
+        c = offer + r["ship_in"]
+        money.append((f"🤝 Preisvorschlag <b>{offer} €</b>" if lst["offer"] else f"🤝 Напиши продавцю: <b>{offer} €</b>")
+                     + f" → <b>{gain(r['net_q'] - c, c)}</b>")
+    money += [f"📏 Бери до {r['cap']:.0f} € разом · вигідно до {r['good']:.0f} €",
+              f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}"]
+    checks = [f"👤 {seller}" + (f" · {_age_label(lst, now)}" if _age_label(lst, now) else "")]
+    checks += [f"⚠️ {esc(s)}" for s in risk["soft"]]
     f = desc_facts(r.get("desc"), r)
     if f["works"] is False:
-        lines.append("⚠️ В описі: НЕ тестоване або з дефектом")
+        checks.append("⚠️ В описі: НЕ тестоване або з дефектом")
     if r.get("single_module_warning") and not f["kit_ok"]:
-        lines.append(f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ")
+        checks.append(f"⚠️ Перевір, що це <b>одна</b> планка на {r['total']} ГБ")
     elif r.get("kit_unknown") and not f["kit_ok"]:
-        lines.append(f"⚠️ Скільки планок — не вказано: бери лише <b>2×{r['total'] // 2} ГБ</b>")
-    lines += [f"⚠️ {esc(n)}" for n in r.get("notes", [])]
-    return "\n".join(lines)
+        checks.append(f"⚠️ Скільки планок — не вказано: бери лише <b>2×{r['total'] // 2} ГБ</b>")
+    checks += [f"⚠️ {esc(n)}" for n in r.get("notes", [])]
+    return card(head, money, checks)
 
 
 # ----------------------------------------------------------------------------- мережа
@@ -391,17 +391,14 @@ def auction_lines(r: dict, it: dict, now: datetime) -> list[str]:
         left, left_txt = None, "?"
     max_bid = int((r["cap"] - r["ship_in"]) // 1)
     good_bid = int((r["good"] - r["ship_in"]) // 1)
-    lines = [f"🔨 <b>Аукціон</b>: зараз {r['price']:.0f} € ({bids} ставок), до кінця {left_txt}."]
+    from ram_alert import gain
+    lines = [f"🔨 Зараз <b>{r['price']:.0f} €</b> ({bids} ставок) · до кінця {left_txt}"]
     if r["price"] >= max_bid:
-        lines.append(f"⛔ Уже дорожче вигідного: максимум для нас {max_bid} € (з пересилкою {r['cap']:.0f} €).")
+        lines.append(f"⛔ Уже дорожче вигідного: наш максимум {max_bid} € (з пересилкою {r['cap']:.0f} €)")
     else:
-        if left is not None and left <= timedelta(hours=1):
-            lines += [f"👉 За 1–2 хв до кінця постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €).",
-                      f"Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €."]
-        else:
-            lines += [f"👉 Постав <b>максимальну ставку {max_bid} €</b> (краще {good_bid} €) в останні хвилини — "
-                      f"бот нагадає за ~20 хв до кінця.",
-                      f"Виграєш за {max_bid} € → заробіток ≈ {r['net_q'] - r['cap']:.0f} €."]
+        when = "за 1–2 хв до кінця" if left is not None and left <= timedelta(hours=1) else "в останні хвилини (нагадаю за ~20 хв)"
+        lines += [f"👉 Постав максимум <b>{max_bid} €</b> {when} · краще {good_bid} €",
+                  f"🏆 Виграєш за {max_bid} € → <b>{gain(r['net_q'] - r['cap'], r['cap'])}</b>"]
     return lines
 
 
@@ -426,14 +423,13 @@ def live_text(c: dict, now: datetime) -> str:
     except (AttributeError, ValueError):
         end = None
     if end is not None and now >= end:
-        body = [f"🏁 <b>Аукціон завершено</b> о {end.astimezone(_BERLIN):%H:%M}: фінальна ставка {c['price']:.0f} € "
-                f"({c['bids']} ставок).",
-                "Ставка в межах нашого максимуму — якщо виграв, облік запише покупку з листа eBay." if c["price"] <= max_bid
-                else f"Пішло дорожче за наш максимум {max_bid} € — пропускаємо."]
+        body = [f"🏁 <b>Завершено</b> о {end.astimezone(_BERLIN):%H:%M} · фінал <b>{c['price']:.0f} €</b> ({c['bids']} ставок)",
+                "✅ У межах нашого максимуму — якщо виграв, облік запише покупку з листа eBay." if c["price"] <= max_bid
+                else f"⛔ Пішло дорожче за наш максимум {max_bid} € — пропускаємо."]
     else:
         body = [f"🟢 <b>Іде</b> · оновлено о {now.astimezone(_BERLIN):%H:%M}",
                 *auction_lines(r, {"bidCount": c["bids"], "itemEndDate": c["end"]}, now)]
-    return "\n".join([c["head"], *body, c["tail"]]).strip()
+    return "\n\n".join(x for x in (c["head"].strip(), "\n".join(body), c["tail"].strip()) if x)
 
 
 def edit_card(message_id: int, text: str, markup: str | None):
@@ -523,11 +519,12 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
         return ("⛔ <b>Не бери — схоже на шахрая</b> · <i>" + esc(lst["title"][:90]) + "</i>\n"
                 + "\n".join("   • " + esc(h) for h in risk["hard"])), r, lst
     if auction:
-        head = [f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", "",
-                *auction_lines(r, it, now), f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
-                f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]],
-                *(["⚠️ Продавець пише, що НЕ тестовано — ставку роби з поправкою на ризик"]
-                  if desc and _DESC_UNTESTED.search(desc) else [])]
+        top = [f"🔨 <b>Аукціон eBay</b> · {esc(r['type'])}", f"<i>{esc(lst['title'][:90])}</i>"]
+        head = auction_lines(r, it, now)   # 14.10: стан торгів — окремим блоком, перевірки — у цитаті
+        checks = [f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} €", f"👤 {esc(lst['seller'])} ({lst['fb']})",
+                  *[f"⚠️ {esc(s)}" for s in risk["soft"]],
+                  *(["⚠️ Продавець пише, що НЕ тестовано — ставку роби з поправкою на ризик"]
+                    if desc and _DESC_UNTESTED.search(desc) else [])]
         b = bin_offer(r, it, now)
         label = None
         if b and lst.get("offer"):   # 10.10: аукціон з «oder Preisvorschlag» (продавець дозволив, доки немає ставок)
@@ -539,7 +536,8 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
             label = f"📋 Текст продавцю: Sofort-Kaufen за {b[0]} €"
             head.append(f"💡 Ставок ще немає — можна попросити продавця додати «Sofort-Kaufen» за <b>{b[0]} €</b> "
                         "(текст — кнопкою; купуєш на eBay, захист покупця діє)")
-        return "\n".join(head), dict(r, verdict="AUCTION", bin_offer=b[0] if b else None, bin_text=b[1] if b else None,
+        from ram_alert import card
+        return card(top, head, checks), dict(r, verdict="AUCTION", bin_offer=b[0] if b else None, bin_text=b[1] if b else None,
                                       bin_label=label), lst
     if r["verdict"] not in SEND_VERDICTS:
         return (f"⏭ <b>Не бери</b> · <i>{esc(lst['title'][:90])}</i> — {lst['price']:.0f} € + пересилка "
@@ -652,7 +650,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             if ph and ph[1]:
                 print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку не надсилаю: " + re.sub(r"<[^>]+>", "", ph[0]).replace("\n", " ")[:200])
                 continue
-            send_card(card + ("\n\n" + ph[0] if ph else ""), lst["url"], r)
+            send_card(add_check(card, ph[0]) if ph else card, lst["url"], r)
         sent += 1
     if state["round"] % 2 == 0:   # аукціони — через коло (~6 хв; квота API): у вікно 20 хв потрапляємо щонайменше двічі
         for q, cat, lo, hi in active(AUCTION_QUERIES):
@@ -681,9 +679,9 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                     print("   дефект / шахрай / не тестовано — пропускаю")
                     continue
                 esc = html.escape
-                head = "\n".join([f"🛒 <b>eBay</b> · <b>{esc(r['type'])}</b>", f"<i>{esc(lst['title'][:90])}</i>", ""])
-                tail = "\n".join([f"🏷 Продати: {r['quick_sale']}–{r['median_sale']} €",
-                                  f"👤 Продавець {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]]])
+                head = "\n".join([f"🔨 <b>Аукціон eBay</b> · {esc(r['type'])}", f"<i>{esc(lst['title'][:90])}</i>"])
+                tail = checks_block([f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} €",
+                                     f"👤 {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]]])
                 card = auction_card(it, r, head, tail)
                 text = live_text(card, now)
                 if dry_run:
@@ -694,7 +692,8 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                     if ph and ph[1]:
                         print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку аукціону не надсилаю")
                         continue
-                    card["tail"] += "\n\n" + ph[0] if ph else ""
+                    if ph:
+                        card["tail"] = add_check(card["tail"], ph[0])
                     mid, kb = send_card(live_text(card, now), lst["url"], dict(r, verdict="BUY"), auction=True)
                     state.setdefault("auction_cards", {})[it["itemId"]] = dict(card, m=mid, kb=kb)   # далі — живі оновлення
                 auctions_sent += 1

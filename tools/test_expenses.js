@@ -75,7 +75,7 @@ check('no amount → hint', /спершу сума/.test(sent[sent.length - 1]),
 say('облік');
 check('облік without sales: expenses by category, total', [/Продажів ще немає/.test(sent[sent.length - 1]),
   /Витрати: 60\.20 € \(обладнання 54\.50 € · пакування 3\.00 € · пересилка 2\.70 €\)/.test(sent[sent.length - 1]),
-  /Разом: \+0\.00 € − 60\.20 € = −60\.20 € — до нуля ще 60\.20 €/.test(sent[sent.length - 1])], [true, true, true]);
+  /Разом: \+0\.00 € − 60\.20 € = −60\.20 € — до нуля ще 60\.20 €/.test(sent[sent.length - 1].replace(/<[^>]+>/g, ''))], [true, true, true]);
 // 11.10: продажі — кожен окремо (куплено → продано → заробив), пересилка й пакування окремим рядком
 const deals = ss.sheets['Угоди'];
 [[new Date('2026-10-01T10:00:00Z'), 'Corsair Vengeance LPX 32GB (2x16GB) DDR4', 'Продано', 70.63, new Date('2026-10-04T10:00:00Z'), 149, 137.0, 66.37],
@@ -88,7 +88,9 @@ const deals = ss.sheets['Угоди'];
 });
 vm.runInContext("Utilities = { formatDate: function (d) { return d.toISOString().slice(0, 10); } };", ctx);
 say('облік');
-const t = sent[sent.length - 1];
+const t = sent[sent.length - 1].replace(/<[^>]+>/g, '');   // 14.10: «облік» — HTML; текст перевіряємо без тегів
+check('облік: blocks + details in a quote', [/^📒 <b>Облік<\/b>\n\n💶 Гроші зараз: <b>/.test(sent[sent.length - 1]),
+  /\n<blockquote>пересилка покупцям/.test(sent[sent.length - 1])], [true, true]);
 check('облік with a sale', [/Продано: 1 шт за 149\.00 € \(куплено за 70\.63 €\)/.test(t), /пересилка покупцям і пакування: −12\.00 €/.test(t),
   /заробив на товарі: \+66\.37 € \(\+94%\)/.test(t), /№1 Corsair Vengeance LPX 32GB \(2x16GB\): 70\.63 € → 149\.00 € = \+66\.37 € · 3 дн\./.test(t),
   /На руках: 1 шт, у товарі 45\.00 €/.test(t), /Разом: \+66\.37 € − 60\.20 € = \+6\.17 €$/m.test(t), /до нуля/.test(t)],

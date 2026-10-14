@@ -647,19 +647,39 @@ def _item_cap(r: dict, key: str) -> int:
     return int(item_for(r, r[key]))
 
 
+def eur(x: float) -> str:
+    """+42 € / −5 € — заробіток зі знаком."""
+    return f"{'+' if x >= 0 else '−'}{abs(x):.0f} €"
+
+
+def gain(profit: float, cost: float | None) -> str:
+    """«+42 € (+33%)» — заробіток і відсоток від вкладеного."""
+    return eur(profit) + (f" ({'+' if profit >= 0 else '−'}{abs(100 * profit / cost):.0f}%)" if cost else "")
+
+
 def verdict_head(r: dict) -> str:
-    """10.10: перший рядок — рішення і заробіток (раніше «МОЖНА — вигода помірна» навіть при +157 €)."""
-    pct = f" (+{100 * r['profit_est'] / r['buy_cost']:.0f}%)" if r.get("buy_cost") else ""
-    if r["verdict"] == "NEGOTIATE":   # 13.10: що дає торг — заробіток і % зараз і після
-        o = offer_price(r)
-        now = f"зараз ≈ {r['profit_est']:.0f} €{pct}"
-        if o is None:
-            return f"💬 <b>ТОРГУЙСЯ</b> · {now}"
-        c = cost_of(r, o)
-        p2 = r["net_q"] - c
-        return f"💬 <b>ТОРГУЙСЯ</b> · {now} → за {o} € ≈ <b>{p2:.0f} €</b> (+{100 * p2 / c:.0f}%)"
+    """10.10: перший рядок — рішення і заробіток; 14.10: коротко, торг — окремим рядком у блоці грошей."""
+    if r["verdict"] == "NEGOTIATE":
+        return f"💬 <b>ТОРГУЙСЯ</b> · зараз {gain(r['profit_est'], r.get('buy_cost'))}"
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ДУЖЕ ВИГІДНО</b>", "BUY-GOOD": "🟢 <b>ВИГІДНО</b>", "BUY": "🟡 <b>БЕРИ</b>"}[r["verdict"]]
-    return f"{tag} · заробіток ≈ <b>{r['profit_est']:.0f} €</b>{pct}"
+    return f"{tag} · <b>{gain(r['profit_est'], r.get('buy_cost'))}</b>"
+
+
+# 14.10 (крок 8, користувач: «інформація зливається в суцільний текст»): картка — три блоки через порожній рядок:
+# що це (рішення, назва, тип) → гроші (ціна, торг, межі, продаж) → перевірки (ризик, опис, фото, попередження) у цитаті.
+def checks_block(lines: list[str]) -> str:
+    return "<blockquote>" + "\n".join(lines) + "</blockquote>" if lines else ""
+
+
+def add_check(text: str, line: str) -> str:
+    """Дописати рядок у блок перевірок (рядок «📷 …» після фото-перевірки); блоку немає — окремим абзацом."""
+    if text.endswith("</blockquote>"):
+        return text[:-len("</blockquote>")] + "\n" + line + "</blockquote>"
+    return text + "\n\n" + line
+
+
+def card(head: list[str], money: list[str], checks: list[str]) -> str:
+    return "\n\n".join(x for x in ("\n".join(head), "\n".join(money), checks_block(checks)) if x)
 
 
 def warn_lines(r: dict) -> list[str]:
@@ -685,23 +705,20 @@ def format_html(r: dict) -> str:
 
     offer = offer_price(r)
     cost = r.get("buy_cost")
-    price = f"<b>{r['price']:.0f} €</b>" + (" VB" if r.get("vb") else "")
+    price = f"💶 <b>{r['price']:.0f} €</b>" + (" VB" if r.get("vb") else "")
     if cost:
-        price += (f" 🚶 самовивіз → з дорогою {cost:.0f} €" if r.get("pickup") else f" → разом {cost:.0f} €")
+        price += (f" · 🚶 самовивіз → з дорогою {cost:.0f} €" if r.get("pickup") else f" → разом {cost:.0f} €")
     if r.get("buy_now") and r["verdict"] != "NEGOTIATE":
         price += " · ⚡ Direkt kaufen"
-    lines = [verdict_head(r)]
-    if too_cheap(r):
-        lines.append(cheap_headline(r))
-    lines += [f"<i>{escape(r['title'][:90])}</i>",
-              f"{escape(r['type'])} · {price}",
-              *r.get("risk_lines", []),   # ka_listing_check: ризик шахрайства (вже екрановано)
-              *([f"🤝 Запропонуй <b>{offer} €</b> → заробіток ≈ <b>{r['net_q'] - total_for(r, offer):.0f} €</b>"]
-                if offer is not None and r.get("net_q") else []),
-              f"📏 Бери до {_item_cap(r, 'cap')} € · вигідно ≤ {_item_cap(r, 'good')} €",
-              f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}",
-              *warn_lines(r)]
-    return "\n".join(lines)
+    head = [verdict_head(r), *([cheap_headline(r)] if too_cheap(r) else []),
+            f"<i>{escape(r['title'][:90])}</i>", escape(r["type"])]
+    money = [price]
+    if offer is not None and r.get("net_q"):
+        c = total_for(r, offer)
+        money.append(f"🤝 Запропонуй <b>{offer} €</b> → <b>{gain(r['net_q'] - c, c)}</b>")
+    money += [f"📏 Бери до {_item_cap(r, 'cap')} € · вигідно до {_item_cap(r, 'good')} €",
+              f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}"]
+    return card(head, money, [*r.get("risk_lines", []), *warn_lines(r)])   # risk_lines — вже екрановано
 
 
 def format_message(r: dict) -> str:
