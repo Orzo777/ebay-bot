@@ -241,6 +241,28 @@ class HaggleTest(unittest.TestCase):
         self.assertEqual(ram_alert.add_check("без перевірок", "📷 x"), "без перевірок\n\n📷 x")
 
 
+class SetPriceInDescTest(unittest.TestCase):
+    """15.10: «4 x 16GB DDR4 RAM 2666MHz (64GB Gesamt)» за 84 € — «ВИГІДНО +98 €», а в описі 84 € — за одну планку."""
+
+    def test_set_price_from_description(self):
+        from ram_alert import refine_by_desc
+        t = "4 x 16GB DDR4 RAM 2666MHz (64GB Gesamt)"
+        d = ("Verkaufe Crucual RAM bestehend aus: 1 x 16GB DDR4 SO-DIMM Modell: CT16G4S266M.M16FJ DDR4-2666 CL 19 1.2V "
+             "Hersteller: Crucial by Micron Zustand: Gebraucht, technisch einwandfrei Nach Absprache auch Set mit: "
+             "2 x 16GB DDR4 SO-DIMM (32GB RAM) -> EUR 159,00 4 x 16GB DDR4 SO-DIMM (64GB RAM) -> EUR 329,00")
+        r = evaluate(t, 84)
+        self.assertIn(r["verdict"], ram_alert.SEND_VERDICTS)        # за назвою — вигідно
+        r2 = refine_by_desc(r, t, 84, False, d, lambda tt, pp, vb=False: evaluate(tt, pp, vb=vb))
+        self.assertEqual(r2["verdict"], "SKIP")
+        self.assertIn("ціна однієї планки; 4×16 ГБ — 329 €", r2["reason"])
+        self.assertEqual(ram_alert.desc_set_price(d, 32), (2, 16, 159.0))
+
+    def test_new_price_is_not_the_price(self):
+        self.assertIsNone(ram_alert.desc_set_price("Neupreis 4x16GB 329 €, jetzt günstig", 64))
+        self.assertIsNone(ram_alert.desc_set_price("Damals für 4 x 16GB 299€ gekauft", 64))
+        self.assertIsNone(ram_alert.desc_set_price("Verkaufe 2x8GB DDR4, 40 €", 64))   # інший обсяг
+
+
 class BusinessSwitchTest(unittest.TestCase):
     """13.10: перемикач «комерційний акаунт eBay» — поки вимкнено; увімкнений додає комісію (5% ×1,19 + 0,95 €)."""
 

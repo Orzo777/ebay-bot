@@ -430,6 +430,23 @@ _D_PER_UNIT = re.compile(r"preis\s+(?:ist\s+)?(?:pro|je|für\s+(?:einen|ein|eine
                          r"\d+\s*(?:€|eur\w*)\s*(?:\w+\s+){0,2}(?:je|pro)\s+(?:riegel|stück|modul|stick)\b|"
                          r"(?:je|pro)\s+(?:riegel|stück|modul|stick)\s*(?:\w+\s+){0,2}\d+\s*(?:€|eur)|"
                          r"einzelpreis|stückpreis|preis\s+pro\s+stück", re.I)
+# 15.10: «4 x 16GB RAM» за 84 € — а в описі «1 x 16GB … Set mit: 4 x 16GB (64GB RAM) -> EUR 329,00»: 84 € — за одну планку.
+# Ціна набору з опису (той самий обсяг, що в назві) — справжня ціна; «NP / UVP / Neupreis / bezahlt» — не ціна продажу.
+_D_SET_PRICE = re.compile(r"(\d)\s*[x×]\s*(\d{1,3})\s*gb[^€\n]{0,60}?(?:(?:€|eur\w*)\s*(\d{2,4})(?:[.,]\d{2})?\b|"
+                          r"\b(\d{2,4})(?:[.,]\d{2})?\s*(?:€|eur))", re.I)
+_D_NEW_PRICE = re.compile(r"(?:neupreis|\bnp\b|uvp|damals|bezahlt|gekauft\s+für|kostete|original\s*preis)[^.\n]{0,25}$", re.I)
+
+
+def desc_set_price(desc: str, total: int) -> tuple[int, int, float] | None:
+    """Опис → (планок, ГБ на планку, ціна) для набору того ж обсягу, що в назві; None — немає."""
+    for m in _D_SET_PRICE.finditer(desc or ""):
+        n, per = int(m.group(1)), int(m.group(2))
+        if n * per != total or _D_NEW_PRICE.search((desc or "")[max(0, m.start() - 40):m.start()]):
+            continue
+        return n, per, float(m.group(3) or m.group(4))
+    return None
+
+
 _D_LAPTOP = re.compile(r"so-?\s?dimm|(?:für|aus|im|in)\s+(?:\w+\s+){0,2}(?:laptop|notebook)|laptop-?(?:ram|speicher)|"
                        r"notebook-?(?:ram|speicher)", re.I)
 _D_NOT_LAPTOP = re.compile(r"(?:nicht|kein\w*)\s+(?:\w+\s+){0,2}(?:für\s+)?(?:laptop|notebook)|desktop|\budimm", re.I)
@@ -511,7 +528,12 @@ def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | No
         if "SO-DIMM" not in res.get("type", "") and _D_LAPTOP.search(d) and not _D_NOT_LAPTOP.search(d):
             extra.append("SO-DIMM")
     new_price = price
-    if _D_PER_UNIT.search(d):
+    sp = desc_set_price(d, res["total"]) if is_ram else None
+    if sp and sp[2] > price + 15:   # у назві — ціна однієї планки, весь набір — дорожче
+        new_price = sp[2]
+        if not extra:
+            extra.append(f"{sp[0]}x{sp[1]}GB")
+    elif _D_PER_UNIT.search(d):
         mods = int(extra[0].split("x")[0]) if extra and "x" in extra[0] and not extra[0].startswith("SO") else \
             (2 if res.get("kit_unknown") else res.get("modules", 1) or 1)
         new_price = price * max(mods, 2)
@@ -521,6 +543,9 @@ def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | No
     if new.get("verdict") == "SKIP" and not new.get("reason"):
         new["reason"] = "за описом — інший тип або ціна"
     new["refined"] = ", ".join(extra + ([f"ціна за штуку → разом {new_price:.0f} €"] if new_price != price else []))
+    if sp and new_price == sp[2]:
+        new["reason"] = (f"за описом {price:.0f} € — ціна однієї планки; {sp[0]}×{sp[1]} ГБ — {sp[2]:.0f} €"
+                         + (" (не вигідно)" if new.get("verdict") == "SKIP" else ""))
     return new
 
 
