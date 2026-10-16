@@ -509,6 +509,42 @@ def office_send_album(photos: list, caption: str) -> int:
     return n
 
 
+def studio_or_original(data: bytes) -> bytes:
+    """16.10: фото на білому фоні (research/photo_studio.py); екран тесту / темний фон / помилка — оригінал."""
+    try:
+        import photo_studio
+        return photo_studio.studio(data) or data
+    except Exception as e:
+        print(f"обробка фото: {e.__class__.__name__}")
+        return data
+
+
+def office_send_studio_preview(photos: list, row: int, file_fn=None) -> int:
+    """Альбом «так фото підуть на eBay» — оброблені версії збережених фото (до 10). → скільки надіслано."""
+    import requests
+    token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN
+    file_fn = file_fn or tg_file
+    files, media = {}, []
+    for i, ph in enumerate([x for x in photos or [] if isinstance(x, dict) and x.get("id")][:10]):
+        data = file_fn(ph["id"], token)
+        if not data:
+            continue
+        files[f"p{i}"] = (f"p{i}.jpg", studio_or_original(data), "image/jpeg")
+        media.append({"type": "photo", "media": f"attach://p{i}"})
+    if not media:
+        return 0
+    media[0]["caption"] = (f"📸 Так фото №{row} підуть на eBay: білий фон, без тіні (екран тесту — як є). "
+                           f"Не подобається — напиши «оригінали {row}».")
+    api = f"{config.TELEGRAM_API_BASE}/bot{token}/"
+    if len(media) == 1:
+        resp = requests.post(api + "sendPhoto", data={"chat_id": config.TELEGRAM_CHAT_ID, "caption": media[0]["caption"]},
+                             files={"photo": files["p0"] if "p0" in files else next(iter(files.values()))}, timeout=60)
+    else:
+        resp = requests.post(api + "sendMediaGroup", data={"chat_id": config.TELEGRAM_CHAT_ID,
+                                                           "media": json.dumps(media, ensure_ascii=False)}, files=files, timeout=90)
+    return len(media) if resp.status_code == 200 else 0
+
+
 def office_send_url_album(pics: list[tuple[str, str]], get) -> int:
     """16.10: фото за посиланнями (eBay / KA) — завантажуємо самі й шлемо альбомом (Telegram не завжди тягне чужі адреси).
     pics — [(підпис, url)]. → скільки надіслано."""
@@ -664,6 +700,8 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
                 break
             data = file_fn(ph["id"], key)
             if data and el.is_image(data):
+                if not (d.get("edits") or {}).get("raw"):   # 16.10: білий фон («оригінали N» — без обробки)
+                    data = studio_or_original(data)
                 pics.append(el.upload_picture(data, f"n{row}-{i + 1}", token, post))
         if not pics:
             return send(f"📸 Для {what} немає фото — надішли фото в бот з номером у підписі («{row}»), потім натисни ще раз.", None)
@@ -778,6 +816,8 @@ def main():
         return
     if not steps_only and not office_send_html(text, kb if kb and row else None):
         raise SystemExit(1)
+    if ebay and row and photos and not steps_only and not (edits or {}).get("raw"):   # 16.10: як фото підуть на eBay
+        print(f"фото після обробки: {office_send_studio_preview(photos, row)} з {len(photos)}")
     if steps and want_steps:
         if not office_send_html(steps, getattr(make, "steps_kb", None)):
             raise SystemExit(1)

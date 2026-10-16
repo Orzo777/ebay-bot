@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-16c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-16d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -773,13 +773,21 @@ function sellEdits_() { return JSON.parse(PropertiesService.getScriptProperties(
 
 function editCommand_(msg) {
   const t = String(msg.text || '').trim();
-  const m = t.match(/^\/?(змінити|ціна|назва|опис|скинути)\s+(\d{1,4})(?:\s+([\s\S]+))?$/i);
+  const m = t.match(/^\/?(змінити|ціна|назва|опис|скинути|оригінали|обробити)\s+(\d{1,4})(?:\s+([\s\S]+))?$/i);
   if (!m) return false;
   const props = PropertiesService.getScriptProperties();
   if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID'))) return true;
   const cmd = m[1].toLowerCase(), n = Number(m[2]), arg = (m[3] || '').trim(), r = rowByN_(n);
   if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
   const ed = sellEdits_(), cur = ed[n] || {};
+  if (cmd === 'оригінали' || cmd === 'обробити') {   // 16.10: фото на eBay — без обробки / знову з білим фоном
+    ed[n] = Object.assign(cur, { raw: cmd === 'оригінали' });
+    if (!ed[n].raw) delete ed[n].raw;
+    props.setProperty('SELL_EDITS', JSON.stringify(ed));
+    notify_(cmd === 'оригінали' ? '📸 №' + n + ': на eBay підуть фото як є, без обробки. Повернути білий фон — «обробити ' + n + '».'
+                               : '📸 №' + n + ': фото знову з білим фоном.');
+    return true;
+  }
   if (cmd === 'змінити' || (!arg && cmd !== 'скинути')) {
     const has = [cur.price ? 'ціна ' + cur.price + ' €' : '', cur.title ? 'назва «' + h_(cur.title) + '»' : '', cur.desc ? 'опис дописано' : '']
       .filter(Boolean);
