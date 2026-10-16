@@ -82,7 +82,13 @@ def background_mask(img: Image.Image) -> np.ndarray | None:
     bg_lum = float(np.median(border))
     if bg_lum < 120 or float(np.median(bsat)) > 40 or float(np.std(border)) > 45:
         return None   # темний / кольоровий / строкатий фон (фото екрана тощо)
-    allowed = (lum > bg_lum * 0.5) & (sat < 45)   # папір і тінь на ньому; планка темна, контакти — насичені
+    # 16.10 (фото №4: тьмяне світло, градієнт, темна тінь від лампи): яскравість — відносно МІСЦЕВОГО фону, а не середнього.
+    # Місцевий фон: максимум у вікні, ширшому за планку (темні предмети зникають), розмитий. Тінь на папері темніша за фон
+    # у 1,5–2 рази, чорний радіатор — у 4–6.
+    tiny = Image.fromarray(lum.astype(np.uint8)).resize((max(8, lum.shape[1] // 6), max(8, lum.shape[0] // 6)), Image.BILINEAR)
+    local = tiny.filter(ImageFilter.MaxFilter(15)).filter(ImageFilter.GaussianBlur(4)).resize(small.size, Image.BILINEAR)
+    rel = lum / np.maximum(np.asarray(local).astype(np.float32), 1.0)
+    allowed = (rel > 0.42) & (sat < 45)   # папір і тінь на ньому; планка темна, контакти — насичені
     # заливаємо по «звуженому» фону: вузькі проходи (виріз між контактами, щілини) не пускають фон усередину планки
     narrow = erode(allowed, K)
     seed = np.zeros_like(allowed)
@@ -90,7 +96,7 @@ def background_mask(img: Image.Image) -> np.ndarray | None:
     bg = dilate(_grow(seed, narrow), K) & allowed
     # другий прохід: у вузькі щілини (між планками) — лише там, де яскравість точно як у паперу (плата й відблиски темніші
     # або насиченіші — лишаються)
-    paper = (lum > 0.6 * bg_lum) & (lum < 1.15 * bg_lum) & (sat < 30)   # і затінений папір між планками
+    paper = (rel > 0.36) & (sat < 28)   # і затінений папір між планками (тінь 0,44–0,65; радіатор 0,08–0,17; між контактами від 0,32)
     bg = _grow(bg, paper | bg)
     fg = erode(dilate(~bg, K // 2 + 1), K // 2 + 1)   # закрити дрібні дірки в товарі
     fg = dilate(erode(fg, K), K)                      # прибрати порошинки й крихти на папері

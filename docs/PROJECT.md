@@ -279,6 +279,8 @@ assist.yml → research/assist.py запускає **Claude Code** (`claude -p`,
   Маска на 900 px (було 480 — рвані краї на фото з Telegram), затінений папір між планками теж у фон, кадр під розмір оригіналу
   (800–1600, без розтягування й розмиття). Нейромережі (rembg: ISNet, U²-Net, BiRefNet-lite) перевірено 16.10 — «з'їдають» золоті
   контакти й лишають тінь між планками; не беремо.
+  Фото №4 (тьмяне світло, градієнт, темна тінь від лампи) — сіра облямівка: тепер яскравість відносно МІСЦЕВОГО фону (максимум
+  у широкому вікні + розмиття): тінь на папері 0,44–0,65 місцевого фону, радіатор 0,08–0,17 — поріг 0,42 / 0,36 для затіненого паперу.
 - **Опис оголошення — по-людськи** (прохання користувача): «Biete hier ein Kit … an. Die Riegel sind gebraucht, laufen einwandfrei
   und wurden … mit MemTest86 getestet», коротко дані, «Mit dabei … Verschickt wird …», «Privatverkauf, daher keine Garantie und keine
   Rücknahme. Bei Fragen einfach melden!». Прибрано «in der Regel am nächsten Werktag» і «Rechte aus dem eBay-Käuferschutz …
