@@ -83,7 +83,7 @@ const url = 'https://signin.ebay.de/ws/eBayISAPI.dll?ThirdPartyAuthSucessFailure
 say(url, 41);
 check('auth_code dispatched with url', [opened().mode, opened().code], ['auth_code', url]);
 check('message with code deleted', tg.some((c) => c[0] === 'deleteMessage' && c[1].message_id === 41), true);
-check('no plain code in GitHub request', JSON.stringify(gh[gh.length - 1]).includes('abc'), false);
+check('no plain code in GitHub request', ['eBayISAPI', 'isAuthSuccessful', 'i%5E1%23abc'].some((x) => JSON.stringify(gh[gh.length - 1]).includes(x)), false);   // 16.10: «abc» траплялось у випадковому шифрі
 
 // підроблений sealed (інший ключ) — ігнор; справжній — ключ збережено + перевірка без публікації на №1 (Перевірено, з фото)
 store.PH_1 = JSON.stringify([{ id: 'P1', t: 'photo', u: 'u1', k: '1x1:1' }]);
