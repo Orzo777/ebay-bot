@@ -36,12 +36,14 @@ class StudioTest(unittest.TestCase):
         out = photo_studio.studio(module_photo())
         self.assertIsNotNone(out)
         a = np.asarray(Image.open(io.BytesIO(out)).convert("RGB")).astype(int)
-        self.assertEqual(a.shape[:2], (photo_studio.OUT, photo_studio.OUT))
+        n = a.shape[0]
+        self.assertEqual(a.shape[0], a.shape[1])                      # квадрат
+        self.assertTrue(800 <= n <= photo_studio.OUT)                 # під розмір оригіналу, без розтягування
         for y, x in [(10, 10), (10, -10), (-10, 10), (-10, -10)]:
             self.assertGreater(a[y, x].mean(), 245)                   # кути — білі (без паперу й тіні)
-        mid = a[photo_studio.OUT // 2 - 200:photo_studio.OUT // 2 + 200, photo_studio.OUT // 2 - 300:photo_studio.OUT // 2 + 300]
+        mid = a[n // 2 - n // 8:n // 2 + n // 8, n // 2 - n // 5:n // 2 + n // 5]
         self.assertLess(mid.mean(), 150)                              # товар по центру (порошинка не зсунула кадр)
-        top = a[:photo_studio.OUT // 4]
+        top = a[:n // 5]
         self.assertGreater(top.min(axis=2).mean(), 240)               # зверху — чисто, без шматка скотчу
 
     def test_screen_photo_untouched(self):

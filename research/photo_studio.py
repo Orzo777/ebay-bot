@@ -11,7 +11,8 @@ import sys
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
-WORK = 480        # маска рахується на зменшеній копії — швидко
+WORK = 900        # маска — на зменшеній копії (16.10: 480 давало рвані краї на стиснутих фото з Telegram)
+K = WORK // 160   # радіуси звуження / розширення під цей розмір
 OUT = 1600        # квадрат для eBay (мінімум 500 px, краще ≥ 1600)
 
 
@@ -83,16 +84,16 @@ def background_mask(img: Image.Image) -> np.ndarray | None:
         return None   # темний / кольоровий / строкатий фон (фото екрана тощо)
     allowed = (lum > bg_lum * 0.5) & (sat < 45)   # папір і тінь на ньому; планка темна, контакти — насичені
     # заливаємо по «звуженому» фону: вузькі проходи (виріз між контактами, щілини) не пускають фон усередину планки
-    narrow = erode(allowed, 3)
+    narrow = erode(allowed, K)
     seed = np.zeros_like(allowed)
     seed[0, :] = seed[-1, :] = seed[:, 0] = seed[:, -1] = True
-    bg = dilate(_grow(seed, narrow), 3) & allowed
+    bg = dilate(_grow(seed, narrow), K) & allowed
     # другий прохід: у вузькі щілини (між планками) — лише там, де яскравість точно як у паперу (плата й відблиски темніші
     # або насиченіші — лишаються)
-    paper = (lum > 0.72 * bg_lum) & (lum < 1.15 * bg_lum) & (sat < 28)
+    paper = (lum > 0.6 * bg_lum) & (lum < 1.15 * bg_lum) & (sat < 30)   # і затінений папір між планками
     bg = _grow(bg, paper | bg)
-    fg = erode(dilate(~bg, 2), 2)                 # закрити дрібні дірки в товарі
-    fg = dilate(erode(fg, 3), 3)                  # прибрати порошинки й крихти на папері
+    fg = erode(dilate(~bg, K // 2 + 1), K // 2 + 1)   # закрити дрібні дірки в товарі
+    fg = dilate(erode(fg, K), K)                      # прибрати порошинки й крихти на папері
     fg = keep_big(fg)                             # 16.10: і більші сторонні шматки (крихта, скотч) — лише сам товар
     bg = ~fg
     share = fg.mean()
@@ -108,7 +109,7 @@ def studio(data: bytes) -> bytes | None:
     if bg is None:
         return None
     mask = Image.fromarray(((~bg) * 255).astype(np.uint8)).resize(img.size, Image.BILINEAR)
-    mask = mask.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(1.5))   # без ореолу паперу по краю
+    mask = mask.filter(ImageFilter.GaussianBlur(1.2))   # м'який край без ореолу паперу
     box = mask.point(lambda v: 255 if v > 128 else 0).getbbox()
     if not box:
         return None
@@ -116,15 +117,17 @@ def studio(data: bytes) -> bytes | None:
     box = (max(0, box[0] - pad), max(0, box[1] - pad), min(img.width, box[2] + pad), min(img.height, box[3] + pad))
     obj, m = img.crop(box), mask.crop(box)
     obj = ImageOps.autocontrast(obj, cutoff=0.5)   # рівна експозиція без засвіту
-    scale = 0.86 * OUT / max(obj.size)
+    # 16.10: кадр під розмір оригіналу — фото з Telegram (720–1280 px) не розтягуємо до 1600 (було розмито); не менше 800
+    side = max(800, min(OUT, int(max(obj.size) / 0.86)))
+    scale = 0.86 * side / max(obj.size)
     size = (max(1, int(obj.width * scale)), max(1, int(obj.height * scale)))
     obj, m = obj.resize(size, Image.LANCZOS), m.resize(size, Image.LANCZOS)
-    canvas = Image.new("RGB", (OUT, OUT), "white")
-    x, y = (OUT - size[0]) // 2, (OUT - size[1]) // 2
-    shadow = Image.new("L", (OUT, OUT), 0)   # легка тінь під товаром
-    shadow.paste(m.point(lambda v: v * 0.35), (x + int(0.012 * OUT), y + int(0.018 * OUT)))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(OUT * 0.012))
-    canvas.paste(Image.new("RGB", (OUT, OUT), (150, 150, 150)), (0, 0), shadow)
+    canvas = Image.new("RGB", (side, side), "white")
+    x, y = (side - size[0]) // 2, (side - size[1]) // 2
+    shadow = Image.new("L", (side, side), 0)   # легка тінь під товаром
+    shadow.paste(m.point(lambda v: v * 0.35), (x + int(0.012 * side), y + int(0.018 * side)))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(side * 0.012))
+    canvas.paste(Image.new("RGB", (side, side), (150, 150, 150)), (0, 0), shadow)
     canvas.paste(obj, (x, y), m)
     out = io.BytesIO()
     canvas.save(out, "JPEG", quality=90, optimize=True)
