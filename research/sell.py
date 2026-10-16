@@ -393,13 +393,15 @@ def build_steps(row: int | None, pr: dict, tx: dict) -> str:
     return "\n".join(out)
 
 
-def keyboard(tx: dict, r: dict, row: int | None = None, ebay: bool = False) -> dict:
-    """10.10: під карткою «продати» — дії: автоматично, покроково (вручну), конкуренти."""
+def keyboard(tx: dict, r: dict, row: int | None = None, ebay: bool = False, listed: bool = False) -> dict:
+    """10.10: під карткою «продати» — дії: автоматично, покроково (вручну), конкуренти.
+    16.10: уже виставлене на eBay — «🔁 Оновити на eBay» (правки в живе оголошення) замість «🚀»."""
     q, cat = competitor_query(r)
     rows = []
     if row and ebay:
-        rows.append([{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}])
-        rows.append([{"text": "✏️ Змінити ціну / назву / опис", "callback_data": f"c|змінити|{row}"}])
+        rows.append([{"text": "🔁 Оновити оголошення на eBay", "callback_data": f"c|оновити|{row}"}] if listed else
+                    [{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}])
+        rows.append([{"text": "✏️ Змінити ціну / назву / опис / фото", "callback_data": f"c|змінити|{row}"}])
     if row:
         rows.append([{"text": "📋 Покроково (вручну) + фото", "callback_data": f"c|кроки|{row}"}])
     rows.append([{"text": "🔎 Конкуренти на eBay",
@@ -465,14 +467,14 @@ def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=comp
 
 
 def make(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, ebay: bool = False,
-         edits: dict | None = None) -> tuple[str, dict | None]:
+         edits: dict | None = None, listed: bool = False) -> tuple[str, dict | None]:
     p = prepare(title, cost, row, comp_fn, edits)
     if not p:
         return (f"🤔 Не впізнав товар «{html.escape(title[:80])}».\nНапиши повніше, наприклад:\n"
                 f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None, "")
     r, pr, comp, tx = p["r"], p["pr"], p["comp"], p["tx"]
     make.steps_kb = steps_keyboard(tx, r)
-    return build_card(row, title, r, pr, comp, tx, cost, p["edited"]), keyboard(tx, r, row, ebay), build_steps(row, pr, tx)
+    return build_card(row, title, r, pr, comp, tx, cost, p["edited"]), keyboard(tx, r, row, ebay, listed), build_steps(row, pr, tx)
 
 
 def office_send_html(text: str, markup: dict | None) -> bool:
@@ -669,6 +671,8 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         if pics:   # 16.10: головні фото посилок до тебе — альбомом, з підписом «№N назва»
             print(f"фото посилок: {office_send_url_album(pics, requests.get)} з {len(pics)}")
         return ok
+    if mode == "revise":   # 16.10: «🔁 Оновити на eBay» — правки в живе оголошення
+        return revise_mode(d, key, app, cert, post, file_fn, send, back, comp_fn)
     if mode == "listings":   # 16.10: «🏷 Виставлено» — активні лоти eBay (перегляди, спостерігачі) + KA з обліку
         import listings
         token = None
@@ -733,6 +737,47 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
                 f"відхиляти нижче {ip['decline']} €\n📸 фото: {len(pics)} · {fee}\n"
                 "Перевір оголошення за посиланням; змінити щось — «Bearbeiten» на eBay." + warn,
                 {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": link}]]})
+
+
+def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, back, comp_fn) -> bool:
+    """Ті самі назва / опис / ціна / пороги / фото, що в картці «продати N» з правками → ReviseFixedPriceItem."""
+    import ebay_list as el
+    row, item_id = d.get("row"), str(d.get("item_id") or "")
+    what = f"№{row}" if row else "товару"
+    if not d.get("rt"):
+        return send("🔑 eBay ще не підключено — напиши «ebay вхід».", None)
+    if not item_id:
+        return send(f"⚠️ Не знаю номер оголошення eBay для {what} — онови вручну («Bearbeiten») або виставив заново.", None)
+    p = prepare(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, row, comp_fn,
+                d.get("edits"))
+    if not p:
+        return send(f"🤔 Не впізнав товар {what} — оновлювати автоматично не буду.", None)
+    tx, ip = p["tx"], item_prices(p["pr"], p["tx"]["ship"])
+    try:
+        token = el.access_token(d["rt"], app, cert, post)
+        pics = []
+        for i, ph in enumerate([x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]):
+            if len(pics) >= el.MAX_PHOTOS:
+                break
+            data = file_fn(ph["id"], key)
+            if data and el.is_image(data):
+                if not (d.get("edits") or {}).get("raw"):
+                    data = studio_or_original(data)
+                pics.append(el.upload_picture(data, f"n{row}-r{i + 1}", token, post))
+        res = el.revise_listing(item_id, tx, ip, pics, token, post)
+    except el.AuthError as e:
+        back({"kind": "ebay_bad"}, key)
+        return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід».", None)
+    except el.EbayError as e:
+        return send(f"⚠️ Не вийшло оновити {what}: {html.escape(str(e)[:300])}\nНічого не змінено.", None)
+    if not res["ok"]:
+        return send(f"⚠️ eBay не прийняв зміни {what}:\n{_short(res['errors'])}\nОголошення лишилось як було.", None)
+    back({"kind": "revised", "row": row, "price": ip["item"], "item_id": item_id}, key)
+    warn = ("\nℹ️ eBay каже:\n" + _short(el.explain(res["warnings"]), 3)) if res["warnings"] else ""
+    return send(f"🔁 <b>{what} оновлено на eBay</b>\n<i>{html.escape(tx['title'])}</i>\n"
+                f"💶 {ip['item']} € + доставка {money_de(tx['ship'])} € · автоприйняти від {ip['accept']} €, відхиляти нижче "
+                f"{ip['decline']} €" + (f"\n📸 фото: {len(pics)}" if pics else "") + warn,
+                {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": f"https://www.ebay.de/itm/{item_id}"}]]})
 
 
 def plan_line(title: str, cost: float | None, row=None) -> str | None:
@@ -801,11 +846,11 @@ def main():
             return
         title, cost, row = d.get("title") or "", d.get("cost"), d.get("row")
         photos, ebay, steps_only = d.get("photos") or [], bool(d.get("ebay")), bool(d.get("steps"))
-        edits = d.get("edits")
+        edits, listed = d.get("edits"), bool(d.get("item_id"))
     else:
-        title, cost, row, photos, edits = a.title or "", a.cost, None, [], None
+        title, cost, row, photos, edits, listed = a.title or "", a.cost, None, [], None, False
     try:
-        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row, ebay=ebay, edits=edits)
+        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row, ebay=ebay, edits=edits, listed=listed)
     except Exception as e:   # картку-помилку — у бот, щоб не чекати мовчки
         office_send_html(f"⚠️ Не вийшло підготувати оголошення: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise

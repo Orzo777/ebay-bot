@@ -232,5 +232,34 @@ class EbayModeTest(unittest.TestCase):
         self.assertNotIn("c|авто", json.dumps(kb, ensure_ascii=False))
 
 
+class ReviseTest(unittest.TestCase):
+    """16.10: «🔁 Оновити на eBay» — ReviseFixedPriceItem з назвою, описом, ціною, порогами, характеристиками й фото."""
+
+    def test_revise_xml(self):
+        import ebay_list as el
+        sent = []
+        ns = "urn:ebay:apis:eBLBaseComponents"
+
+        def post(url, headers=None, data=None, **kw):
+            sent.append((headers["X-EBAY-API-CALL-NAME"], data.decode()))
+
+            class R:
+                status_code = 200
+                content = f'<ReviseFixedPriceItemResponse xmlns="{ns}"><Ack>Success</Ack></ReviseFixedPriceItemResponse>'.encode()
+            return R()
+        tx = {"title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133 CL13 CMK32GX4M2A2133C13 getestet", "desc": "Biete hier & an.",
+              "cond": "Gebraucht", "required": [("Marke", "Corsair")], "more": [("Herstellernummer", "CMK32GX4M2A2133C13")], "ship": 6.49}
+        res = el.revise_listing("1234567890", tx, {"item": 168, "accept": 161, "decline": 140}, ["https://i.ebayimg.com/1.jpg"], "tok", post)
+        self.assertTrue(res["ok"])
+        call, body = sent[0]
+        self.assertEqual(call, "ReviseFixedPriceItem")
+        for part in ("<ItemID>1234567890</ItemID>", "<Title>Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133 CL13", '<StartPrice currencyID="EUR">168.00',
+                     "BestOfferAutoAcceptPrice", "MinimumBestOfferPrice", "<PictureURL>https://i.ebayimg.com/1.jpg</PictureURL>",
+                     "<Name>Herstellernummer</Name><Value>CMK32GX4M2A2133C13</Value>", "&amp;amp;"):
+            self.assertIn(part, body)
+        el.revise_listing("1", tx, {"item": 168}, [], "tok", post)
+        self.assertNotIn("PictureDetails", sent[-1][1])   # без нових фото — фото на eBay не чіпаємо
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -147,6 +147,26 @@ check('listed recorded', [deals.cells['5:11'], /виставлено за 96 €
 say('опублікувати 1');
 check('already listed refused', /Виставлено/.test(last()[0]), true);
 
+// 16.10: «🔁 Оновити на eBay» — виставлене: картка з номером оголошення, підтвердження, запуск revise з правками, нотатка
+say('продати 1');
+check('sell card of a listed item knows the eBay id', opened().item_id, '1234567890');
+say('ціна 1 129');
+ctx.officeCallback({ id: 'q', data: 'c|оновити|1', message: { chat: { id: 7 }, message_id: 70 } });
+check('revise confirm asked, card kept', [/Оновити оголошення №1 на eBay/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data,
+  tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 70)], [true, 'c|так-оновити|1', false]);
+ctx.officeCallback({ id: 'q', data: 'c|так-оновити|1', message: { chat: { id: 7 }, message_id: 71 } });
+const rv = opened();
+check('revise dispatched', [rv.mode, rv.row, rv.item_id, rv.edits.price, rv.photos.length, rv.rt], ['revise', 1, '1234567890', 129, 1, 'v^1.1#RT']);
+ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'revised', row: 1, price: 129, item_id: '1234567890' }, '123:ABC', 'n5') }) },
+  parameter: { bot: 'office' } });
+check('revised noted, edits cleared', [/оновлено на eBay 09.10 \(129 €\)/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]),
+  JSON.parse(store.SELL_EDITS)[1]], [true, undefined]);
+say('оновити 3');
+ctx.officeCallback({ id: 'q', data: 'c|так-оновити|3', message: { chat: { id: 7 }, message_id: 72 } });
+check('not listed — no revise', /ще не виставлено автоматично/.test(last()[0]), true);
+say('видали фото 1');
+check('photos deleted', [JSON.parse(store.PH_1 || '[]').length, /Прибрав 1 фото №1/.test(last()[0])], [0, true]);
+
 // 16.10: «🏷 Виставлено» (кнопка) → GitHub listings: ключ eBay + рядки «Виставлено» з нотатками (номер eBay)
 say('🏷 Виставлено');
 check('listings dispatched', [opened().mode, opened().rt, opened().rows.map((r) => [r.n, /eBay 1234567890/.test(r.note)]),

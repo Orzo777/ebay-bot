@@ -186,6 +186,29 @@ def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, durat
             "</Item>")
 
 
+def revise_listing(item_id: str, tx: dict, prices: dict, pics: list[str], token: str, post) -> dict:
+    """16.10 (користувач: «🔁 правки в живе оголошення замість перевиставлення»): назва, опис, ціна, пороги Preisvorschlag,
+    стан, характеристики й фото (якщо є) — ReviseFixedPriceItem; оголошення лишається тим самим (перегляди, спостерігачі).
+    → {ok, errors, warnings}."""
+    eur = lambda tag, v: f'<{tag} currencyID="EUR">{float(v):.2f}</{tag}>'   # noqa: E731
+    spec = "".join(f"<NameValueList><Name>{_x(k)}</Name><Value>{_x(v)}</Value></NameValueList>" for k, v in specifics(tx))
+    best = ""
+    if prices.get("accept") and prices.get("decline") and prices["decline"] < prices["accept"] < prices["item"]:
+        best = ("<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>"
+                f"<ListingDetails>{eur('BestOfferAutoAcceptPrice', prices['accept'])}{eur('MinimumBestOfferPrice', prices['decline'])}</ListingDetails>")
+    body = (f"<Item><ItemID>{_x(item_id)}</ItemID>"
+            f"<Title>{_x(tx['title'][:80])}</Title>"
+            f"<Description>{_x(description_html(tx['desc']))}</Description>"
+            f"{eur('StartPrice', prices['item'])}"
+            f"<ConditionDescription>{_x(tx['cond'][:1000])}</ConditionDescription>"
+            + ("<PictureDetails>" + "".join(f"<PictureURL>{_x(u)}</PictureURL>" for u in pics[:MAX_PHOTOS]) + "</PictureDetails>"
+               if pics else "")
+            + f"<ItemSpecifics>{spec}</ItemSpecifics>{best}</Item>")
+    root = trading("ReviseFixedPriceItem", body, token, post)
+    errs, warns = problems(root)
+    return {"ok": not errs, "errors": errs, "warnings": warns}
+
+
 def listing_fee(root: ET.Element) -> float:
     for f in root.iter(NS + "Fee"):
         if f.findtext(NS + "Name") == "ListingFee":

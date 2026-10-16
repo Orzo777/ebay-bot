@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-16d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-16e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -476,7 +476,7 @@ const MENU = {
     '• перевірив 3 / проблема 3 — протестовано / щось не так (підкажу, як заявити)\n' +
     '• межі — межі цін у підписках KA', ['на руках']],
   sell: ['💶 Продаж', '• продати — що вже можна продавати; продати 3 — готове оголошення (ціна, назва, опис німецькою) ' +
-    'і кнопка «🚀 Виставити на eBay»; ✏️ — змінити ціну, назву чи опис перед 🚀 («ціна 3 145»)\n' +
+    'і кнопка «🚀 Виставити на eBay»; ✏️ — змінити ціну, назву, опис чи фото («ціна 3 145»); уже виставлене — 🔁 Оновити на eBay\n' +
     '• відправив 3 трек — трек піде в eBay сам, покупцю — подяка\n' +
     '• виставив 3 124 — якщо виставив сам\n' +
     '• виставлено — що зараз на продажу: ціна, дні, перегляди, спостерігачі, посилання (eBay; KA — «Мої оголошення»)\n' +
@@ -610,6 +610,7 @@ function officeMessage(msg) {
   if (alias) msg = Object.assign({}, msg, { text: alias });
   else if (canonCmd_(msg.text) !== String(msg.text || '').trim()) msg = Object.assign({}, msg, { text: canonCmd_(msg.text) });
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
+      photoDeleteCommand_(msg) ||
       onHandCommand_(msg)) return;
   if (parcelsCommand_(msg) || listingsCommand_(msg) || editCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
@@ -760,10 +761,43 @@ function sellCommand_(msg) {
     props.setProperty('SELL_TITLES', JSON.stringify(t));
   }
   const code = sellDispatch_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1), ebay: !!props.getProperty('EBAY_RT'),
-    edits: sellEdits_()[idx + 1] || null });
+    edits: sellEdits_()[idx + 1] || null, item_id: v[COL.status - 1] === 'Виставлено' ? listingId_(v[COL.note - 1]) : '' });
   notify_(code === 204
     ? '⏳ Готую оголошення для №' + (idx + 1) + ' «' + title + '» — приблизно хвилина.'
     : '⚠️ Не зміг запустити підготовку оголошення (GitHub ' + code + ').');
+  return true;
+}
+
+/** Номер eBay-оголошення з нотаток рядка («виставлено … (eBay 123456789012)») — останній. */
+function listingId_(note) {
+  const all = String(note || '').match(/eBay (\d{9,15})/g);
+  return all ? all[all.length - 1].replace(/\D/g, '') : '';
+}
+
+/** 16.10: «🔁 Оновити на eBay» → GitHub (sell.yml, режим revise): правки в живе оголошення (назва, опис, ціна, пороги, фото). */
+function reviseCommand_(n) {
+  const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
+  if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
+  const r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + '.'); return; }
+  const note = String(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.note).getValue() || '');
+  const itemId = listingId_(note);
+  if (r.status !== 'Виставлено' || !itemId) {
+    notify_('№' + n + ' ще не виставлено автоматично на eBay (немає номера оголошення) — спершу 🚀 або «виставив ' + n + '».'); return;
+  }
+  const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
+  const code = sellDispatch_({ mode: 'revise', row: n, title: String(title), cost: r.spent, photos: cleanPhotos_(n), rt: rt,
+    edits: sellEdits_()[n] || null, item_id: itemId });
+  notify_(code === 204 ? '⏳ Оновлюю №' + n + ' на eBay — 1–2 хвилини.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+}
+
+/** «видали фото N» — прибрати всі фото №N (надіслати нові з підписом «N»). */
+function photoDeleteCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?(?:видали|очисти|прибери)\s+фото\s+(\d{1,4})$/i);
+  if (!m) return false;
+  const n = Number(m[1]), had = photosOf_(n).length;
+  savePhotos_(n, []);
+  notify_(had ? '🗑 Прибрав ' + had + ' фото №' + n + '. Надішли нові з підписом «' + n + '».' : 'У №' + n + ' фото не було.');
   return true;
 }
 
@@ -796,8 +830,9 @@ function editCommand_(msg) {
       '<code>ціна ' + n + ' </code>— ціна товару без доставки, напр. «ціна ' + n + ' 145»\n' +
       '<code>назва ' + n + ' </code>— назва на eBay (до 80 знаків)\n' +
       '<code>опис ' + n + ' </code>— дописати в опис (німецькою)\n' +
-      '<code>скинути ' + n + '</code> — повернути, як порахував бот</blockquote>\n' +
-      'Після кожної правки пришлю оновлену картку — тоді 🚀.', null, 'HTML');
+      '<code>скинути ' + n + '</code> — повернути, як порахував бот\n' +
+      'фото — надішли з підписом «' + n + '»; старі прибрати — <code>видали фото ' + n + '</code></blockquote>\n' +
+      'Після кожної правки пришлю оновлену картку — тоді 🚀 (уже виставлене — 🔁 Оновити на eBay).', null, 'HTML');
     return true;
   }
   if (cmd === 'скинути') delete ed[n];
@@ -887,6 +922,13 @@ function ebayCommand_(msg) {
     return true;
   }
   if ((m = t.match(/^\/?(?:так-авто|опублікувати)\s+(\d{1,4})$/i))) { publishCommand_(Number(m[1]), false); return true; }
+  if ((m = t.match(/^\/?оновити\s+(\d{1,4})$/i))) {   // 16.10: правки в живе оголошення — з підтвердженням
+    notify_('🔁 Оновити оголошення №' + m[1] + ' на eBay?\nНазва, опис, ціна, пороги пропозицій і фото — як у картці вище ' +
+            '(з твоїми правками). Оголошення лишається тим самим: перегляди й спостерігачі зберігаються.',
+            { inline_keyboard: [[{ text: '✅ Так, оновити №' + m[1], callback_data: 'c|так-оновити|' + m[1] }]] });
+    return true;
+  }
+  if ((m = t.match(/^\/?так-оновити\s+(\d{1,4})$/i))) { reviseCommand_(Number(m[1])); return true; }
   if ((m = t.match(/^\/?(?:ebay|ебей|ібей)\s+тест\s+(\d{1,4})$/i))) { publishCommand_(Number(m[1]), true); return true; }
   return false;
 }
@@ -1239,6 +1281,13 @@ function sealedPost(s) {
     props.setProperty('ASSIST_HIST', JSON.stringify(h.slice(-6)));
   } else if (d.kind === 'ebay_bad') {
     props.deleteProperty('EBAY_RT');
+  } else if (d.kind === 'revised' && d.row) {
+    const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
+    const note = String(sh.getRange(row, COL.note).getValue() || '');
+    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'оновлено на eBay ' +
+      Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (d.price ? ' (' + d.price + ' €)' : ''));
+    const ed = sellEdits_();
+    if (ed[d.row]) { delete ed[d.row]; props.setProperty('SELL_EDITS', JSON.stringify(ed)); }
   } else if (d.kind === 'parcels' && Array.isArray(d.events)) {
     parcelEvents_(d.events);
   } else if (d.kind === 'listed' && d.row) {
@@ -2330,7 +2379,7 @@ function sendAlbum_(list, caption) {
 // Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
-  'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити' };
+  'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {
@@ -2351,7 +2400,7 @@ function officeCallback(cq) {
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + (m[1] === 'посилки' ? '' : ' №' + m[2]) : '' });
   if (!m || !chat || String(from) !== String(chat) || !BTN[m[1]]) return;
-  if (['продати', 'фото', 'авто', 'кроки', 'посилки', 'змінити'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
+  if (['продати', 'фото', 'авто', 'кроки', 'посилки', 'змінити', 'оновити'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
     tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
   }
   officeMessage({ text: m[1] + ' ' + m[2], chat: { id: from }, message_id: 0 });
