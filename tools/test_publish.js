@@ -164,13 +164,18 @@ check('revised noted, edits cleared', [/оновлено на eBay 09.10 \(129 �
 say('оновити 3');
 ctx.officeCallback({ id: 'q', data: 'c|так-оновити|3', message: { chat: { id: 7 }, message_id: 72 } });
 check('not listed — no revise', /ще не виставлено автоматично/.test(last()[0]), true);
+// виставив вручну з посиланням → номер оголошення в нотатках → «🔁» працює
+deals.cells['7:11'] = 'Перевірено';
+say('виставив 3 59 https://www.ebay.de/itm/Kingston-16GB/306123456789?hash=x');
+check('manual listing with link stores the id', [/виставлено за 59 € 09.10 \(eBay 306123456789\)/.test(deals.cells['7:' + vm.runInContext('COL.note', ctx)]),
+  /запам'ятав/.test(last()[0])], [true, true]);
 say('видали фото 1');
 check('photos deleted', [JSON.parse(store.PH_1 || '[]').length, /Прибрав 1 фото №1/.test(last()[0])], [0, true]);
 
 // 16.10: «🏷 Виставлено» (кнопка) → GitHub listings: ключ eBay + рядки «Виставлено» з нотатками (номер eBay)
 say('🏷 Виставлено');
 check('listings dispatched', [opened().mode, opened().rt, opened().rows.map((r) => [r.n, /eBay 1234567890/.test(r.note)]),
-  /Дивлюся виставлене/.test(last()[0])], ['listings', 'v^1.1#RT', [[1, true]], true]);
+  /Дивлюся виставлене/.test(last()[0])], ['listings', 'v^1.1#RT', [[1, true], [3, false]], true]);
 
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));

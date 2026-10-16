@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-16e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-16f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1294,7 +1294,7 @@ function sealedPost(s) {
     const chat = props.getProperty('TELEGRAM_CHAT_ID');
     const ed = sellEdits_();
     if (ed[d.row]) { delete ed[d.row]; props.setProperty('SELL_EDITS', JSON.stringify(ed)); }
-    listedCommand_({ text: 'виставив ' + d.row + (d.price ? ' ' + d.price : ''), chat: { id: chat } }, d.item_id);
+    listedCommand_({ text: 'виставив ' + d.row + (d.price ? ' ' + d.price : ''), chat: { id: chat }, _auto: true }, d.item_id);
   }
 }
 
@@ -1346,6 +1346,9 @@ function listedCommand_(msg, itemId) {
   const props = PropertiesService.getScriptProperties();
   if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID')) || !props.getProperty('LEDGER_ID')) return true;
   if (!m[1]) { notify_('Напиши так: «виставив 3 124» — номер у таблиці і ціна (ціну можна не писати).'); return true; }
+  // 16.10: виставив вручну — номер оголошення з посилання («виставив 4 168 https://www.ebay.de/itm/123…») → працює «🔁 Оновити»
+  const link = String(msg.text || '').match(/ebay\.[a-z.]+\/itm\/(?:[^\s\/]+\/)?(\d{9,15})|(?:^|\s)(\d{12})(?:\s|$)/i);
+  if (!itemId && link) itemId = link[1] || link[2];
   const sh = ledger_().getSheetByName('Угоди');
   const row = Number(m[1]) + LEDGER_FIRST - 1;
   const title = row <= sh.getLastRow() ? sh.getRange(row, COL.title).getValue() : '';
@@ -1353,13 +1356,15 @@ function listedCommand_(msg, itemId) {
   const st = sh.getRange(row, COL.status).getValue();
   if (['Продано', 'Повернено', 'Скасовано'].indexOf(st) >= 0) { notify_('№' + m[1] + ' — статус «' + st + '», не змінюю.'); return true; }
   sh.getRange(row, COL.status).setValue('Виставлено');
-  if (m[2]) {
+  if (m[2] || itemId) {
     const note = String(sh.getRange(row, COL.note).getValue() || '');
-    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'виставлено за ' + m[2].replace(',', '.') + ' € ' +
-      Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (itemId ? ' (eBay ' + itemId + ')' : ''));
+    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'виставлено' + (m[2] && !(itemId && m[2] === itemId) ? ' за ' +
+      m[2].replace(',', '.') + ' €' : '') + ' ' + Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (itemId ? ' (eBay ' + itemId + ')' : ''));
   }
-  if (!itemId) notify_('🏷 №' + m[1] + ' «' + title + '» — виставлено' + (m[2] ? ' за ' + m[2] + ' €' : '') + '. Коли продаси — «продав ' +
-          (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '» (або лист eBay запише сам).');
+  if (!link && !msg._auto) notify_('🏷 №' + m[1] + ' «' + title + '» — виставлено' + (m[2] ? ' за ' + m[2] + ' €' : '') + '. Коли продаси — «продав ' +
+          (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '» (або лист eBay запише сам).' +
+          ' Щоб правити оголошення з бота (🔁) — додай посилання: «виставив ' + m[1] + ' ' + (m[2] || 'ціна') + ' https://www.ebay.de/itm/…».');
+  else if (link) notify_('🏷 №' + m[1] + ' — виставлено, оголошення eBay ' + itemId + ' запам\'ятав: «продати ' + m[1] + '» → ✏️ правки → 🔁 Оновити.');
   return true;
 }
 
