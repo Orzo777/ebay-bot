@@ -50,6 +50,25 @@ def erode(m: np.ndarray, k: int) -> np.ndarray:
     return ~dilate(~m, k)
 
 
+def keep_big(fg: np.ndarray, share: float = 0.12) -> np.ndarray:
+    """Лише великі об'єкти (планки, консоль): усе, що менше за share від найбільшого, — у фон (крихти, клаптики скотчу)."""
+    rest, comps = fg.copy(), []
+    while rest.any() and len(comps) < 40:
+        seed = np.zeros_like(rest)
+        seed[np.unravel_index(np.argmax(rest), rest.shape)] = True
+        comp = _grow(seed, rest)
+        comps.append(comp)
+        rest &= ~comp
+    if not comps:
+        return fg
+    big = max(c.sum() for c in comps)
+    out = np.zeros_like(fg)
+    for c in comps:
+        if c.sum() >= share * big:
+            out |= c
+    return out
+
+
 def background_mask(img: Image.Image) -> np.ndarray | None:
     """→ маска фону (True — фон) на розмірі WORK або None, якщо фон не світлий і рівний."""
     small = img.convert("RGB").copy()
@@ -74,6 +93,7 @@ def background_mask(img: Image.Image) -> np.ndarray | None:
     bg = _grow(bg, paper | bg)
     fg = erode(dilate(~bg, 2), 2)                 # закрити дрібні дірки в товарі
     fg = dilate(erode(fg, 3), 3)                  # прибрати порошинки й крихти на папері
+    fg = keep_big(fg)                             # 16.10: і більші сторонні шматки (крихта, скотч) — лише сам товар
     bg = ~fg
     share = fg.mean()
     if share < 0.04 or share > 0.85:

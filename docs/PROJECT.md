@@ -275,6 +275,7 @@ assist.yml → research/assist.py запускає **Claude Code** (`claude -p`,
   товар по центру квадрата 1600×1600 з легкою тінню; фон — світлі ненасичені пікселі від краю кадру (вузькі щілини закриваємо,
   порошинки прибираємо; наклейка й контакти лишаються). Екран тесту / темний чи строкатий фон — оригінал. Після картки «продати N»
   — альбом «📸 Так фото підуть на eBay»; 🚀 вантажить оброблені; «оригінали N» / «обробити N» — вимкнути / увімкнути.
+  У кадрі лишаються лише великі об'єкти (≥ 12% найбільшого) — крихти й клаптики скотчу йдуть у фон (перше фото №4 мало такий).
 - **Опис оголошення — по-людськи** (прохання користувача): «Biete hier ein Kit … an. Die Riegel sind gebraucht, laufen einwandfrei
   und wurden … mit MemTest86 getestet», коротко дані, «Mit dabei … Verschickt wird …», «Privatverkauf, daher keine Garantie und keine
   Rücknahme. Bei Fragen einfach melden!». Прибрано «in der Regel am nächsten Werktag» і «Rechte aus dem eBay-Käuferschutz …
