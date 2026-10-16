@@ -124,6 +124,22 @@ office('☰ Меню');
 check('menu button', /☰ Меню — обери розділ/.test(said[said.length - 1]), true);
 office('https://www.kleinanzeigen.de/s-anzeige/x/1-225-1');
 check('office link not evaluated', /Не зрозумів/.test(said[said.length - 1]), true);
+// 16.10: міні-хелпер — описки й фрази → команда мовчки; дві можливі — перепитує; решта тексту без змін
+const fz = (x) => JSON.stringify(ctx.fuzzyCmd_(x));
+check('typos → command', [fz('внставлено'), fz('посилкі'), fz('забарв 3'), fz('нп руках'), fz('Назав 3 Corsair LPX 2x16')],
+  ['{"text":"виставлено"}', '{"text":"посилки"}', '{"text":"отримав 3"}', '{"text":"на руках"}', '{"text":"назва 3 Corsair LPX 2x16"}']);
+check('phrases → command', [fz('що на продажі?'), fz('де посилки'), fz('скільки заробив'), fz('що ти вмієш')],
+  ['{"text":"виставлено"}', '{"text":"посилки"}', '{"text":"облік"}', '{"text":"меню"}']);
+check('ambiguous → ask', ctx.fuzzyCmd_('продат 3').ambiguous.sort(), ['продав 3', 'продати 3']);
+check('not a command', [ctx.fuzzyCmd_('привіт як справи'), ctx.fuzzyCmd_('https://www.kleinanzeigen.de/s-anzeige/x/1'), ctx.fuzzyCmd_('продати 3')],
+  [null, null, null]);
+const said0 = said.length;
+vm.runInContext('ledgerCommand = function (m) { if (m.text === "облік") { __said.push("LC:" + m.text); return true; } return false; };', ctx);
+office('облiк');   // латинська «i» — описка
+check('typo runs silently', [said.length - said0, said[said.length - 1]], [1, 'LC:облік']);
+office('продат 3');
+check('ambiguous asks', /Не впевнений.*«продав 3» чи «продати 3»|Не впевнений.*«продати 3» чи «продав 3»/.test(said[said.length - 1]), true);
+ctx.ledgerCommand = realLC;
 office('купив 20 Kingston 8GB');
 check('office ledger command', added[added.length - 1].price, 20);
 

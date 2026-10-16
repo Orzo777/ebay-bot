@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-16a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-16b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -546,6 +546,55 @@ const CMD_SYNONYMS = { 'забрав': 'отримав', 'забрала': 'от
   'протестував': 'перевірив', 'протестувала': 'перевірив', 'перевірила': 'перевірив', 'тест': 'перевірив',
   'надіслав': 'відправив', 'надіслала': 'відправив', 'відіслав': 'відправив', 'відправила': 'відправив' };
 
+// 16.10 (користувач: «міні-хелпер — розумів, що я мав на увазі, і мовчки виконував»): без ШІ й без запитів — описки
+// (відстань Левенштейна 1–2 до слова команди) і звичайні фрази → команда. Лише коли інакше було б «Не зрозумів»;
+// дві можливі команди («продат 3»: продати / продав) — не вгадуємо, перепитуємо.
+const CMD_WORDS = ['посилки', 'виставлено', 'облік', 'продати', 'звіт', 'меню', 'нагадування', 'межі', 'отримав', 'перевірив',
+  'проблема', 'відправив', 'трек', 'виставив', 'ціна', 'назва', 'опис', 'скинути', 'змінити', 'фото', 'купив', 'продав',
+  'витрата', 'нагадай', 'кроки', 'допомога'];
+const CMD_PHRASES = [[/^(?:що|які|покажи)?\s*(?:на\s+продаж[^\s?]*|виставлен[^\s?]*|мої\s+лоти|лоти|мої\s+оголошення)\??$/i, 'виставлено'],
+  [/^(?:де|що\s+з)\s+(?:мої\s+)?(?:посилк[^\s?]*|пакунк[^\s?]*|парсел[^\s?]*)\??$|^трекінг$/i, 'посилки'],
+  [/^(?:скільки\s+(?:я\s+)?(?:заробив|заробила|грошей)|гроші|баланс|прибуток|фінанси)\??$/i, 'облік'],
+  [/^(?:що\s+(?:в\s+мене|є|на\s+руках)|склад|залишки)\??$/i, 'на руках'],
+  [/^(?:статистика|тижневий\s+звіт)\??$/i, 'звіт'],
+  [/^(?:що\s+ти\s+вмієш|команди|що\s+вмієш|help me)\??$/i, 'меню']];
+
+function lev_(a, b) {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return 9;
+  // відстань з переставленими сусідніми літерами як однією помилкою («назав» → «назва»)
+  const d = [];
+  for (let i = 0; i <= m; i++) { d[i] = [i]; for (let j = 1; j <= n; j++) d[i][j] = i ? 0 : j; }
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[m][n];
+}
+
+/** Описка / фраза → {text: виправлена команда} або {ambiguous: [команди]}; null — не схоже на команду. */
+function fuzzyCmd_(text) {
+  const o = String(text || '').trim().replace(/\s+/g, ' '), t = o.toLowerCase();   // регістр решти тексту (назва, опис) — як написав
+  if (!t || t.length > 120) return null;
+  for (let i = 0; i < CMD_PHRASES.length; i++) if (CMD_PHRASES[i][0].test(t)) return { text: CMD_PHRASES[i][1] };
+  const parts = t.match(/^\/?(\S+)(?:\s+(\S+))?([\s\S]*)$/);
+  if (!parts) return null;
+  const two = parts[2] ? parts[1] + ' ' + parts[2] : '';
+  if (two && !/\d/.test(two) && lev_(two, 'на руках') <= 2) return { text: 'на руках' + parts[3] };
+  const w = parts[1], rest = o.slice(t.indexOf(w) + w.length);
+  if (w.length < 4 || CMD_WORDS.indexOf(w) >= 0) return null;
+  const words = CMD_WORDS.concat(Object.keys(CMD_SYNONYMS));
+  const hits = {};
+  words.forEach(function (c) {
+    if (lev_(w, c) <= (c.length > 5 ? 2 : 1)) hits[CMD_SYNONYMS[c] || c] = 1;
+  });
+  const list = Object.keys(hits);
+  if (list.length === 1) return { text: list[0] + rest };
+  return list.length > 1 ? { ambiguous: list.map(function (c) { return c + rest; }) } : null;
+}
+
 /** «Забрав 2» → «отримав 2»; решта тексту без змін. */
 function canonCmd_(text) {
   const t = String(text || '').trim(), m = t.match(/^\/?(\S+)([\s\S]*)$/);
@@ -570,6 +619,13 @@ function officeMessage(msg) {
   if (/^\/?(допомога|help|start|меню|menu)$/i.test(String(msg.text || '').trim())) {
     notify_('🔘 Кнопки внизу — головне.', OFFICE_KEYBOARD);   // оновити постійну клавіатуру
     notify_(OFFICE_HELP, menuMarkup_());
+    return;
+  }
+  const fx = msg._fixed ? null : fuzzyCmd_(msg.text);
+  if (fx && fx.text) { officeMessage(Object.assign({}, msg, { text: fx.text, _fixed: true })); return; }   // мовчки — як точна команда
+  if (fx && fx.ambiguous) {
+    notify_('🤔 Не впевнений, що саме: ' + fx.ambiguous.map(function (c) { return '«' + c.trim() + '»'; }).join(' чи ') +
+            '? Напиши ще раз точно — тут різні дії.');
     return;
   }
   notify_('Не зрозумів 🙂 Натисни «☰ Меню» — там усе, що вміє бот. Оголошення для оцінки — в ebay_bot, питання — в retail_helper.',
@@ -1036,7 +1092,10 @@ function assistMessage(msg) {
   const text = [msg.text, msg.caption].concat(urls).filter(Boolean).join(' ').trim();
   if (/^\/?(?:start|допомога|help)$/i.test(text)) { tgAssist_('sendMessage', { chat_id: chat, text: ASSIST_HELP }); return; }
   // 14.10: «отримав 3» машинально в помічника — це команда обліку, а не питання: виконуємо, відповідь — у боті обліку
-  if (/^\/?(отримав|отримала|перевірив|перевірила|проблема|відправив|відправила|трек|виставив|виставила|нагадай|нагадування)(?=\s|$)/i.test(canonCmd_(text))) {
+  const fz = /^\S+\s+\d{1,4}(?=\s|$)/.test(text) ? fuzzyCmd_(text) : null;   // «забарв 3» — описка в команді з номером
+  const asCmd = fz && fz.text ? fz.text : canonCmd_(text);
+  if (/^\/?(отримав|отримала|перевірив|перевірила|проблема|відправив|відправила|трек|виставив|виставила|нагадай|нагадування)(?=\s|$)/i.test(asCmd)) {
+    msg = Object.assign({}, msg, { text: asCmd });
     officeMessage(msg);
     tgAssist_('sendMessage', { chat_id: chat, text: '📒 Це команда обліку — виконав, відповідь у боті «Облік і продаж».' });
     return;

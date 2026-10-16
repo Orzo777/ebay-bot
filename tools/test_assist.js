@@ -61,6 +61,10 @@ vm.runInContext('officeMessage = function (m) { __om.push(m.text); };', Object.a
 const gh0 = gh.length;
 say({ text: 'отримав 3' });
 check('ledger command routed', [om, gh.length - gh0, /команда обліку/.test(assistCalls('sendMessage').pop()[2].text)], [['отримав 3'], 0, true]);
+say({ text: 'забарв 4' });   // 16.10: описка в команді з номером — теж команда
+check('typo ledger command routed', [om[om.length - 1], gh.length - gh0], ['отримав 4', 0]);
+say({ text: 'як перевірити 2 планки DDR5?' });
+check('question still goes to the helper', gh.length - gh0, 1);
 ctx.officeMessage = realOM;
 
 // питання текстом → «Думаю…» + assist.yml з питанням, обліком, id повідомлення
