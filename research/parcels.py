@@ -243,8 +243,9 @@ def _match(row: dict, orders: list[dict]) -> dict | None:
     return best if best and len(want & _words(best["title"])) >= 3 else None
 
 
-def line_for(row: dict, order: dict | None, live: dict | None, outgoing: bool) -> str:
-    who = f"№{row['n']} {html.escape(str(row['title'])[:34])}"
+def line_for(row: dict, order: dict | None, live: dict | None, outgoing: bool, short: bool = False) -> str:
+    # 16.10: є фото з підписом-назвою — у тексті лише номер (без дубля назви)
+    who = f"№{row['n']}" if short else f"№{row['n']} {html.escape(str(row['title'])[:34])}"
     src = "" if outgoing else f" ({html.escape(str(row.get('src') or ''))})"
     num, carrier = row.get("track") or (order or {}).get("track", ("", ""))[0], row.get("carrier") or ""
     if order and not num and order["track"][0]:
@@ -319,17 +320,16 @@ def check(d: dict, token: str | None, post, get, photos: bool = False) -> tuple:
     s17 = t17_statuses([(p[3], p[4]) for p in plan], post, key17) if key17 else {}
     out, events, pics = ["📦 <b>Посилки</b>"], [], []
     for title, r, order, num, carrier, outgoing in plan:
-        if photos and not outgoing and len(pics) < 10:
-            url = picture_for(r, order, token, post, get)
-            if url:
-                pics.append((f"№{r['n']} {str(r.get('title') or '')[:60]}", url))
+        url = picture_for(r, order, token, post, get) if photos and not outgoing and len(pics) < 10 else None
+        if url:
+            pics.append((f"№{r['n']} {str(r.get('title') or '')[:60]}", url))
         if title:
             out.append(title)
         live = s17.get(num)
         # з GitHub публічна сторінка DHL не відповідає — з ключем 17TRACK її не питаємо
         if live is None and num and not key17 and (not carrier or "dhl" in carrier.lower() or "deutsche post" in carrier.lower()):
             live = dhl_status(num, get)
-        out.append(line_for(r, order, live, outgoing))
+        out.append(line_for(r, order, live, outgoing, short=bool(url)))
         ev = _event(r, order, live, outgoing)
         if ev:
             events.append(ev)

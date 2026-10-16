@@ -204,6 +204,10 @@ class PhotosTest(unittest.TestCase):
         self.assertEqual(pics, [("№8 G.SKILL FORTIS 32GB (2x16GB) DDR4-2400", "https://i.ebayimg.com/x/1.jpg"),
                                 ("№4 2x Corsair Vengeance LPX", "https://img.kleinanzeigen.de/api/v1/prod-ads/images/aa/b.JPG?rule=$_59.JPG")])
         self.assertEqual(len(parcels.check(d, "tok", post, get)), 2)   # без photos — як раніше (фонова перевірка)
+        # з фото — назва лише в підписі під фото; у тексті номер, звідки, де зараз, трек; без фото — з назвою
+        self.assertIn("• №8 (eBay) — ", text)
+        self.assertNotIn("№8 G.SKILL", text)
+        self.assertIn("• №9 Kingston KA видалене (Kleinanzeigen)", text)
 
 
 if __name__ == "__main__":
