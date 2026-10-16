@@ -125,7 +125,7 @@ tg.length = 0;
 realOfficeCb(cb('m|sell'));
 const ed = tg.find((c) => c[0] === 'editMessageText');
 check('section shown in place', [ed && /^💶 Продаж\n\n• продати/.test(ed[1].text), ed && datas(JSON.parse(ed[1].reply_markup))],
-      [true, ['k|продати', 'm|menu']]);
+      [true, ['k|продати', 'k|виставлено', 'm|menu']]);
 tg.length = 0;
 realOfficeCb(cb('m|menu'));
 check('back to menu', datas(JSON.parse(tg.find((c) => c[0] === 'editMessageText')[1].reply_markup)).length, 5);

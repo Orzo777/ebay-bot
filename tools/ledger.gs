@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-14d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-16a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -433,6 +433,7 @@ function processLedger() {
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
   try { keyboard1013_(); } catch (e) { console.log('keyboard1013_: ' + e); }
+  try { keyboard1016_(); } catch (e) { console.log('keyboard1016_: ' + e); }
   try { tidySheet1013_(); } catch (e) { console.log('tidySheet1013_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
@@ -457,14 +458,15 @@ function weeklyIfDue_(props, now) {
 // Поки другого бота немає — пише в основний, як раніше.
 // 13.10 (крок 8 — простіше): головний екран — те, чим користувач користується найчастіше (посилки, облік, продати, звіт);
 // замість довідки на 20 рядків — «☰ Меню» з розділами кнопками, у кожному 3–5 рядків і кнопки дій. Текстові команди — ті самі.
-const OFFICE_KEYBOARD = { keyboard: [[{ text: '📦 Посилки' }, { text: '📒 Облік' }, { text: '💶 Продати' }],
-  [{ text: '📊 Звіт' }, { text: '🗂 На руках' }, { text: '☰ Меню' }]],
+// 16.10: + «🏷 Виставлено» — що зараз на продажу, з посиланнями
+const OFFICE_KEYBOARD = { keyboard: [[{ text: '📦 Посилки' }, { text: '🏷 Виставлено' }, { text: '📒 Облік' }],
+  [{ text: '💶 Продати' }, { text: '🗂 На руках' }, { text: '📊 Звіт' }, { text: '☰ Меню' }]],
   resize_keyboard: true,
   is_persistent: true };
-const KEY_ALIAS = { '📦 посилки': 'посилки', '📒 облік': 'облік', '💶 продати': 'продати', '📊 звіт': 'звіт',
+const KEY_ALIAS = { '📦 посилки': 'посилки', '🏷 виставлено': 'виставлено', '📒 облік': 'облік', '💶 продати': 'продати', '📊 звіт': 'звіт',
   '🗂 на руках': 'на руках', '☰ меню': 'меню' };
 // кнопки дій у меню: k|<команда> (лише ці)
-const MENU_ACTIONS = { 'посилки': '📦 Посилки', 'облік': '📒 Облік', 'продати': '💶 Продати', 'звіт': '📊 Звіт', 'на руках': '🗂 На руках',
+const MENU_ACTIONS = { 'посилки': '📦 Посилки', 'виставлено': '🏷 Виставлено', 'облік': '📒 Облік', 'продати': '💶 Продати', 'звіт': '📊 Звіт', 'на руках': '🗂 На руках',
   'нагадування': '⏰ Нагадування' };
 const MENU = {
   buy: ['🛒 Купівля', 'Картки угод — в ebay_bot (ПК — у pc_bot); покупки з листів eBay / KA записуються самі.\n' +
@@ -477,7 +479,8 @@ const MENU = {
     'і кнопка «🚀 Виставити на eBay»; ✏️ — змінити ціну, назву чи опис перед 🚀 («ціна 3 145»)\n' +
     '• відправив 3 трек — трек піде в eBay сам, покупцю — подяка\n' +
     '• виставив 3 124 — якщо виставив сам\n' +
-    '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати']],
+    '• виставлено — що зараз на продажу: ціна, дні, перегляди, спостерігачі, посилання (eBay; KA — «Мої оголошення»)\n' +
+    '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати', 'виставлено']],
   parcels: ['📦 Посилки', '• посилки — де кожна посилка до тебе й від тебе, коли очікується, чи дійшла\n' +
     '• сам напишу, коли посилка чекає у відділенні або доставлена (перевіряю раз на 3 години, 8–21)\n' +
     '• трек 3 номер — додати трек (KA шле трек лише в чат)', ['посилки']],
@@ -559,7 +562,7 @@ function officeMessage(msg) {
   else if (canonCmd_(msg.text) !== String(msg.text || '').trim()) msg = Object.assign({}, msg, { text: canonCmd_(msg.text) });
   if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       onHandCommand_(msg)) return;
-  if (parcelsCommand_(msg) || editCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
+  if (parcelsCommand_(msg) || listingsCommand_(msg) || editCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
@@ -963,6 +966,21 @@ function parcelsWatch_() {
   if (!d.incoming.length && !d.outgoing.length) return false;
   props.setProperty('PARCELS_WATCH_AT', String(now));
   return sellDispatch_(Object.assign({ mode: 'parcels', watch: true, rt: props.getProperty('EBAY_RT') || '' }, d)) === 204;
+}
+
+/** 16.10: «🏷 Виставлено» → GitHub (sell.yml, режим listings): активні лоти eBay + рядки «Виставлено» з обліку. */
+function listingsCommand_(msg) {
+  if (!/^\/?(?:виставлено|мої лоти|лоти)$/i.test(String(msg.text || '').trim())) return false;
+  const props = PropertiesService.getScriptProperties();
+  const sh = ledger_().getSheetByName('Угоди');
+  const rows = ledgerRows_().filter(function (r) { return r.status === 'Виставлено'; }).map(function (r) {
+    return { n: r.n, title: r.title, status: r.status, note: String(sh.getRange(r.n + LEDGER_FIRST - 1, COL.note).getValue() || '') };
+  });
+  const rt = props.getProperty('EBAY_RT') || '';
+  if (!rt && !rows.length) { notify_('🏷 Нічого не виставлено. Продати — «💶 Продати».'); return true; }
+  const code = sellDispatch_({ mode: 'listings', rt: rt, rows: rows });
+  notify_(code === 204 ? '⏳ Дивлюся виставлене — до хвилини.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+  return true;
 }
 
 function parcelsCommand_(msg) {
@@ -2019,6 +2037,17 @@ function tidySheet1013_() {
   });
   ['Лог листів', 'Налаштування'].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) sh.hideSheet(); });
   props.setProperty('TIDY_1013', '1');
+}
+
+/** 16.10, один раз: кнопка «🏷 Виставлено» на клавіатурі (Telegram оновлює її лише з новим повідомленням). */
+function keyboard1016_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('KEYBOARD_1016') === '1' || props.getProperty('KEYBOARD_1013') !== '1') {
+    if (props.getProperty('KEYBOARD_1013') !== '1') props.setProperty('KEYBOARD_1016', '1');   // свіжий бот — нова клавіатура й так прийде
+    return;
+  }
+  props.setProperty('KEYBOARD_1016', '1');
+  notify_('🏷 Нова кнопка внизу — «Виставлено»: що зараз на продажу, ціна, дні, перегляди, спостерігачі й посилання на лот.', OFFICE_KEYBOARD);
 }
 
 /** 13.10, один раз: новий головний екран (Telegram оновлює постійну клавіатуру лише з новим повідомленням) + меню. */

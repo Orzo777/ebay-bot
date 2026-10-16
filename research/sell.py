@@ -596,6 +596,16 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             print(f"parcels watch: {len(events)} подій")
             return True
         return send(text, None)
+    if mode == "listings":   # 16.10: «🏷 Виставлено» — активні лоти eBay (перегляди, спостерігачі) + KA з обліку
+        import listings
+        token = None
+        if d.get("rt"):
+            try:
+                token = el.access_token(d["rt"], app, cert, post)
+            except Exception as e:
+                print(f"eBay токен: {e.__class__.__name__}")
+        text, kb = listings.report(d, token, post)
+        return send(text, kb if kb["inline_keyboard"] else None)
     if mode != "publish":
         return send(f"⚠️ Невідомий режим «{html.escape(str(mode))}» — напиши Claude.", None)
 

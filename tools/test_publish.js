@@ -147,6 +147,11 @@ check('listed recorded', [deals.cells['5:11'], /виставлено за 96 €
 say('опублікувати 1');
 check('already listed refused', /Виставлено/.test(last()[0]), true);
 
+// 16.10: «🏷 Виставлено» (кнопка) → GitHub listings: ключ eBay + рядки «Виставлено» з нотатками (номер eBay)
+say('🏷 Виставлено');
+check('listings dispatched', [opened().mode, opened().rt, opened().rows.map((r) => [r.n, /eBay 1234567890/.test(r.note)]),
+  /Дивлюся виставлене/.test(last()[0])], ['listings', 'v^1.1#RT', [[1, true]], true]);
+
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));
 check('rt removed', store.EBAY_RT, undefined);
