@@ -166,6 +166,44 @@ def t17_statuses(nums: list, post, key: str) -> dict:
     return out
 
 
+# 16.10 (користувач: «коли кілька посилок — плутанина; по фото згадаю, що це»): головне фото оголошення, за яким купував.
+# eBay — GetItem (PictureDetails; працює й для завершених оголошень ~90 днів); KA — og:image сторінки оголошення
+# (після продажу її часто видаляють — тоді без фото). Лише по кнопці, у фонову перевірку не тягнемо.
+_OG_IMAGE = re.compile(r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"|<meta[^>]+content="([^"]+)"[^>]+property="og:image"', re.I)
+UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"}
+
+
+def ebay_picture(item_id: str, token: str, post) -> str | None:
+    import ebay_list as el
+    try:
+        root = el.trading("GetItem", f"<ItemID>{html.escape(str(item_id))}</ItemID>", token, post)
+    except Exception as e:
+        print(f"фото eBay: {e.__class__.__name__}")
+        return None
+    it = root.find(el.NS + "Item")
+    return (_t(it, "PictureDetails/PictureURL", el.NS) or _t(it, "PictureDetails/GalleryURL", el.NS)) if it is not None else None
+
+
+def ka_picture(link: str, get) -> str | None:
+    try:
+        r = get(link, headers=UA, timeout=20)
+        if r.status_code != 200:
+            return None
+        m = _OG_IMAGE.search(r.text)
+    except Exception as e:
+        print(f"фото KA: {e.__class__.__name__}")
+        return None
+    return html.unescape(m.group(1) or m.group(2)) if m else None
+
+
+def picture_for(r: dict, order: dict | None, token: str | None, post, get) -> str | None:
+    item_id = (order or {}).get("item_id") or (r.get("id") if re.fullmatch(r"\d{9,15}", str(r.get("id") or "")) else "")
+    if item_id and token:
+        return ebay_picture(item_id, token, post)
+    link = str(r.get("link") or "")
+    return ka_picture(link, get) if "kleinanzeigen.de/s-anzeige" in link else None
+
+
 def _t(el, path: str, ns: str) -> str:
     x = el.find("/".join(ns + p for p in path.split("/")))
     return (x.text or "").strip() if x is not None and x.text else ""
@@ -257,11 +295,12 @@ def report(d: dict, token: str | None, post, get) -> str:
     return check(d, token, post, get)[0]
 
 
-def check(d: dict, token: str | None, post, get) -> tuple[str, list[dict]]:
-    """→ (повідомлення для кнопки, події для обліку)."""
+def check(d: dict, token: str | None, post, get, photos: bool = False) -> tuple:
+    """→ (повідомлення для кнопки, події для обліку[, фото посилок до тебе: [(підпис, url)]] — з photos=True)."""
     rows_in, rows_out = d.get("incoming") or [], d.get("outgoing") or []
     if not rows_in and not rows_out:
-        return "📦 Посилок у дорозі немає: усе куплене вже в тебе, а продане — доставлено.", []
+        msg = "📦 Посилок у дорозі немає: усе куплене вже в тебе, а продане — доставлено."
+        return (msg, [], []) if photos else (msg, [])
     buy, sell = [], []
     if token:
         try:
@@ -278,8 +317,12 @@ def check(d: dict, token: str | None, post, get) -> tuple[str, list[dict]]:
             plan.append((title if i == 0 else None, r, order, num, carrier, outgoing))
     key17 = re.sub(r"\s+", "", os.getenv("TRACK17_KEY") or "")
     s17 = t17_statuses([(p[3], p[4]) for p in plan], post, key17) if key17 else {}
-    out, events = ["📦 <b>Посилки</b>"], []
+    out, events, pics = ["📦 <b>Посилки</b>"], [], []
     for title, r, order, num, carrier, outgoing in plan:
+        if photos and not outgoing and len(pics) < 10:
+            url = picture_for(r, order, token, post, get)
+            if url:
+                pics.append((f"№{r['n']} {str(r.get('title') or '')[:60]}", url))
         if title:
             out.append(title)
         live = s17.get(num)
@@ -290,4 +333,4 @@ def check(d: dict, token: str | None, post, get) -> tuple[str, list[dict]]:
         ev = _event(r, order, live, outgoing)
         if ev:
             events.append(ev)
-    return "\n".join(out), events
+    return ("\n".join(out), events, pics) if photos else ("\n".join(out), events)

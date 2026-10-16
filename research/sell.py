@@ -506,6 +506,34 @@ def office_send_album(photos: list, caption: str) -> int:
     return n
 
 
+def office_send_url_album(pics: list[tuple[str, str]], get) -> int:
+    """16.10: фото за посиланнями (eBay / KA) — завантажуємо самі й шлемо альбомом (Telegram не завжди тягне чужі адреси).
+    pics — [(підпис, url)]. → скільки надіслано."""
+    import requests
+    token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN
+    api, files, media = f"{config.TELEGRAM_API_BASE}/bot{token}/", {}, []
+    for i, (cap, url) in enumerate(pics[:10]):
+        try:
+            r = get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200 or not r.content:
+                continue
+        except Exception as e:
+            print(f"фото {i}: {e.__class__.__name__}")
+            continue
+        files[f"p{i}"] = (f"p{i}.jpg", r.content, "image/jpeg")
+        media.append({"type": "photo", "media": f"attach://p{i}", "caption": cap[:200]})
+    if not media:
+        return 0
+    if len(media) == 1:
+        k = next(iter(files))
+        resp = requests.post(api + "sendPhoto", data={"chat_id": config.TELEGRAM_CHAT_ID, "caption": media[0]["caption"]},
+                             files={"photo": files[k]}, timeout=60)
+    else:
+        resp = requests.post(api + "sendMediaGroup", data={"chat_id": config.TELEGRAM_CHAT_ID,
+                                                           "media": json.dumps(media, ensure_ascii=False)}, files=files, timeout=60)
+    return len(media) if resp.status_code == 200 else 0
+
+
 # ----------------------------------------------------------------------------- автопублікація на eBay (09.10)
 def tg_file(file_id: str, token: str) -> bytes | None:
     import requests
@@ -589,13 +617,19 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             except Exception as e:   # без eBay — лишаються DHL і облік
                 print(f"eBay токен: {e.__class__.__name__}")
         import requests
-        text, events = parcels.check(d, token, post, requests.get)
+        if d.get("watch"):   # фонова перевірка кожні 3 години — без повідомлення й фото, лише події
+            text, events = parcels.check(d, token, post, requests.get)
+        else:
+            text, events, pics = parcels.check(d, token, post, requests.get, photos=True)
         if events:   # 13.10: доставлено / у відділенні → облік (статус «Отримано», сповіщення — один раз)
             back({"kind": "parcels", "events": events}, key)
-        if d.get("watch"):   # фонова перевірка кожні 3 години — без повідомлення, лише події
+        if d.get("watch"):
             print(f"parcels watch: {len(events)} подій")
             return True
-        return send(text, None)
+        ok = send(text, None)
+        if pics:   # 16.10: головні фото посилок до тебе — альбомом, з підписом «№N назва»
+            print(f"фото посилок: {office_send_url_album(pics, requests.get)} з {len(pics)}")
+        return ok
     if mode == "listings":   # 16.10: «🏷 Виставлено» — активні лоти eBay (перегляди, спостерігачі) + KA з обліку
         import listings
         token = None

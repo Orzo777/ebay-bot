@@ -170,5 +170,41 @@ class ParcelsTest(unittest.TestCase):
         self.assertEqual(self.calls, [])          # DHL для Hermes не питаємо
 
 
+class PhotosTest(unittest.TestCase):
+    """16.10: головне фото оголошення для посилок до тебе — eBay (GetItem) і KA (og:image), лише по кнопці."""
+
+    def test_photos(self):
+        def post(url, data=None, headers=None, **kw):
+            body = data.decode() if isinstance(data, bytes) else str(data)
+
+            class P:
+                status_code = 200
+                content = (f'<GetItemResponse xmlns="{NS}"><Ack>Success</Ack><Item><PictureDetails>'
+                           '<PictureURL>https://i.ebayimg.com/x/1.jpg</PictureURL></PictureDetails></Item></GetItemResponse>'
+                           if "GetItem" in str(headers) or "<ItemID>" in body else
+                           f'<GetOrdersResponse xmlns="{NS}"><Ack>Success</Ack><OrderArray/></GetOrdersResponse>').encode()
+            return P()
+
+        class G:
+            def __init__(self, text, code=200):
+                self.text, self.status_code = text, code
+
+            def json(self):
+                return {}
+
+        def get(url, **kw):
+            if "kleinanzeigen.de/s-anzeige/ok" in url:
+                return G('<meta property="og:image" content="https://img.kleinanzeigen.de/api/v1/prod-ads/images/aa/b.JPG?rule=$_59.JPG">')
+            return G("", 404)
+        d = {"incoming": [{"n": 8, "title": "G.SKILL FORTIS 32GB (2x16GB) DDR4-2400", "src": "eBay", "id": "198709759381"},
+                          {"n": 4, "title": "2x Corsair Vengeance LPX", "src": "Kleinanzeigen", "link": "https://www.kleinanzeigen.de/s-anzeige/ok/1"},
+                          {"n": 9, "title": "Kingston KA видалене", "src": "Kleinanzeigen", "link": "https://www.kleinanzeigen.de/s-anzeige/gone/2"}],
+             "outgoing": [{"n": 1, "title": "Corsair 3200", "src": "eBay", "track": "", "carrier": ""}]}
+        text, events, pics = parcels.check(d, "tok", post, get, photos=True)
+        self.assertEqual(pics, [("№8 G.SKILL FORTIS 32GB (2x16GB) DDR4-2400", "https://i.ebayimg.com/x/1.jpg"),
+                                ("№4 2x Corsair Vengeance LPX", "https://img.kleinanzeigen.de/api/v1/prod-ads/images/aa/b.JPG?rule=$_59.JPG")])
+        self.assertEqual(len(parcels.check(d, "tok", post, get)), 2)   # без photos — як раніше (фонова перевірка)
+
+
 if __name__ == "__main__":
     unittest.main()

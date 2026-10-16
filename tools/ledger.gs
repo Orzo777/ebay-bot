@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-16b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-16c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -985,9 +985,13 @@ const PARCELS_BTN = { text: '📦 Де посилки', callback_data: 'c|пос
 
 function parcelsData_() {
   const ev = events_(), today = iso_(new Date()), rows = ledgerRows_();
+  let links = [];   // 16.10: посилання на оголошення — для головного фото посилки (не вийшло — посилки й без фото)
+  try { if (rows.length) links = ledger_().getSheetByName('Угоди').getRange(LEDGER_FIRST, COL.link, rows[rows.length - 1].n, 1).getValues(); }
+  catch (e) { console.log('посилання: ' + e); }
   const incoming = rows.filter(function (r) { return ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0; }).map(function (r) {
     const e = ev[r.n] || {};
-    return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.track || '', carrier: e.carrier || '', date: r.date };
+    return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.track || '', carrier: e.carrier || '', date: r.date,
+      link: String((links[r.n - 1] || [''])[0] || '') };
   });
   const outgoing = rows.filter(function (r) {
     const e = ev[r.n] || {};
