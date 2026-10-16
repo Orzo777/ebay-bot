@@ -271,6 +271,10 @@ assist.yml → research/assist.py запускає **Claude Code** (`claude -p`,
 
 ### 16.10.2026
 
+- **Опис оголошення — по-людськи** (прохання користувача): «Biete hier ein Kit … an. Die Riegel sind gebraucht, laufen einwandfrei
+  und wurden … mit MemTest86 getestet», коротко дані, «Mit dabei … Verschickt wird …», «Privatverkauf, daher keine Garantie und keine
+  Rücknahme. Bei Fragen einfach melden!». Прибрано «in der Regel am nächsten Werktag» і «Rechte aus dem eBay-Käuferschutz …
+  unberührt»; без «мій / у мене» — це перепродаж. Консолі — так само.
 - **Фото посилок.** «📦 Посилки» → слідом альбом головних фото оголошень, за якими купував (посилки до тебе, до 10), з підписом
   «№N назва»: eBay — GetItem (працює й для завершених ~90 днів), KA — og:image сторінки з посилання в обліку (видалене — без фото).
   Фото завантажуємо самі й шлемо файлами; фонова перевірка фото не тягне (parcels.picture_for, sell.office_send_url_album).

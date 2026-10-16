@@ -251,19 +251,22 @@ def ram_texts(title: str, r: dict) -> dict:
             if len(t + extra) <= 80:
                 t += extra
                 break
-    lines = [f"Verkauft wird {'ein Kit' if mods > 1 else 'ein Modul'}: {head + ' ' if head else ''}{cap} {gen} {form}.", "",
+    # 16.10 (користувач): по-людськи, без канцеляриту; без «in der Regel am nächsten Werktag» і «Rechte aus dem
+    # eBay-Käuferschutz bleiben unberührt» — і так зрозуміло. Без «мій / лежав у мене»: це перепродаж, пишемо лише правду.
+    many = mods > 1
+    lines = [f"Biete hier {'ein Kit' if many else 'ein Modul'} {head + ' ' if head else ''}{cap} {gen} {form} an.",
+             f"{'Die Riegel sind' if many else 'Das Modul ist'} gebraucht, {'laufen' if many else 'läuft'} einwandfrei und "
+             f"{'wurden' if many else 'wurde'} vor dem Verkauf mit MemTest86 getestet – 0 Fehler (Screenshot bei den Fotos).", "",
+             "Die Daten:",
              f"• Kapazität: {total} GB" + (f" ({mods} × {per} GB)" if mods > 1 else ""),
              f"• Typ: {gen} {'SO-DIMM (Laptop' + (', ' + dev if dev else '') + ')' if lap else 'ECC UDIMM (unbuffered, ungepuffert)' if ecc else 'DIMM (Desktop-PC)'}",
              *(["• ECC ohne Buffer: für Server, NAS und Workstations; läuft in den meisten Desktop-PCs (Intel ohne ECC-Funktion)"]
                if ecc else []),
              *([f"• Geschwindigkeit: {speed} MHz ({pc})"] if speed else []),
-             *([f"• Teilenummer: {pn}"] if pn else []),
-             "• Zustand: gebraucht, voll funktionsfähig",
-             "• Getestet mit MemTest86: 0 Fehler (Screenshot in den Fotos)", "",
-             f"Lieferumfang: {mods} {'Module' if mods > 1 else 'Modul'} wie auf den Fotos.",
-             f"Versand: als versichertes DHL-Paket mit Sendungsnummer ({money_de(SHIP_CHARGE_RAM)} €), antistatisch verpackt, "
-             "in der Regel am nächsten Werktag.", "",
-             "Privatverkauf: keine Gewährleistung und keine Rücknahme. Ihre Rechte aus dem eBay-Käuferschutz bleiben davon unberührt."]
+             *([f"• Teilenummer: {pn}"] if pn else []), "",
+             f"Mit dabei: {mods} {'Module' if many else 'Modul'} wie auf den Fotos. Verschickt wird gut und antistatisch verpackt "
+             "als versichertes DHL-Paket mit Sendungsnummer.", "",
+             "Privatverkauf, daher keine Garantie und keine Rücknahme. Bei Fragen einfach melden!"]
     pins = {("DDR4", True): 260, ("DDR4", False): 288, ("DDR5", True): 262, ("DDR5", False): 288}.get((gen, lap))
     # поля — як у формі eBay «Angebot fertigstellen» (09.10): обов'язкові, потім інші; «—» — не заповнювати
     required = [("Marke", head.split()[0] if head else "Markenlos"), ("Produktart", f"{gen} SDRAM")]
@@ -306,12 +309,12 @@ def console_texts(title: str, r: dict) -> dict:
         if len(tt + extra) <= 80:
             tt += extra
             break
-    lines = [f"Verkauft wird: {head}.", "",
-             f"• Zustand: gebraucht, voll funktionsfähig, getestet ({check}keine Fehler)",
-             f"• Auf Werkseinstellungen zurückgesetzt und {acct}",
-             "• Lieferumfang: wie auf den Fotos" + (" (inkl. Controller)" if ctrl else "") + ", Strom- und HDMI-Kabel", "",
-             f"Versand: als versichertes DHL-Paket mit Sendungsnummer ({money_de(r.get('ship_out') or console_alert.SHIP)} €), sicher verpackt.", "",
-             "Privatverkauf: keine Gewährleistung und keine Rücknahme. Ihre Rechte aus dem eBay-Käuferschutz bleiben davon unberührt."]
+    lines = [f"Biete hier eine {head} an.",   # 16.10: по-людськи, без канцеляриту
+             f"Die Konsole ist gebraucht, voll funktionsfähig und getestet ({check}keine Fehler), auf Werkseinstellungen "
+             f"zurückgesetzt und {acct}.", "",
+             "Mit dabei: alles wie auf den Fotos" + (" (inkl. Controller)" if ctrl else "") + ", Strom- und HDMI-Kabel. "
+             "Verschickt wird sicher verpackt als versichertes DHL-Paket mit Sendungsnummer.", "",
+             "Privatverkauf, daher keine Garantie und keine Rücknahme. Bei Fragen einfach melden!"]
     required = [("Marke", name.split()[0]), ("Modell", " ".join(name.split()[1:]))]
     # 09.10: назви й значення — з Taxonomy API eBay.de (категорія 139971), щоб і автопублікація їх прийняла
     more = [("Plattform", "Sony PlayStation 5" if "PS5" in t else "Microsoft Xbox Series X|S" if "Xbox" in t else

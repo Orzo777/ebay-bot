@@ -207,6 +207,20 @@ class AlbumTest(unittest.TestCase):
         self.assertEqual(len(json.loads(posted[1][1]["media"])), 2)
 
 
+class HumanDescTest(unittest.TestCase):
+    """16.10: опис — по-людськи, без «am nächsten Werktag» і «Rechte aus dem eBay-Käuferschutz … unberührt»."""
+
+    def test_ram_desc(self):
+        r = sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133")
+        d = sell.ram_texts("Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133", r)["desc"]
+        self.assertTrue(d.startswith("Biete hier ein Kit Corsair Vengeance LPX"))
+        self.assertIn("Die Riegel sind gebraucht, laufen einwandfrei", d)
+        self.assertIn("0 Fehler", d)
+        self.assertIn("Privatverkauf, daher keine Garantie und keine Rücknahme.", d)
+        for bad in ("nächsten Werktag", "unberührt", "Gewährleistung", "Verkauft wird"):
+            self.assertNotIn(bad, d)
+
+
 class EditsTest(unittest.TestCase):
     """14.10: правки з бота перед «🚀» — ціна (без доставки), назва на eBay, опис; пороги — від нової ціни."""
 
