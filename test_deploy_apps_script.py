@@ -123,5 +123,25 @@ class TestDeployAppsScript(unittest.TestCase):
             credentials("{}")
 
 
+class RetryTest(unittest.TestCase):
+    """16.10: script.googleapis.com не відповів за 60 с — GET / PUT повторюємо (до 3 разів), POST — ні (без дублів версій)."""
+
+    def test_get_retries_after_timeout(self):
+        from unittest import mock
+        import requests
+        import deploy_apps_script as d
+        api = d.Api.__new__(d.Api)
+        api.h, api.base = {}, "https://x/"
+        ok = mock.Mock(status_code=200, json=lambda: {"files": []})
+        with mock.patch.object(d.requests, "request", side_effect=[requests.Timeout("t"), ok]) as req, \
+                mock.patch.object(d.time, "sleep") as sl:
+            self.assertEqual(api.call("GET", "/content"), {"files": []})
+        self.assertEqual((req.call_count, sl.call_count), (2, 1))
+        with mock.patch.object(d.requests, "request", side_effect=requests.Timeout("t")) as req, mock.patch.object(d.time, "sleep"):
+            with self.assertRaises(requests.Timeout):
+                api.call("POST", "/versions", {})
+        self.assertEqual(req.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

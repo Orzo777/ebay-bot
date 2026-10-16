@@ -21,6 +21,8 @@ import os
 import re
 import sys
 
+import time
+
 import requests
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -121,7 +123,20 @@ class Api:
         self.base = API + script_id
 
     def call(self, method: str, path: str = "", body=None) -> dict:
-        r = requests.request(method, self.base + path, headers=self.h, json=body, timeout=60)
+        # 16.10: script.googleapis.com раз не відповів за 60 с (ReadTimeout) — розгортання впало, у бот «⚠️ Збій».
+        # Читання й заміну файлів (GET / PUT) безпечно повторити; створення версії (POST) — ні, щоб не було дубля.
+        tries = 3 if method in ("GET", "PUT") else 1
+        for i in range(tries):
+            try:
+                r = requests.request(method, self.base + path, headers=self.h, json=body, timeout=60)
+            except (requests.ConnectionError, requests.Timeout):
+                if i == tries - 1:
+                    raise
+                time.sleep(10 * (i + 1))
+                continue
+            if r.status_code < 500 or i == tries - 1:
+                break
+            time.sleep(10 * (i + 1))
         if r.status_code != 200:
             hint = " — увімкни Apps Script API: script.google.com/home/usersettings" if "has not been used" in r.text \
                 or "User has not enabled" in r.text else ""
