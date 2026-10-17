@@ -276,6 +276,20 @@ class ReviseModeTest(unittest.TestCase):
                        back=lambda x, k: back.append(x), comp_fn=lambda r: [])
         self.assertIn("нічого не змінено", sent[-1][0])
 
+    def test_got_mode_sends_seller_photo(self):
+        # 17.10: «отримав N» — головне фото з оголошення продавця з підписом «звір наклейку»
+        from unittest import mock
+        import ebay_list as el
+        import parcels
+        albums = []
+        with mock.patch.object(el, "access_token", return_value="tok"),                 mock.patch.object(parcels, "picture_for", return_value="https://i.ebayimg.com/x.jpg"),                 mock.patch.object(sell, "office_send_url_album", side_effect=lambda pics, get: albums.append(pics) or 1):
+            sell.ebay_mode({"mode": "got", "row": 6, "id": "306123123123", "link": "", "pn": "CMK32GX4M2A2400C16", "rt": "rt"}, "k",
+                           post=lambda *a, **k: None, send=lambda t, m: True, back=lambda x, k: None)
+        cap, url = albums[0][0]
+        self.assertEqual(url, "https://i.ebayimg.com/x.jpg")
+        self.assertIn("№6", cap)
+        self.assertIn("CMK32GX4M2A2400C16", cap)
+
     def test_sync_mode_posts_changes(self):
         # 17.10: фонова перевірка лотів — зміни назад в облік, без повідомлення в чат
         from unittest import mock

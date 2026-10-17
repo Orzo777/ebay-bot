@@ -218,6 +218,7 @@ check('sync: answer links the row', [deals.cells['8:' + STATUS], /виставл
   ['Виставлено', true]);
 ctx.officeCallback({ id: 'q', data: 'L|306111000111|0', message: { chat: { id: 7 }, message_id: 81 } });
 check('sync: not from ledger', /не з обліку/.test(last()[0]), true);
+check('sale row by eBay listing id', [ctx.rowByListing_('306555444333'), ctx.rowByListing_('999999999999')], [8, 0]);
 
 // 17.10: «🗂 На руках» → аркуш з фото (GitHub, режим onhand): групи, фото, номер eBay
 store.PH_4 = JSON.stringify([{ id: 'f4', u: 'u4' }]);
@@ -225,6 +226,11 @@ say('на руках');
 const oh = opened();
 check('on-hand sheet dispatched', [oh.mode, oh.groups.map((g) => [g.kind, g.items.map((i) => i.n)]), oh.groups[0].items[0].item_id,
   oh.groups[0].items.filter((i) => i.n === 4)[0].photos], ['onhand', [['ebay', [1, 3, 4]]], '1234567890', ['f4']]);
+
+// 17.10: «отримав N» → фото з оголошення продавця (GitHub, режим got)
+deals.cells['8:11'] = 'Оплачено'; deals.cells['8:' + vm.runInContext('COL.id', ctx)] = '306123123123';
+say('отримав 4');
+check('got → seller photo dispatched', [opened().mode, opened().row, opened().id], ['got', 4, '306123123123']);
 
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));

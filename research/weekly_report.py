@@ -123,14 +123,16 @@ def accuracy(rows: list[dict], today: date) -> tuple[list[str], float | None]:
     return out, mean
 
 
-def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | None = None) -> list[str]:
-    """cuts — сюди (№, нова ціна товару) для кнопок «⬇️ Знизити» (10.10, якщо eBay підключено)."""
+def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | None = None, ns: list | None = None) -> list[str]:
+    """cuts — сюди (№, нова ціна товару) для кнопок «⬇️ Знизити» (10.10, якщо eBay підключено); ns — номери з порадою
+    (17.10: для аркуша з фото)."""
     out, calls = [], 0
     for r in rows:
         if r["status"] in CLOSED:
             continue
         age = (today - _d(r["date"])).days if _d(r["date"]) else 0
         name = f"№{r['n']} {html.escape(r['title'][:34])}"
+        before = len(out)
         if r["status"] in ("Оплачено", "В дорозі") and age >= NOT_ARRIVED_DAYS:
             out.append(f"• {name} — куплено {age} дн. тому, досі «{r['status']}» → перевір доставку / спір на eBay чи KA")
         elif r["status"] != "Виставлено" and age >= NOT_LISTED_DAYS:
@@ -156,6 +158,8 @@ def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | N
             out.append(f"• {name} — {age} дн. і не продано → постав <b>{item} €</b> + доставка {sell.money_de(ship)} €"
                        + (f" · ще +{pr['profit_list']:.0f} €" if pr.get("profit_list") is not None else "")
                        + (f" (найдешевші {', '.join(f'{c:.0f}' for c in comp[:3])} €)" if comp else ""))
+        if ns is not None and len(out) > before:
+            ns.append((r["n"], age))
     return (["📦 <b>Що зробити з товаром</b>"] + out) if out else ["📦 <b>Товар</b>: залежаного немає ✓"]
 
 
@@ -265,11 +269,11 @@ def section(lines: list[str], fold: bool = False) -> str:
 
 
 def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.competitors, kb: list | None = None,
-          ebay_on: bool = False, bounds_fn=bounds, shortage_fn=shortage, services_fn=services) -> str:
-    """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»."""
+          ebay_on: bool = False, bounds_fn=bounds, shortage_fn=shortage, services_fn=services, ns: list | None = None) -> str:
+    """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»; ns — (№, днів) з порадою для аркуша з фото."""
     acc, _ = accuracy(rows, today)
     cuts, bl = [], bounds_fn()
-    todo = stale(rows, today, market, cuts)
+    todo = stale(rows, today, market, cuts, ns)
     # 14.10: головне й дії — розгорнуті; точність, пошук, дефіцит і сервіси — згорнуті (деталі на тап)
     parts = [(f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}", False),
              *[(x, False) for x in (headline(rows, today, todo, bl), todo, money(rows, today))],
@@ -283,6 +287,22 @@ def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.compe
         if bl:
             kb.append([{"text": "✅ Межі в KA оновив", "callback_data": "c|межі|1"}])
     return "\n\n".join(p if isinstance(p, str) else section(p, fold) for p, fold in parts)
+
+
+def stale_sheet(d: dict, ns: list) -> bytes | None:
+    """17.10: товар з порадами («знизь ціну», «ще не виставлено»…) — аркушем з фото, як «🗂 На руках»."""
+    import onhand
+    import requests
+    import config
+    if not ns:
+        return None
+    rows = {r["n"]: r for r in d.get("rows") or []}
+    photos = d.get("photos") or {}
+    items = [{"n": n, "title": (rows.get(n) or {}).get("title", ""), "days": age, "photos": photos.get(str(n)) or photos.get(n) or []}
+             for n, age in ns]
+    token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or ""
+    return onhand.build({"groups": [{"title": "Що зробити з товаром", "kind": "problem", "items": items}]},
+                        sell.tg_file, token, None, None, requests.get)
 
 
 def chunks(text: str, limit: int = 3900) -> list[str]:
@@ -320,14 +340,20 @@ def main():
         raise SystemExit(1)
     today = _d(d.get("today")) or date.today()
     try:
-        kb = []
-        text = build(d.get("rows") or [], today, _load(a.ebay), _load(a.ka), kb=kb, ebay_on=bool(d.get("ebay")))
+        kb, ns = [], []
+        text = build(d.get("rows") or [], today, _load(a.ebay), _load(a.ka), kb=kb, ebay_on=bool(d.get("ebay")), ns=ns)
     except Exception as e:
         sell.office_send_html(f"⚠️ Тижневий звіт не склався: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise
     parts = chunks(text)
     ok = all(sell.office_send_html(part, {"inline_keyboard": kb} if kb and i == len(parts) - 1 else None) for i, part in enumerate(parts))
     print(f"звіт надіслано: {ok}, рядків обліку: {len(d.get('rows') or [])}")
+    try:
+        sheet = stale_sheet(d, ns)
+        if sheet:
+            sell.office_send_photo(sheet, "📦 Що зробити з товаром — фото")
+    except Exception as e:
+        print(f"аркуш: {e.__class__.__name__}")
     if not ok:
         raise SystemExit(1)
 

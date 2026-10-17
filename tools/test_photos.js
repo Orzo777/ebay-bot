@@ -200,6 +200,28 @@ gemini = [];
 
 // 9. не своє — не перехоплюємо: текст «3» без фото, що чекають, іде далі як звичайно
 check('bare number without pending → not a photo answer', vm.runInContext('photoNumber_(__m)', Object.assign(ctx, { __m: { text: '3', chat: { id: 7 } } })), false);
+// 17.10: підпис «фото 6»; наклейка не збігається → «Перевірено» не ставимо; «запакуй ось цю» — фото наклейки, номер, схожі
+[['Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133 CMK32GX4M2A2133C13', 'Отримано'],
+ ['Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16', 'Отримано']].forEach((v, i) => {
+  const r = 9 + i;
+  deals.cells[r + ':2'] = new Date('2026-10-11T10:00:00Z'); deals.cells[r + ':3'] = v[0]; deals.cells[r + ':4'] = 'RAM';
+  deals.cells[r + ':5'] = 'eBay'; deals.cells[r + ':11'] = v[1]; deals.last = r;
+});
+gemini = [{ kind: 'ram_label', label: { brand: 'Corsair', part_number: 'CMK16GX4M2A2133C13', gb_per_module: 8, ddr: 'DDR4', form: 'desktop' } },
+  { kind: 'memtest', memtest: { errors: 0, pass_done: true, result: 'PASS' } }];
+say(photo('L5', 70, { caption: 'фото 5' }));
+say(photo('M5', 71, { caption: 'фото 5' }));
+check('label mismatch → not verified automatically', [JSON.parse(store.PH_5).map((x) => x.id), deals.cells['9:11'],
+  /наклейка не збігається: глянь/.test(lastSummary())], [['L5', 'M5'], 'Отримано', true]);
+gemini = [{ kind: 'memtest', memtest: { errors: 0, pass_done: true, result: 'PASS' } },
+  { kind: 'ram_label', label: { brand: 'Corsair', part_number: 'CMK32GX4M2A2400C16', gb_per_module: 16, ddr: 'DDR4', form: 'desktop' } }];
+say(photo('M6', 72, { caption: 'фото 6' }));
+say(photo('L6', 73, { caption: '№6' }));
+check('«фото 6» + label ok + MemTest → Перевірено', [deals.cells['10:11'], JSON.parse(store.PHS_6).pn, JSON.parse(store.PHS_6).mf, JSON.parse(store.PHS_6).lf], ['Перевірено', 'CMK32GX4M2A2400C16', 'M6', 'L6']);
+ctx.packCheck_(6);
+const pk = calls('sendPhoto').pop()[1];
+check('pack check: label photo, part number, similar rows', [pk.photo, /Запакуй ось цю: №6/.test(pk.caption), /CMK32GX4M2A2400C16/.test(pk.caption),
+  /Схожі на руках: .*№5/.test(pk.caption)], ['L6', true, true, true]);
 // 09.10: звіт MemTest86 файлом (HTML з флешки)
 const rep = '<html><body><h2>MemTest86 Report</h2><table><tr><td>Test Result:</td><td>PASS</td></tr>' +
   '<tr><td>Errors:</td><td>0</td></tr><tr><td>Passes completed:</td><td>1</td></tr>' +

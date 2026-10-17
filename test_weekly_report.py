@@ -87,6 +87,26 @@ class WeeklyTest(unittest.TestCase):
         self.assertGreater(len(parts), 1)
 
 
+
+class StaleSheetTest(unittest.TestCase):
+    """17.10: товар з порадою — аркуш з фото (номери з stale)."""
+
+    def test_stale_numbers_and_sheet(self):
+        from unittest import mock
+        import onhand
+        today = date(2026, 10, 20)
+        rows = [{"n": 1, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133", "status": "Перевірено", "date": "2026-10-01", "spent": 96},
+                {"n": 2, "title": "Kingston 16GB DDR4", "status": "Отримано", "date": "2026-10-19", "spent": 20}]
+        ns = []
+        wr.stale(rows, today, market=lambda r: [], ns=ns)
+        self.assertEqual(ns, [(1, 19)])                                # лише те, де є порада
+        got = {}
+        with mock.patch.object(onhand, "build", side_effect=lambda d, *a: got.update(d) or b"jpg"):
+            self.assertEqual(wr.stale_sheet({"rows": rows, "photos": {"1": ["f1"]}}, ns), b"jpg")
+        self.assertEqual(got["groups"][0]["items"], [{"n": 1, "title": rows[0]["title"], "days": 19, "photos": ["f1"]}])
+        self.assertIsNone(wr.stale_sheet({"rows": rows}, []))
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-17d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-17e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -249,6 +249,33 @@ function words_(s) {
 }
 
 // Рядок того самого товару: за ID (відправлення/доставка) або за спільними словами назви (продаж власного лота)
+/** Рядок (номер у таблиці) непроданого товару з цим номером оголошення eBay у нотатках, або 0. */
+function rowByListing_(itemId) {
+  const r = openRowsNotes_().filter(function (x) { return listingId_(x.note) === String(itemId); })[0];
+  return r ? r.n + LEDGER_FIRST - 1 : 0;
+}
+
+/** 17.10 (користувач: «щоб не відправити не ту пару»): після продажу — фото проданого (наклейка, якщо є), номер з наклейки
+ *  і схожі товари на руках. */
+function packCheck_(n) {
+  const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID'), r = rowByN_(n);
+  if (!r) return;
+  const st = JSON.parse(props.getProperty('PHS_' + n) || '{}');
+  const photos = cleanPhotos_(n).filter(function (x) { return x.t === 'photo'; });
+  const pick = (st.lf && photos.filter(function (x) { return x.id === st.lf; })[0]) ||
+    photos.filter(function (x) { return x.id !== st.mf; })[0] || null;
+  const pn = st.pn || (titleSpec_(r.title).parts || [])[0] || '';
+  const want = words_(r.title);
+  const similar = openRows_().filter(function (o) {
+    return o.n !== n && want.filter(function (w) { return words_(o.title).indexOf(w) >= 0; }).length >= 3;
+  }).map(function (o) { return '№' + o.n; });
+  const cap = '📦 <b>Запакуй ось цю: №' + n + '</b>\n«' + esc_(String(r.title).slice(0, 80)) + '»' +
+    (pn ? '\n🏷 На наклейці має бути: <code>' + esc_(pn) + '</code> — звір, перш ніж заклеїти' : '') +
+    (similar.length ? '\n⚠️ Схожі на руках: ' + similar.join(', ') + ' — не переплутай' : '');
+  if (pick) tgOffice_('sendPhoto', { chat_id: chat, photo: pick.id, caption: cap, parse_mode: 'HTML' });
+  else notify_(cap, null, 'HTML');
+}
+
 function findRow_(id, title, openOnly) {
   const sh = ledger_().getSheetByName('Угоди');
   const n = Math.max(sh.getLastRow() - LEDGER_FIRST + 1, 0);
@@ -407,7 +434,7 @@ function processLedger() {
           what = 'статус → ' + st;
         } else { what = 'не знайшов рядок для «' + st + '»'; }
       } else if (p.kind === 'sale') {
-        row = findRow_(null, p.title, true);
+        row = (p.id && rowByListing_(p.id)) || findRow_(null, p.title, true);   // 17.10: спершу номер оголошення eBay
         if (row) {
           deals.getRange(row, COL.sdate).setValue(p.date);
           deals.getRange(row, COL.sto).setValue(p.src);
@@ -418,6 +445,7 @@ function processLedger() {
           notify_('💰 Продано №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
                   '\n📮 Відправ за 1–3 робочі дні, потім «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» або фото квитанції з підписом «' +
                   (row - LEDGER_FIRST + 1) + '» — трек піде в eBay, покупцю — подяка.', btns_([['відправив', row - LEDGER_FIRST + 1]]));
+          try { packCheck_(row - LEDGER_FIRST + 1); } catch (e) { console.log('запакуй: ' + e); }
           if (/ebay/i.test(String(p.src || ''))) feedbackToEbay_(row - LEDGER_FIRST + 1, p.title);
         } else { what = 'продаж: не знайшов, що це за товар — впиши вручну'; }
       }
@@ -473,7 +501,7 @@ const MENU = {
   buy: ['🛒 Купівля', 'Картки угод — в ebay_bot (ПК — у pc_bot); покупки з листів eBay / KA записуються самі.\n' +
     '• купив 45 OWC 2x16 DDR4 — записати вручну (додай «ebay» або «самовивіз», якщо не KA)\n' +
     '• отримав 3 — посилка №3 прийшла\n' +
-    '• фото з підписом 3 — наклейки й екран MemTest86; без помилок → «Перевірено»\n' +
+    '• фото з підписом 3 (або «фото 3») — наклейки й екран MemTest86; без помилок і наклейка збігається → «Перевірено» сам\n' +
     '• перевірив 3 / проблема 3 — протестовано / щось не так (підкажу, як заявити)\n' +
     '• межі — межі цін у підписках KA', ['на руках']],
   sell: ['💶 Продаж', '• продати — що вже можна продавати; продати 3 — готове оголошення (ціна, назва, опис німецькою) ' +
@@ -708,6 +736,7 @@ function ledgerCommand(msg) {
     const profit = sh.getRange(row, COL.profit).getValue();
     notify_('💰 Записав продаж: ' + sh.getRange(row, COL.title).getValue() + ' — ' + amount + ' €' +
             (profit !== '' ? '\nПрибуток ≈ ' + Number(profit).toFixed(2) + ' €' : ''));
+    try { packCheck_(row - LEDGER_FIRST + 1); } catch (e) { console.log('запакуй: ' + e); }
   }
   return true;
 }
@@ -1431,7 +1460,14 @@ function weeklyReport() {
     if (i < 0) break;
     rows.splice(i, 1);
   }
-  const sealed = seal_({ rows: rows, today: iso_(new Date()), ebay: !!props.getProperty('EBAY_RT') }, officeToken_(props),
+  const photos = {};   // 17.10: фото непроданого — аркуш «що зробити з товаром»
+  rows.forEach(function (r) {
+    if (['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0) {
+      const ids = cleanPhotos_(r.n).filter(function (x) { return x.t === 'photo'; }).map(function (x) { return x.id; }).slice(0, 3);
+      if (ids.length) photos[r.n] = ids;
+    }
+  });
+  const sealed = seal_({ rows: rows, today: iso_(new Date()), ebay: !!props.getProperty('EBAY_RT'), photos: photos }, officeToken_(props),
     Utilities.getUuid().replace(/-/g, ''));
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/weekly_report.yml/dispatches', {
@@ -1533,6 +1569,13 @@ function gotNotice_(row) {
   notify_('📦 №' + r.n + ' «' + r.title + '» отримано. Протестуй протягом 1–2 днів: ' + testTip_(r.cat) + '.\n' + claimLine_(r, e) +
           '\nПеревірив — «перевірив ' + r.n + '», щось не так — «проблема ' + r.n + '».', btns_([['перевірив', r.n], ['проблема', r.n]]));
   markEvent_(r.n, 'rem', 'test0');
+  try {   // 17.10: фото з оголошення продавця — звірити, чи прийшло саме те
+    const link = String(ledger_().getSheetByName('Угоди').getRange(r.n + LEDGER_FIRST - 1, COL.link).getValue() || '');
+    if (/^\d{9,15}$/.test(r.id) || /kleinanzeigen\.de\/s-anzeige|ebay\.[a-z.]+\/itm\//.test(link)) {
+      sellDispatch_({ mode: 'got', row: r.n, title: String(r.title), id: /^\d{9,15}$/.test(r.id) ? r.id : '', link: link,
+        pn: (titleSpec_(r.title).parts || [])[0] || '', rt: PropertiesService.getScriptProperties().getProperty('EBAY_RT') || '' });
+    }
+  } catch (e) { console.log('фото продавця: ' + e); }
 }
 
 /** Чисті правила: рядки обліку + події → {lines, marks: [[n, ключ]], got: [n, ...] (без дати отримання — ставимо сьогодні)}. */
@@ -2315,7 +2358,7 @@ function photoMessage_(msg) {
   if (!f) return false;
   const props = PropertiesService.getScriptProperties();
   const mg = msg.media_group_id ? 'MG_' + msg.media_group_id : '';
-  let n = Number(((msg.caption || '').match(/^\s*№?\s*(\d{1,4})\b/) || [])[1] || 0);
+  let n = Number(((msg.caption || '').match(/^\s*(?:фото\s*)?№?\s*(\d{1,4})\b/i) || [])[1] || 0);
   if (n && mg) props.setProperty(mg, String(n));
   if (!n && mg) n = Number(props.getProperty(mg) || 0);
   if (n && mg && rowByN_(n)) flushPending_(n, mg);
@@ -2359,7 +2402,7 @@ function attachPhoto_(n, f, messageId) {
   let g = null;
   try { g = photoGemini_(f.id); } catch (e) { console.log('фото Gemini: ' + e); }
   if (g && g.kind === 'receipt') g.line = receiptShipped_(n, g);   // 10.10: квитанція → «відправив N трек» + подяка покупцю
-  photoSummary_(n, g, list.length);
+  photoSummary_(n, g, list.length, f.id);
 }
 
 /** Gemini: що на фото — екран MemTest86, наклейка пам'яті чи інше. null — не вдалося. */
@@ -2428,26 +2471,32 @@ function labelCheck_(title, label) {
 }
 
 /** Один підсумок по рядку: створюється раз і далі редагується (не засмічуємо чат). */
-function photoSummary_(n, g, count) {
+function photoSummary_(n, g, count, fileId) {
   const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
   const r = rowByN_(n);
   const st = JSON.parse(props.getProperty('PHS_' + n) || '{}');
   st.lines = st.lines || {};
   if (g && g.kind === 'memtest' && g.memtest) {
+    if (fileId) st.mf = fileId;
     const t = g.memtest, errs = t.errors == null ? null : Number(t.errors);
     if (errs > 0 || t.result === 'FAIL') {
       st.lines.memtest = '⛔ MemTest86: <b>' + (errs || '') + ' помилок</b> — планка несправна → статус «Проблема». Як заявити — «проблема ' + n + '».';
       if (r && ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0) ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.status).setValue('Проблема');
     } else if (errs === 0 && (t.pass_done || t.result === 'PASS')) {
-      const can = r && ['Оплачено', 'В дорозі', 'Отримано'].indexOf(r.status) >= 0;
+      // 17.10: наклейка не збігається з покупкою — «Перевірено» не ставимо сами
+      const labelBad = /^⚠️/.test(st.lines.label || '');
+      const can = r && !labelBad && ['Оплачено', 'В дорозі', 'Отримано'].indexOf(r.status) >= 0;
       if (can) { ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.status).setValue('Перевірено'); markEvent_(n, 'tested', iso_(new Date())); }
-      st.lines.memtest = '✅ MemTest86: 0 помилок' + (t.ram ? ', ' + esc_(String(t.ram).slice(0, 60)) : '') + (can ? ' → статус «Перевірено»' : '');
+      st.lines.memtest = '✅ MemTest86: 0 помилок' + (t.ram ? ', ' + esc_(String(t.ram).slice(0, 60)) : '') + (can ? ' → статус «Перевірено»' :
+        labelBad ? ' — але наклейка не збігається: глянь; усе гаразд — «перевірив ' + n + '»' : '');
     } else if (errs === 0) {
       st.lines.memtest = '⏳ MemTest86: поки 0 помилок, але прохід не завершено — пришли фото, коли внизу «Pass: 2/4» або PASS.';
     }
   } else if (g && g.kind === 'receipt' && g.line) {
     st.lines.receipt = g.line;
   } else if (g && g.kind === 'ram_label' && g.label && r) {
+    if (fileId && !st.lf) st.lf = fileId;   // 17.10: для «запакуй ось цю» — фото наклейки й номер з неї
+    if (g.label.part_number && !st.pn) st.pn = String(g.label.part_number).slice(0, 40);
     const c = labelCheck_(r.title, g.label);
     st.lines.label = c.bad.length ? '⚠️ Наклейка не збігається з покупкою: ' + c.bad.map(esc_).join('; ')
       : c.ok.length ? '✅ Наклейка збігається: ' + c.ok.map(esc_).join(', ') : 'ℹ️ Наклейку прочитав (' + esc_(String(g.label.text || '').slice(0, 60)) + '), але звірити нема з чим';
@@ -2802,8 +2851,8 @@ function parseMemtest_(text) {
 function memtestReport_(msg) {
   const d = msg.document;
   if (!d || !(/html|text|log/i.test(d.mime_type || '') || /\.(?:html?|log|txt)$/i.test(d.file_name || ''))) return false;
-  if (!/memtest/i.test((d.file_name || '') + ' ' + (msg.caption || '')) && !/^\s*№?\s*\d{1,4}\b/.test(msg.caption || '')) return false;
-  let n = Number(((msg.caption || '').match(/^\s*№?\s*(\d{1,4})\b/) || [])[1] || 0);
+  if (!/memtest/i.test((d.file_name || '') + ' ' + (msg.caption || '')) && !/^\s*(?:фото\s*)?№?\s*\d{1,4}\b/i.test(msg.caption || '')) return false;
+  let n = Number(((msg.caption || '').match(/^\s*(?:фото\s*)?№?\s*(\d{1,4})\b/i) || [])[1] || 0);
   if (!n) { const open = openRows_(); if (open.length === 1) n = open[0].n; }
   if (!n || !rowByN_(n)) { notify_('🧪 Звіт MemTest86 отримав — напиши номер товару в підписі до файлу (наприклад «3»).'); return true; }
   const props = PropertiesService.getScriptProperties(), tok = officeToken_(props);

@@ -39,7 +39,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Self-check (unit tests)
-        run: python -m unittest test_weekly_report test_sell
+        run: python -m unittest test_weekly_report test_sell test_onhand
 
       - name: Restore eBay watcher state (read-only)
         uses: actions/cache/restore@v5

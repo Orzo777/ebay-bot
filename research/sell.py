@@ -720,6 +720,23 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         if ch["lots"] or ch["ask"] or ch["ended"]:
             back({"kind": "sync", **ch}, key)
         return True
+    if mode == "got":   # 17.10: «отримав N» — фото з оголошення продавця: звірити, чи прийшло саме те
+        import parcels
+        import requests
+        token = None
+        if d.get("rt") and d.get("id"):
+            try:
+                token = el.access_token(d["rt"], app, cert, post)
+            except Exception as e:
+                print(f"eBay токен: {e.__class__.__name__}")
+        url = parcels.picture_for({"id": d.get("id") or "", "link": d.get("link") or ""}, None, token, post, requests.get)
+        if not url:
+            print("фото продавця: немає")
+            return True
+        cap = (f"🔍 №{d.get('row')}: так було в оголошенні продавця — звір планки й наклейку"
+               + (f" ({d['pn']})" if d.get("pn") else "") + ".\nТест пройде — надішли фото планок і екрана MemTest з підписом "
+               f"«{d.get('row')}», «Перевірено» поставлю сам.")
+        return office_send_url_album([(cap, url)], requests.get) > 0
     if mode == "onhand":   # 17.10: «🗂 На руках» — аркуш з фото: під кожним №N — сама планка
         import onhand
         import requests
