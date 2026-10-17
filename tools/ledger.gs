@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-17f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-17g';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -2400,33 +2400,49 @@ function attachPhoto_(n, f, messageId) {
   list.push(f);
   savePhotos_(n, list);
   photosChanged_(n);
-  let g = null;
-  try { g = photoGemini_(f.id); } catch (e) { console.log('фото Gemini: ' + e); }
-  if (!g && props.getProperty('GEMINI_API_KEY')) photoRetryAdd_(n, f.id);   // 17.10: не відповів — перечитаємо пізніше
-  if (g && g.kind === 'receipt') g.line = receiptShipped_(n, g);   // 10.10: квитанція → «відправив N трек» + подяка покупцю
-  photoSummary_(n, g, list.length, f.id);
+  // 17.10: Gemini читає фото не тут, а у фоні (photoRetry_: check() щохвилини, processLedger) — вебхук відповідає Telegram
+  // за секунди (з Gemini всередині Telegram не дочікувався: «Read timeout expired», а друге фото альбому губилось)
+  if (props.getProperty('GEMINI_API_KEY')) photoRetryAdd_(n, f.id);
+  photoSummary_(n, null, list.length, f.id);
 }
 
-/** 17.10: фото, яке Gemini не прочитав (перевантажений / помилка), — у чергу; processLedger перечитує (до 3 спроб). */
+/** 17.10: черга фото для Gemini (наклейка / MemTest / квитанція); кожне — до 3 спроб. Викликати під замком вебхука. */
 function photoRetryAdd_(n, id) {
   const props = PropertiesService.getScriptProperties(), q = JSON.parse(props.getProperty('PH_RETRY') || '[]');
   if (!q.some(function (x) { return x.id === id; })) q.push({ n: n, id: id, k: 0 });
   props.setProperty('PH_RETRY', JSON.stringify(q.slice(-20)));
 }
 
-function photoRetry_() {
-  const props = PropertiesService.getScriptProperties(), q = JSON.parse(props.getProperty('PH_RETRY') || '[]');
-  if (!q.length) return;
-  const x = q.shift();
-  let g = null;
-  if (cleanPhotos_(x.n).some(function (p) { return p.id === x.id; })) {
-    try { g = photoGemini_(x.id); } catch (e) { console.log('фото Gemini (ще раз): ' + e); }
-    if (g) {
-      if (g.kind === 'receipt') g.line = receiptShipped_(x.n, g);
-      photoSummary_(x.n, g, cleanPhotos_(x.n).length, x.id);
-    } else if (x.k < 2) q.push({ n: x.n, id: x.id, k: x.k + 1 });
+/** Розібрати чергу фото (не з вебхука: замок береться тут лише на зміну черги й підсумку, Gemini — без замка, щоб
+ *  повідомлення в бот не чекали). Кожне фото за виклик — один раз; не вийшло — назад у чергу (до 3 спроб). */
+function photoRetry_(budgetMs) {
+  const props = PropertiesService.getScriptProperties(), lock = LockService.getScriptLock();
+  const t0 = Date.now(), budget = budgetMs || 40000, tried = {};
+  while (Date.now() - t0 < budget) {
+    let x = null;
+    if (!lock.tryLock(10000)) return;
+    try {
+      const q = JSON.parse(props.getProperty('PH_RETRY') || '[]');
+      const i = q.findIndex(function (y) { return !tried[y.id]; });
+      if (i >= 0) { x = q.splice(i, 1)[0]; props.setProperty('PH_RETRY', JSON.stringify(q)); }
+    } finally { lock.releaseLock(); }
+    if (!x) return;
+    tried[x.id] = 1;
+    if (!cleanPhotos_(x.n).some(function (p) { return p.id === x.id; })) continue;   // фото вже прибрали / перенесли
+    let g = null;
+    try { g = photoGemini_(x.id); } catch (e) { console.log('фото Gemini: ' + e); }
+    if (!lock.tryLock(10000)) { if (!g) return; }
+    try {
+      if (g) {
+        if (g.kind === 'receipt') g.line = receiptShipped_(x.n, g);   // 10.10: квитанція → «відправив N трек» + подяка покупцю
+        photoSummary_(x.n, g, cleanPhotos_(x.n).length, x.id);
+      } else if ((x.k || 0) < 2) {
+        const q = JSON.parse(props.getProperty('PH_RETRY') || '[]');
+        q.push({ n: x.n, id: x.id, k: (x.k || 0) + 1 });
+        props.setProperty('PH_RETRY', JSON.stringify(q.slice(-20)));
+      }
+    } finally { lock.releaseLock(); }
   }
-  props.setProperty('PH_RETRY', JSON.stringify(q));
 }
 
 /** Gemini: що на фото — екран MemTest86, наклейка пам'яті чи інше. null — не вдалося. */
@@ -2527,6 +2543,7 @@ function photoSummary_(n, g, count, fileId) {
   }
   const text = '📸 <b>№' + n + '</b> «' + esc_(r ? String(r.title).slice(0, 60) : '') + '» — фото: ' + count +
     ['label', 'memtest', 'receipt'].filter(function (k) { return st.lines[k]; }).map(function (k) { return '\n' + st.lines[k]; }).join('') +
+    (JSON.parse(props.getProperty('PH_RETRY') || '[]').some(function (x) { return x.n === n; }) ? '\n🔎 Читаю фото — до хвилини…' : '') +
     '\nПродати — «продати ' + n + '» (фото прийдуть альбомом); показати — «фото ' + n + '».';
   let done = false;
   const kb = JSON.stringify(btns_([['продати', n], ['фото', n]]));

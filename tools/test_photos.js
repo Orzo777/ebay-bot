@@ -36,6 +36,7 @@ const ctx = {
   console: { log: () => {} },
   Utilities: { base64Encode: () => 'AAA', getUuid: () => 'ab-cd',
     formatDate: (d, tz, f) => ({ 'yyyy-MM-dd': d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) }[f]) },
+  LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return true; }, releaseLock() {} }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in store ? store[k] : null),
     setProperty: (k, v) => { store[k] = v; }, deleteProperty: (k) => { delete store[k]; } }) },
   UrlFetchApp: { fetch: (u, o) => {
@@ -59,7 +60,8 @@ vm.runInContext(`ledger_ = function () { return { getSheetByName: () => __deals 
   notify_ = function (t) { __sent.push(t); };`, Object.assign(ctx, { __deals: deals, __sent: sent }));
 let bad = 0;
 const check = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) { bad++; console.log('!!', name, JSON.stringify(got)); } };
-const say = (m) => vm.runInContext('officeMessage(__m)', Object.assign(ctx, { __m: Object.assign({ chat: { id: 7 } }, m) }));
+// 17.10: Gemini читає фото у фоні (check() щохвилини) — у тесті одразу після кожного повідомлення
+const say = (m) => { vm.runInContext('officeMessage(__m)', Object.assign(ctx, { __m: Object.assign({ chat: { id: 7 } }, m) })); ctx.photoRetry_(); };
 let sizeSeq = 1000;
 const photo = (id, mid, extra, u, size) => Object.assign({ message_id: mid, photo: [{ file_id: id + '_s' },
   { file_id: id, file_unique_id: u || 'U' + id, width: 1280, height: 960, file_size: size || ++sizeSeq }] }, extra || {});
@@ -121,6 +123,7 @@ check('pending attached to №1, number message and question removed', [JSON.par
 gemini = [];
 say(photo('F6', 17, { caption: '1' }));
 check('Gemini down → still stored', JSON.parse(store.PH_1).length, 3);
+delete store.PH_RETRY;   // повтор F6 не повинен з'їдати відповіді Gemini для наступних фото
 
 // 7. «фото 2» → альбом; «фото 9» → підказка
 say({ message_id: 18, text: 'фото 2' });
