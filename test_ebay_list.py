@@ -257,10 +257,14 @@ class ReviseTest(unittest.TestCase):
                      "BestOfferAutoAcceptPrice", "MinimumBestOfferPrice", "<PictureURL>https://i.ebayimg.com/1.jpg</PictureURL>",
                      "<Name>Herstellernummer</Name><Value>CMK32GX4M2A2133C13</Value>", "&amp;amp;"):
             self.assertIn(part, body)
-        el.revise_photos("1234567890", ["https://i.ebayimg.com/2.jpg"], "tok", post)
+        el.revise_listing("1234567890", tx, {"item": 168}, ["https://i.ebayimg.com/2.jpg"], "tok", post, {"photos"})
         self.assertIn("<PictureURL>https://i.ebayimg.com/2.jpg</PictureURL>", sent[-1][1])
         for part in ("<Title>", "StartPrice", "<Description>", "ItemSpecifics"):
-            self.assertNotIn(part, sent[-1][1])                     # 17.10: лише фото
+            self.assertNotIn(part, sent[-1][1])                     # 17.10: лише змінене (фото)
+        el.revise_listing("1", tx, {"item": 165, "accept": 155, "decline": 140}, ["https://i.ebayimg.com/2.jpg"], "tok", post, {"price"})
+        self.assertIn('<StartPrice currencyID="EUR">165.00', sent[-1][1])
+        self.assertNotIn("PictureDetails", sent[-1][1])
+        self.assertNotIn("<Title>", sent[-1][1])
         el.revise_listing("1", tx, {"item": 168}, [], "tok", post)
         self.assertNotIn("PictureDetails", sent[-1][1])   # без нових фото — фото на eBay не чіпаємо
 

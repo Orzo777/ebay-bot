@@ -399,8 +399,7 @@ def keyboard(tx: dict, r: dict, row: int | None = None, ebay: bool = False, list
     q, cat = competitor_query(r)
     rows = []
     if row and ebay:
-        rows.append([{"text": "🔁 Оновити оголошення на eBay", "callback_data": f"c|оновити|{row}"},
-                     {"text": "🖼 Лише фото", "callback_data": f"c|оновити-фото|{row}"}] if listed else
+        rows.append([{"text": "🔁 Оновити оголошення на eBay", "callback_data": f"c|оновити|{row}"}] if listed else
                     [{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}])
         rows.append([{"text": "✏️ Змінити ціну / назву / опис / фото", "callback_data": f"c|змінити|{row}"}])
     if row:
@@ -751,8 +750,9 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
         return send("🔑 eBay ще не підключено — напиши «ebay вхід».", None)
     if not item_id:
         return send(f"⚠️ Не знаю номер оголошення eBay для {what} — онови вручну («Bearbeiten») або виставив заново.", None)
-    if d.get("photos_only"):   # 17.10: лише фото — назва, опис, ціна на eBay лишаються як є
-        return revise_photos_mode(d, key, app, cert, post, file_fn, send, back, row, item_id, what)
+    parts = set(d["parts"]) if isinstance(d.get("parts"), list) else None   # 17.10: лише змінене (✏️), решта як на eBay
+    if parts is not None and not parts:
+        return send(f"✏️ У {what} нічого не змінено — спершу ✏️ (ціна / назва / опис / фото), потім 🔁.", None)
     p = prepare(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, row, comp_fn,
                 d.get("edits"))
     if not p:
@@ -761,7 +761,10 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
     try:
         token = el.access_token(d["rt"], app, cert, post)
         pics = []
-        for i, ph in enumerate([x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]):
+        photos = [x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]
+        if parts is not None and "photos" in parts and not photos:
+            return send(f"📸 Для {what} немає фото — надішли нові з підписом «{row}», потім 🔁.", None)
+        for i, ph in enumerate(photos if parts is None or "photos" in parts else []):
             if len(pics) >= el.MAX_PHOTOS:
                 break
             data = file_fn(ph["id"], key)
@@ -769,7 +772,7 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
                 if not (d.get("edits") or {}).get("raw"):
                     data = studio_or_original(data)
                 pics.append(el.upload_picture(data, f"n{row}-r{i + 1}", token, post))
-        res = el.revise_listing(item_id, tx, ip, pics, token, post)
+        res = el.revise_listing(item_id, tx, ip, pics, token, post, parts)
     except el.AuthError as e:
         back({"kind": "ebay_bad"}, key)
         return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід».", None)
@@ -777,40 +780,22 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
         return send(f"⚠️ Не вийшло оновити {what}: {html.escape(str(e)[:300])}\nНічого не змінено.", None)
     if not res["ok"]:
         return send(f"⚠️ eBay не прийняв зміни {what}:\n{_short(res['errors'])}\nОголошення лишилось як було.", None)
-    back({"kind": "revised", "row": row, "price": ip["item"], "item_id": item_id}, key)
+    price_sent = parts is None or "price" in parts
+    back({"kind": "revised", "row": row, "item_id": item_id, **({"price": ip["item"]} if price_sent else {})}, key)
     warn = ("\nℹ️ eBay каже:\n" + _short(el.explain(res["warnings"]), 3)) if res["warnings"] else ""
-    return send(f"🔁 <b>{what} оновлено на eBay</b>\n<i>{html.escape(tx['title'])}</i>\n"
-                f"💶 {ip['item']} € + доставка {money_de(tx['ship'])} € · автоприйняти від {ip['accept']} €, відхиляти нижче "
-                f"{ip['decline']} €" + (f"\n📸 фото: {len(pics)}" if pics else "") + warn,
-                {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": f"https://www.ebay.de/itm/{item_id}"}]]})
-
-
-def revise_photos_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, back, row, item_id: str, what: str) -> bool:
-    import ebay_list as el
-    photos = [x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]
-    if not photos:
-        return send(f"📸 Для {what} немає фото — надішли нові з підписом «{row}», потім натисни ще раз.", None)
-    try:
-        token = el.access_token(d["rt"], app, cert, post)
-        pics = []
-        for i, ph in enumerate(photos[:el.MAX_PHOTOS]):
-            data = file_fn(ph["id"], key)
-            if data and el.is_image(data):
-                if not (d.get("edits") or {}).get("raw"):
-                    data = studio_or_original(data)
-                pics.append(el.upload_picture(data, f"n{row}-f{i + 1}", token, post))
-        if not pics:
-            return send(f"📸 Не зміг прочитати фото {what} — надішли ще раз.", None)
-        res = el.revise_photos(item_id, pics, token, post)
-    except el.AuthError as e:
-        back({"kind": "ebay_bad"}, key)
-        return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід».", None)
-    except el.EbayError as e:
-        return send(f"⚠️ Не вийшло замінити фото {what}: {html.escape(str(e)[:300])}\nНічого не змінено.", None)
-    if not res["ok"]:
-        return send(f"⚠️ eBay не прийняв фото {what}:\n{_short(res['errors'])}\nОголошення лишилось як було.", None)
-    back({"kind": "revised", "row": row, "item_id": item_id, "photos_only": True}, key)
-    return send(f"🖼 <b>Фото {what} замінено на eBay</b> ({len(pics)} шт.) — назва, опис і ціна як були.",
+    lines = [f"🔁 <b>{what} оновлено на eBay</b>"]
+    if parts is None or "title" in parts:
+        lines.append(f"<i>{html.escape(tx['title'])}</i>")
+    if price_sent:
+        lines.append(f"💶 {ip['item']} € + доставка {money_de(tx['ship'])} € · автоприйняти від {ip['accept']} €, відхиляти нижче "
+                     f"{ip['decline']} €")
+    if parts is not None and "desc" in parts:
+        lines.append("📝 опис оновлено")
+    if pics:
+        lines.append(f"📸 фото: {len(pics)}")
+    if parts is not None:
+        lines.append("Решта — як була на eBay.")
+    return send("\n".join(lines) + warn,
                 {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": f"https://www.ebay.de/itm/{item_id}"}]]})
 
 

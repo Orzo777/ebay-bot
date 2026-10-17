@@ -159,11 +159,12 @@ check('studio again: card dispatched', [JSON.parse(store.SELL_EDITS)[1] && JSON.
   [undefined, ghBefore + 1, 1]);
 say('ціна 1 129');
 ctx.officeCallback({ id: 'q', data: 'c|оновити|1', message: { chat: { id: 7 }, message_id: 70 } });
-check('revise confirm asked, card kept', [/Оновити оголошення №1 на eBay/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data,
+check('revise confirm asked, card kept', [/Оновити №1 на eBay: ціна —/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data,
   tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 70)], [true, 'c|так-оновити|1', false]);
 ctx.officeCallback({ id: 'q', data: 'c|так-оновити|1', message: { chat: { id: 7 }, message_id: 71 } });
 const rv = opened();
-check('revise dispatched', [rv.mode, rv.row, rv.item_id, rv.edits.price, rv.photos.length, rv.rt], ['revise', 1, '1234567890', 129, 1, 'v^1.1#RT']);
+check('revise dispatched (only the price)', [rv.mode, rv.row, rv.item_id, rv.edits.price, rv.photos.length, rv.rt, rv.parts.join()],
+  ['revise', 1, '1234567890', 129, 1, 'v^1.1#RT', 'price']);
 ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'revised', row: 1, price: 129, item_id: '1234567890' }, '123:ABC', 'n5') }) },
   parameter: { bot: 'office' } });
 check('revised noted, edits cleared', [/оновлено на eBay 09.10 \(129 €\)/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]),
@@ -176,18 +177,16 @@ deals.cells['7:11'] = 'Перевірено';
 say('виставив 3 59 https://www.ebay.de/itm/Kingston-16GB/306123456789?hash=x');
 check('manual listing with link stores the id', [/виставлено за 59 € 09.10 \(eBay 306123456789\)/.test(deals.cells['7:' + vm.runInContext('COL.note', ctx)]),
   /запам'ятав/.test(last()[0])], [true, true]);
-// 17.10: «🖼 Лише фото» — підтвердження, revise з photos_only, нотатка без скидання правок
-say('оновити фото 1');
-check('photos-only confirm', [/Замінити фото №1/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data], [true, 'c|так-фото|1']);
-ctx.officeCallback({ id: 'q', data: 'c|так-фото|1', message: { chat: { id: 7 }, message_id: 73 } });
-check('photos-only dispatched', [opened().mode, opened().photos_only, opened().item_id], ['revise', true, '1234567890']);
-store.SELL_EDITS = JSON.stringify({ 1: { price: 120 } });
-ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'revised', row: 1, item_id: '1234567890', photos_only: true }, '123:ABC', 'n6') }) },
-  parameter: { bot: 'office' } });
-check('photos-only noted, edits kept', [/фото оновлено на eBay 09.10/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]),
-  JSON.parse(store.SELL_EDITS)[1].price], [true, 120]);
+// 17.10: «🔁» — лише змінене: нічого не змінено → підказка; змінились фото → на eBay лише фото
+say('оновити 1');
+check('nothing changed — no revise', /нічого не змінено/.test(last()[0]), true);
 say('видали фото 1');
-check('photos deleted', [JSON.parse(store.PH_1 || '[]').length, /Прибрав 1 фото №1/.test(last()[0])], [0, true]);
+check('photos deleted', [JSON.parse(store.PH_1 || '[]').length, /Прибрав 1 фото №1/.test(last()[0]), JSON.parse(store.SELL_EDITS)[1].photos],
+  [0, true, true]);
+say('оновити 1');
+check('photos changed — confirm names photos', /Оновити №1 на eBay: фото —/.test(last()[0]), true);
+ctx.officeCallback({ id: 'q', data: 'c|так-оновити|1', message: { chat: { id: 7 }, message_id: 74 } });
+check('revise only photos', opened().parts.join(), 'photos');
 
 // 16.10: «🏷 Виставлено» (кнопка) → GitHub listings: ключ eBay + рядки «Виставлено» з нотатками (номер eBay)
 say('🏷 Виставлено');
