@@ -511,6 +511,24 @@ def office_send_album(photos: list, caption: str) -> int:
     return n
 
 
+def product_first(blobs: list[bytes]) -> list[bytes]:
+    """17.10 (користувач: головним на eBay став екран MemTest, бо його надіслав першим): спершу фото товару (світлий рівний
+    фон), потім екрани тесту, квитанції тощо; порядок усередині кожної групи — як надіслано."""
+    import io
+    try:
+        import photo_studio
+        from PIL import Image, ImageOps
+    except ImportError:
+        return blobs
+
+    def screen(b: bytes) -> int:
+        try:
+            return 0 if photo_studio.plain_background(ImageOps.exif_transpose(Image.open(io.BytesIO(b))).convert("RGB")) else 1
+        except Exception:
+            return 1
+    return sorted(blobs, key=screen)
+
+
 def studio_or_original(data: bytes) -> bytes:
     """16.10: фото на білому фоні (research/photo_studio.py); екран тесту / темний фон / помилка — оригінал.
     17.10: контур — Poof.bg, якщо є POOF_KEY (інакше наша маска)."""
@@ -529,10 +547,8 @@ def office_send_studio_preview(photos: list, row: int, file_fn=None) -> int:
     token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN
     file_fn = file_fn or tg_file
     files, media = {}, []
-    for i, ph in enumerate([x for x in photos or [] if isinstance(x, dict) and x.get("id")][:10]):
-        data = file_fn(ph["id"], token)
-        if not data:
-            continue
+    blobs = [b for b in (file_fn(ph["id"], token) for ph in [x for x in photos or [] if isinstance(x, dict) and x.get("id")][:10]) if b]
+    for i, data in enumerate(product_first(blobs)):
         files[f"p{i}"] = (f"p{i}.jpg", studio_or_original(data), "image/jpeg")
         media.append({"type": "photo", "media": f"attach://p{i}"})
     if not media:
@@ -766,14 +782,17 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
     try:
         token = el.access_token(d["rt"], app, cert, post)
         pics = []
-        for i, ph in enumerate([x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]):
-            if len(pics) >= el.MAX_PHOTOS:
+        blobs = []
+        for ph in [x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]:
+            if len(blobs) >= el.MAX_PHOTOS:
                 break
             data = file_fn(ph["id"], key)
             if data and el.is_image(data):
-                if not (d.get("edits") or {}).get("raw"):   # 16.10: білий фон («оригінали N» — без обробки)
-                    data = studio_or_original(data)
-                pics.append(el.upload_picture(data, f"n{row}-{i + 1}", token, post))
+                blobs.append(data)
+        for i, data in enumerate(product_first(blobs)):   # 17.10: головне — фото товару, екран MemTest — після
+            if not (d.get("edits") or {}).get("raw"):   # 16.10: білий фон («оригінали N» — без обробки)
+                data = studio_or_original(data)
+            pics.append(el.upload_picture(data, f"n{row}-{i + 1}", token, post))
         if not pics:
             return send(f"📸 Для {what} немає фото — надішли фото в бот з номером у підписі («{row}»), потім натисни ще раз.", None)
         res = el.verify_and_add(p["r"]["kind"], tx, ip, pics, f"ledger-{row}", token, post, dry)
@@ -829,14 +848,17 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
         photos = [x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]
         if parts is not None and "photos" in parts and not photos:
             return send(f"📸 Для {what} немає фото — надішли нові з підписом «{row}», потім 🔁.", None)
-        for i, ph in enumerate(photos if parts is None or "photos" in parts else []):
-            if len(pics) >= el.MAX_PHOTOS:
+        blobs = []
+        for ph in (photos if parts is None or "photos" in parts else []):
+            if len(blobs) >= el.MAX_PHOTOS:
                 break
             data = file_fn(ph["id"], key)
             if data and el.is_image(data):
-                if not (d.get("edits") or {}).get("raw"):
-                    data = studio_or_original(data)
-                pics.append(el.upload_picture(data, f"n{row}-r{i + 1}", token, post))
+                blobs.append(data)
+        for i, data in enumerate(product_first(blobs)):
+            if not (d.get("edits") or {}).get("raw"):
+                data = studio_or_original(data)
+            pics.append(el.upload_picture(data, f"n{row}-r{i + 1}", token, post))
         res = el.revise_listing(item_id, tx, ip, pics, token, post, parts)
     except el.AuthError as e:
         back({"kind": "ebay_bad"}, key)

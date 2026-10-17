@@ -107,6 +107,15 @@ class StudioTest(unittest.TestCase):
         img = Image.new("RGB", (900, 1200), (12, 20, 60))
         self.assertIsNone(photo_studio.studio(jpeg(img), "k", lambda *a, **k: self.fail("екран — без запиту")))
 
+    def test_product_photos_first(self):
+        # 17.10: екран MemTest надіслано першим — на eBay головним має бути фото планок
+        import sell
+        img = Image.new("RGB", (900, 1200), (12, 20, 60))
+        ImageDraw.Draw(img).rectangle([100, 400, 800, 700], fill=(120, 200, 230))
+        screen, ram = jpeg(img), module_photo()
+        self.assertEqual(sell.product_first([screen, ram, b"junk"]), [ram, screen, b"junk"])
+        self.assertEqual(sell.product_first([ram, screen]), [ram, screen])
+
     def test_fallback_to_original(self):
         import sell
         self.assertEqual(sell.studio_or_original(b"not an image"), b"not an image")
