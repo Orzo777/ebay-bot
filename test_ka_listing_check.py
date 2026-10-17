@@ -185,3 +185,16 @@ class TestPass2Descriptions(unittest.TestCase):
         self.assertIsNone(broken_reason("Funktioniert einwandfrei, leise, kein Überhitzen, 2 Controller."))
         self.assertIsNone(broken_reason("Nicht kaputt, nur Kratzer am Gehäuse."))
         self.assertTrue(broken_reason("Nach 10 Minuten überhitzt die Konsole."))
+
+    def test_broken_crashes_and_memory_diagnosis(self):
+        # 17.10 (KA 3543763957, бот: «дуже вигідно»): збої й помилки діагностики пам'яті — без слова «defekt»
+        from ram_alert import broken_reason
+        desc = ("Der Speicher wird von Windows korrekt erkannt und lief die meiste Zeit einwandfrei. Selten kam es allerdings zu "
+                "Abstürzen des PCs. Ich konnte nicht eindeutig klären, ob der Speicher die Ursache war, halte es aber für "
+                "wahrscheinlich, da die Windows-Speicherdiagnose Probleme feststellen konnte.")
+        self.assertTrue(broken_reason(desc))
+        self.assertTrue(broken_reason("Windows Speicherdiagnose hat Fehler erkannt"))
+        self.assertTrue(broken_reason("Ab und zu Bluescreen beim Zocken"))
+        for ok in ("Läuft stabil, keine Abstürze, keine Bluescreens.", "Memtest ohne Fehler, keine Fehler gefunden.",
+                   "MemTest86: 4 Pässe, 0 Fehler gefunden", "Lief immer stabil, nie Abstürze", "Es wurden keine Probleme festgestellt"):
+            self.assertIsNone(broken_reason(ok), ok)

@@ -300,6 +300,9 @@ assist.yml → research/assist.py запускає **Claude Code** (`claude -p`,
   розбирає наступний виклик або check(). Фото, яке Gemini не прочитав, — `PH_RETRY`, processLedger перечитує (до 3 спроб).
 - **Головне фото на eBay — товар** (№6: першим став екран MemTest, бо надісланий першим): `sell.product_first` — фото на
   світлому рівному фоні першими, екрани тесту / квитанції після; у прев'ю, публікації й «🔁».
+- **Несправна пам'ять без слова «defekt»** (KA 3543763957, бот: «дуже вигідно»): «Selten kam es zu Abstürzen … Windows-
+  Speicherdiagnose Probleme feststellen konnte» — `broken_reason` тепер ловить збої (Absturz, Bluescreen, instabil, friert ein)
+  і «Fehler / Probleme festgestellt / gefunden / erkannt»; заперечення («keine», «nie», «0 Fehler») — не дефект.
 
 ### 16.10.2026
 

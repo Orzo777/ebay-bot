@@ -384,7 +384,12 @@ _DESC_BROKEN = re.compile(r"funktioniert nicht|nicht funktionsfähig|\bdefekt|ka
                           r"überhitz|blue\s?light|blaue[sn]?\s+licht|stürzt\s+(?:\w+\s+){0,2}ab|hängt\s+sich\s+(?:\w+\s+)?auf|"
                           r"liest\s+keine|zieht\s+(?:die\s+)?dis[ck]s?\s+nicht|kein\s+(?:ton|signal)|"
                           # «lediglich das Laufwerk streikt» (eBay 29.09)
-                          r"\bstreikt|laufwerk\s+(?:\w+\s+){0,2}(?:geht\s+nicht|spinnt)", re.I)
+                          r"\bstreikt|laufwerk\s+(?:\w+\s+){0,2}(?:geht\s+nicht|spinnt)|"
+                          # 17.10 (KA 3543763957, «дуже вигідно»): «Selten kam es zu Abstürzen … da die Windows-Speicherdiagnose
+                          # Probleme feststellen konnte» — несправна пам'ять без слова «defekt»
+                          r"\babst[üu]rz\w*|blue\s?screen\w*|\bbsod\b|\binstabil|friert\s+(?:\w+\s+){0,2}ein\b|"
+                          r"(?:probleme?|fehler)\s+(?:\w+\s+)?(?:fest(?:stellen|gestellt|stellte)|gefunden|finden|erkannt|angezeigt|gemeldet)",
+                          re.I)
 _DESC_UNTESTED = re.compile(r"ungetestet|nicht getestet|ungeprüft|nicht geprüft|(?:kann|konnte)\s+(?:\w+\s+)?nicht\s+test|"
                             # «Absolut keine Ahnung ob der Riegel funktioniert … kein System zum testen» (eBay 29.09)
                             r"keine\s+ahnung,?\s+ob|kein\w*\s+(?:\w+\s+)?(?:system|pc|rechner|mainboard)\s+(?:\w+\s+)?zum\s+test|"
@@ -405,7 +410,7 @@ _DESC_RECEIPT = re.compile(r"rechnung|kaufbeleg|quittung|kassenbon|kaufnachweis"
 
 # Несправне не купуємо зовсім (рішення 27.09: ремонт консолей не робимо). «keine Defekte», «nicht defekt»,
 # «Controller defekt» у наборі з робочою консоллю — НЕ дефект самого товару.
-_NEG_BEFORE = re.compile(r"(?:kein\w*|ohne|nicht|frei\s+von)\s+(?:\w+\s+){0,2}$", re.I)
+_NEG_BEFORE = re.compile(r"(?:kein\w*|ohne|nicht|nie|frei\s+von|\b0)\s+(?:\w+\s+){0,2}$", re.I)
 _PART_BEFORE = re.compile(r"(?:controller|joy-?con\w*|fernbedienung|kabel|ovp|verpackung|karton|hülle|dock\w*)\W+(?:\w+\W+){0,2}$", re.I)
 
 
