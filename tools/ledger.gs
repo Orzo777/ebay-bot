@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-16f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-17a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -818,8 +818,8 @@ function editCommand_(msg) {
     ed[n] = Object.assign(cur, { raw: cmd === 'оригінали' });
     if (!ed[n].raw) delete ed[n].raw;
     props.setProperty('SELL_EDITS', JSON.stringify(ed));
-    notify_(cmd === 'оригінали' ? '📸 №' + n + ': на eBay підуть фото як є, без обробки. Повернути білий фон — «обробити ' + n + '».'
-                               : '📸 №' + n + ': фото знову з білим фоном.');
+    if (cmd === 'оригінали') notify_('📸 №' + n + ': на eBay підуть фото як є, без обробки. Повернути білий фон — «обробити ' + n + '».');
+    else sellCommand_({ text: 'продати ' + n, chat: msg.chat });   // 17.10: одразу картка й альбом оброблених фото
     return true;
   }
   if (cmd === 'змінити' || (!arg && cmd !== 'скинути')) {

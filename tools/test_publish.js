@@ -150,6 +150,13 @@ check('already listed refused', /Виставлено/.test(last()[0]), true);
 // 16.10: «🔁 Оновити на eBay» — виставлене: картка з номером оголошення, підтвердження, запуск revise з правками, нотатка
 say('продати 1');
 check('sell card of a listed item knows the eBay id', opened().item_id, '1234567890');
+// 17.10: «оригінали N» — лише прапорець; «обробити N» — одразу картка «продати N» (з альбомом оброблених фото)
+const ghBefore = gh.length;
+say('оригінали 1');
+check('raw photos: flag only', [JSON.parse(store.SELL_EDITS)[1].raw, gh.length], [true, ghBefore]);
+say('обробити 1');
+check('studio again: card dispatched', [JSON.parse(store.SELL_EDITS)[1] && JSON.parse(store.SELL_EDITS)[1].raw, gh.length, opened().row],
+  [undefined, ghBefore + 1, 1]);
 say('ціна 1 129');
 ctx.officeCallback({ id: 'q', data: 'c|оновити|1', message: { chat: { id: 7 }, message_id: 70 } });
 check('revise confirm asked, card kept', [/Оновити оголошення №1 на eBay/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data,
