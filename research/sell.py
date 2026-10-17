@@ -512,10 +512,12 @@ def office_send_album(photos: list, caption: str) -> int:
 
 
 def studio_or_original(data: bytes) -> bytes:
-    """16.10: фото на білому фоні (research/photo_studio.py); екран тесту / темний фон / помилка — оригінал."""
+    """16.10: фото на білому фоні (research/photo_studio.py); екран тесту / темний фон / помилка — оригінал.
+    17.10: контур — Poof.bg, якщо є POOF_KEY (інакше наша маска)."""
     try:
         import photo_studio
-        return photo_studio.studio(data) or data
+        import requests
+        return photo_studio.studio(data, os.getenv("POOF_KEY", ""), requests.post, os.getenv("PHOTO_CACHE", "")) or data
     except Exception as e:
         print(f"обробка фото: {e.__class__.__name__}")
         return data

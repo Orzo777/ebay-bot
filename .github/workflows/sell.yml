@@ -36,7 +36,7 @@ permissions:
 jobs:
   sell:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10   # 17.10: Poof.bg — 4 фото на хвилину
     steps:
       - uses: actions/checkout@v5
 
@@ -47,6 +47,15 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # 17.10: маски Poof.bg (лише силует товару, без даних) — прев'ю й публікація того самого фото = один запит з 100 на місяць
+      - uses: actions/cache@v4
+        with:
+          path: photo_cache
+          key: photos-${{ github.run_id }}
+          restore-keys: photos-
+
+      - run: mkdir -p photo_cache && find photo_cache -type f -mtime +30 -delete
+
       - name: Self-check (unit tests)
         run: python -m unittest test_sell test_ebay_list test_ebay_actions test_parcels test_listings test_photo_studio
 
@@ -56,6 +65,8 @@ jobs:
           EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
           DHL_API_KEY: ${{ secrets.DHL_API_KEY }}
+          POOF_KEY: ${{ secrets.POOF_KEY }}   # 17.10: Poof.bg — вирізання фону (100 фото на місяць безкоштовно)
+          PHOTO_CACHE: photo_cache
           TRACK17_KEY: ${{ secrets.TRACK17_KEY }}   # 13.10: 17TRACK — DHL, Hermes, DPD (DHL ключ лише на робочу пошту)   # «📦 Де посилки»: офіційний DHL Tracking API (з GitHub публічна сторінка DHL не відповідає)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

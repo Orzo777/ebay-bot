@@ -64,10 +64,48 @@ class StudioTest(unittest.TestCase):
             self.assertGreater(shadow.mean(), 0.9)
             self.assertLess(module.mean(), 0.05)
 
+    def test_wide_black_heatsink_no_hole(self):
+        # 17.10 (фото №5, фрагмент у testdata): посеред широкого радіатора «місцевий фон» — сам радіатор → вирізало дірку
+        bg = photo_studio.background_mask(Image.open("testdata/heatsink_n5.jpg"))
+        h, w = bg.shape
+        self.assertLess(bg[int(h * 0.58):int(h * 0.75), int(w * 0.66):int(w * 0.80)].mean(), 0.01)
+
     def test_screen_photo_untouched(self):
         img = Image.new("RGB", (900, 1200), (12, 20, 60))             # темний екран MemTest86
         ImageDraw.Draw(img).rectangle([100, 400, 800, 700], fill=(120, 200, 230))
         self.assertIsNone(photo_studio.studio(jpeg(img)))
+
+    def test_poof_mask_used_cached_and_fallback(self):
+        # 17.10: контур від Poof.bg; той самий кадр удруге — з кешу (без запиту); збій / ліміт — наша маска
+        import tempfile
+        calls = []
+
+        class R:
+            def __init__(self, code, content=b""):
+                self.status_code, self.content = code, content
+
+        def post(url, headers=None, files=None, timeout=None):
+            calls.append(headers["x-api-key"])
+            src = Image.open(io.BytesIO(files["image_file"][1]))
+            a = Image.new("L", src.size, 0)
+            ImageDraw.Draw(a).rectangle([src.width // 4, src.height // 3, 3 * src.width // 4, 2 * src.height // 3], fill=255)
+            rgba = src.convert("RGBA")
+            rgba.putalpha(a)
+            b = io.BytesIO()
+            rgba.save(b, "PNG")
+            return R(200, b.getvalue())
+        with tempfile.TemporaryDirectory() as cache:
+            out = photo_studio.studio(module_photo(), "k", post, cache)
+            self.assertIsNotNone(out)
+            self.assertEqual(len(calls), 1)
+            photo_studio.studio(module_photo(), "k", post, cache)
+            self.assertEqual(len(calls), 1)                            # з кешу
+        a = np.asarray(Image.open(io.BytesIO(out)).convert("RGB")).astype(int)
+        self.assertGreater(a[10, 10].mean(), 245)
+        quota = lambda *a, **k: R(402)                                 # noqa: E731
+        self.assertIsNotNone(photo_studio.studio(module_photo(), "k", quota))   # наша маска
+        img = Image.new("RGB", (900, 1200), (12, 20, 60))
+        self.assertIsNone(photo_studio.studio(jpeg(img), "k", lambda *a, **k: self.fail("екран — без запиту")))
 
     def test_fallback_to_original(self):
         import sell
