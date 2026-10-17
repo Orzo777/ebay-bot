@@ -186,6 +186,15 @@ def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, durat
             "</Item>")
 
 
+def revise_photos(item_id: str, pics: list[str], token: str, post) -> dict:
+    """17.10 (користувач: «змінити тільки фото, а не ціле оголошення»): лише PictureDetails — назва, опис, ціна як були."""
+    body = (f"<Item><ItemID>{_x(item_id)}</ItemID><PictureDetails>"
+            + "".join(f"<PictureURL>{_x(u)}</PictureURL>" for u in pics[:MAX_PHOTOS]) + "</PictureDetails></Item>")
+    root = trading("ReviseFixedPriceItem", body, token, post)
+    errs, warns = problems(root)
+    return {"ok": not errs, "errors": errs, "warnings": warns}
+
+
 def revise_listing(item_id: str, tx: dict, prices: dict, pics: list[str], token: str, post) -> dict:
     """16.10 (користувач: «🔁 правки в живе оголошення замість перевиставлення»): назва, опис, ціна, пороги Preisvorschlag,
     стан, характеристики й фото (якщо є) — ReviseFixedPriceItem; оголошення лишається тим самим (перегляди, спостерігачі).

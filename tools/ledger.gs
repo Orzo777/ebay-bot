@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-17a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-17b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -775,7 +775,7 @@ function listingId_(note) {
 }
 
 /** 16.10: «🔁 Оновити на eBay» → GitHub (sell.yml, режим revise): правки в живе оголошення (назва, опис, ціна, пороги, фото). */
-function reviseCommand_(n) {
+function reviseCommand_(n, photosOnly) {
   const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
   if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
   const r = rowByN_(n);
@@ -785,10 +785,12 @@ function reviseCommand_(n) {
   if (r.status !== 'Виставлено' || !itemId) {
     notify_('№' + n + ' ще не виставлено автоматично на eBay (немає номера оголошення) — спершу 🚀 або «виставив ' + n + '».'); return;
   }
-  const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
-  const code = sellDispatch_({ mode: 'revise', row: n, title: String(title), cost: r.spent, photos: cleanPhotos_(n), rt: rt,
-    edits: sellEdits_()[n] || null, item_id: itemId });
-  notify_(code === 204 ? '⏳ Оновлюю №' + n + ' на eBay — 1–2 хвилини.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+  const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title, photos = cleanPhotos_(n);
+  if (photosOnly && !photos.length) { notify_('📸 У №' + n + ' немає фото — надішли нові з підписом «' + n + '».'); return; }
+  const code = sellDispatch_({ mode: 'revise', row: n, title: String(title), cost: r.spent, photos: photos, rt: rt,
+    edits: sellEdits_()[n] || null, item_id: itemId, photos_only: !!photosOnly });
+  notify_(code === 204 ? '⏳ ' + (photosOnly ? 'Міняю фото' : 'Оновлюю') + ' №' + n + ' на eBay — 1–2 хвилини.'
+                       : '⚠️ Не зміг запустити (GitHub ' + code + ').');
 }
 
 /** «видали фото N» — прибрати всі фото №N (надіслати нові з підписом «N»). */
@@ -831,7 +833,8 @@ function editCommand_(msg) {
       '<code>назва ' + n + ' </code>— назва на eBay (до 80 знаків)\n' +
       '<code>опис ' + n + ' </code>— дописати в опис (німецькою)\n' +
       '<code>скинути ' + n + '</code> — повернути, як порахував бот\n' +
-      'фото — надішли з підписом «' + n + '»; старі прибрати — <code>видали фото ' + n + '</code></blockquote>\n' +
+      'фото — надішли з підписом «' + n + '»; старі прибрати — <code>видали фото ' + n + '</code>\n' +
+      'уже на eBay, лише фото (назва й ціна як є) — <code>оновити фото ' + n + '</code></blockquote>\n' +
       'Після кожної правки пришлю оновлену картку — тоді 🚀 (уже виставлене — 🔁 Оновити на eBay).', null, 'HTML');
     return true;
   }
@@ -929,6 +932,14 @@ function ebayCommand_(msg) {
     return true;
   }
   if ((m = t.match(/^\/?так-оновити\s+(\d{1,4})$/i))) { reviseCommand_(Number(m[1])); return true; }
+  if ((m = t.match(/^\/?оновити[\s-]фото\s+(\d{1,4})$/i))) {   // 17.10: лише фото — решта оголошення як є
+    const ph = cleanPhotos_(Number(m[1])).length;
+    notify_('🖼 Замінити фото №' + m[1] + ' на eBay (' + ph + ' шт., з білим фоном)? Назва, опис і ціна лишаються як є.' +
+            (ph ? '' : '\nСпершу надішли нові фото з підписом «' + m[1] + '» (старі прибрати — «видали фото ' + m[1] + '»).'),
+            ph ? { inline_keyboard: [[{ text: '✅ Так, замінити фото №' + m[1], callback_data: 'c|так-фото|' + m[1] }]] } : null);
+    return true;
+  }
+  if ((m = t.match(/^\/?так-фото\s+(\d{1,4})$/i))) { reviseCommand_(Number(m[1]), true); return true; }
   if ((m = t.match(/^\/?(?:ebay|ебей|ібей)\s+тест\s+(\d{1,4})$/i))) { publishCommand_(Number(m[1]), true); return true; }
   return false;
 }
@@ -1284,10 +1295,10 @@ function sealedPost(s) {
   } else if (d.kind === 'revised' && d.row) {
     const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
     const note = String(sh.getRange(row, COL.note).getValue() || '');
-    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'оновлено на eBay ' +
+    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + (d.photos_only ? 'фото оновлено на eBay ' : 'оновлено на eBay ') +
       Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (d.price ? ' (' + d.price + ' €)' : ''));
     const ed = sellEdits_();
-    if (ed[d.row]) { delete ed[d.row]; props.setProperty('SELL_EDITS', JSON.stringify(ed)); }
+    if (ed[d.row] && !d.photos_only) { delete ed[d.row]; props.setProperty('SELL_EDITS', JSON.stringify(ed)); }
   } else if (d.kind === 'parcels' && Array.isArray(d.events)) {
     parcelEvents_(d.events);
   } else if (d.kind === 'listed' && d.row) {
@@ -2384,7 +2395,8 @@ function sendAlbum_(list, caption) {
 // Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
-  'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю' };
+  'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю',
+  'оновити-фото': '🖼 Лише фото', 'так-фото': '✅ Міняю фото' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {
@@ -2405,7 +2417,7 @@ function officeCallback(cq) {
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + (m[1] === 'посилки' ? '' : ' №' + m[2]) : '' });
   if (!m || !chat || String(from) !== String(chat) || !BTN[m[1]]) return;
-  if (['продати', 'фото', 'авто', 'кроки', 'посилки', 'змінити', 'оновити'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
+  if (['продати', 'фото', 'авто', 'кроки', 'посилки', 'змінити', 'оновити', 'оновити-фото'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
     tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
   }
   officeMessage({ text: m[1] + ' ' + m[2], chat: { id: from }, message_id: 0 });

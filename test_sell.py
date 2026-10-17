@@ -248,10 +248,34 @@ class ReviseModeTest(unittest.TestCase):
                        back=lambda x, k: back.append(x), comp_fn=lambda r: [])
         self.assertIn("Не знаю номер оголошення", sent[-1][0])
 
+    def test_revise_photos_only(self):
+        # 17.10: «🖼 Лише фото» — тільки PictureDetails; назва / ціна не рахуються й не шлються; правки не скидаються
+        from unittest import mock
+        import ebay_list as el
+        sent, back, calls = [], [], []
+        d = {"mode": "revise", "row": 4, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133", "cost": 96.54, "rt": "rt",
+             "item_id": "1234567890", "photos": [{"id": "f1"}, {"id": "f2"}], "photos_only": True}
+        with mock.patch.object(el, "access_token", return_value="tok"), \
+                mock.patch.object(el, "is_image", return_value=True), \
+                mock.patch.object(el, "upload_picture", side_effect=lambda data, name, tok, post: f"https://i.ebayimg.com/{name}.jpg"), \
+                mock.patch.object(sell, "studio_or_original", side_effect=lambda b: b), \
+                mock.patch.object(el, "revise_listing", side_effect=AssertionError("не має чіпати назву / ціну")), \
+                mock.patch.object(el, "revise_photos", side_effect=lambda *a: calls.append(a) or {"ok": True, "errors": [], "warnings": []}):
+            sell.ebay_mode(d, "k", post=lambda *a, **k: None, send=lambda t, m: sent.append((t, m)) or True,
+                           back=lambda x, k: back.append(x), file_fn=lambda fid, k: b"img", comp_fn=lambda r: [])
+        self.assertEqual(calls[0][0], "1234567890")
+        self.assertEqual(len(calls[0][1]), 2)
+        self.assertIn("Фото №4 замінено", sent[-1][0])
+        self.assertEqual(back[-1], {"kind": "revised", "row": 4, "item_id": "1234567890", "photos_only": True})
+        sell.ebay_mode(dict(d, photos=[]), "k", post=lambda *a, **k: None, send=lambda t, m: sent.append((t, m)) or True,
+                       back=lambda x, k: back.append(x), comp_fn=lambda r: [])
+        self.assertIn("немає фото", sent[-1][0])
+
     def test_listed_card_has_revise_button(self):
         kb = sell.keyboard({}, sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"), 4, True, listed=True)
         cb = [b.get("callback_data") for row in kb["inline_keyboard"] for b in row]
         self.assertIn("c|оновити|4", cb)
+        self.assertIn("c|оновити-фото|4", cb)
         self.assertNotIn("c|авто|4", cb)
 
 

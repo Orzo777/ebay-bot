@@ -176,6 +176,16 @@ deals.cells['7:11'] = 'Перевірено';
 say('виставив 3 59 https://www.ebay.de/itm/Kingston-16GB/306123456789?hash=x');
 check('manual listing with link stores the id', [/виставлено за 59 € 09.10 \(eBay 306123456789\)/.test(deals.cells['7:' + vm.runInContext('COL.note', ctx)]),
   /запам'ятав/.test(last()[0])], [true, true]);
+// 17.10: «🖼 Лише фото» — підтвердження, revise з photos_only, нотатка без скидання правок
+say('оновити фото 1');
+check('photos-only confirm', [/Замінити фото №1/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data], [true, 'c|так-фото|1']);
+ctx.officeCallback({ id: 'q', data: 'c|так-фото|1', message: { chat: { id: 7 }, message_id: 73 } });
+check('photos-only dispatched', [opened().mode, opened().photos_only, opened().item_id], ['revise', true, '1234567890']);
+store.SELL_EDITS = JSON.stringify({ 1: { price: 120 } });
+ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'revised', row: 1, item_id: '1234567890', photos_only: true }, '123:ABC', 'n6') }) },
+  parameter: { bot: 'office' } });
+check('photos-only noted, edits kept', [/фото оновлено на eBay 09.10/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]),
+  JSON.parse(store.SELL_EDITS)[1].price], [true, 120]);
 say('видали фото 1');
 check('photos deleted', [JSON.parse(store.PH_1 || '[]').length, /Прибрав 1 фото №1/.test(last()[0])], [0, true]);
 
