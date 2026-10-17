@@ -193,6 +193,39 @@ say('🏷 Виставлено');
 check('listings dispatched', [opened().mode, opened().rt, opened().rows.map((r) => [r.n, /eBay 1234567890/.test(r.note)]),
   /Дивлюся виставлене/.test(last()[0])], ['listings', 'v^1.1#RT', [[1, true], [3, false]], true]);
 
+// 17.10: зміни на eBay → облік (фонова перевірка / «🏷 Виставлено»)
+const NOTE = vm.runInContext('COL.note', ctx), STATUS = vm.runInContext('COL.status', ctx);
+deals.cells['8:2'] = new Date('2026-10-10T10:00:00Z'); deals.cells['8:3'] = 'G.Skill Ripjaws 32GB DDR4'; deals.cells['8:11'] = 'Перевірено';
+deals.cells['8:10'] = 80; deals.last = 8;
+const sync = (d, nonce) => ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_(Object.assign({ kind: 'sync' }, d), '123:ABC', nonce) }) },
+  parameter: { bot: 'office' } });
+sync({ lots: [{ n: 3, id: '306123456789', price: 55 }, { n: 4, id: '306999888777', price: 120 }], ask: [], ended: [] }, 's1');
+check('sync: price change + new listing', [/ціна на eBay → 55 € 09.10/.test(deals.cells['7:' + NOTE]), deals.cells['8:' + STATUS],
+  /\(eBay 306999888777\)/.test(deals.cells['8:' + NOTE]), /№3: ціна на eBay 59 → 55 €/.test(last()[0]), /№4 G.Skill.*бачу на eBay за 120 €/.test(last()[0])],
+  [true, 'Виставлено', true, true, true]);
+const before = sent.length;
+sync({ lots: [{ n: 3, id: '306123456789', price: 55 }, { n: 4, id: '306999888777', price: 120 }], ask: [], ended: [] }, 's2');
+check('sync: nothing new — silent', sent.length, before);
+sync({ lots: [], ask: [{ id: '306555444333', title: 'Corsair LPX 32GB', price: 99, cands: [1, 4] }], ended: [{ n: 1, id: '1234567890' }] }, 's3');
+check('sync: ended + ask with buttons', [/№1: оголошення на eBay більше не активне/.test(sent[sent.length - 2][0]), /Це який номер/.test(last()[0]),
+  last()[1].inline_keyboard.map((r) => r[0].callback_data)], [true, true, ['L|306555444333|1', 'L|306555444333|4', 'L|306555444333|0']]);
+const before2 = sent.length;
+sync({ lots: [], ask: [{ id: '306555444333', title: 'Corsair LPX 32GB', price: 99, cands: [1, 4] }], ended: [{ n: 1, id: '1234567890' }] }, 's4');
+check('sync: asked once', sent.length, before2);
+deals.cells['8:11'] = 'Перевірено'; deals.cells['8:' + NOTE] = '';
+ctx.officeCallback({ id: 'q', data: 'L|306555444333|4', message: { chat: { id: 7 }, message_id: 80 } });
+check('sync: answer links the row', [deals.cells['8:' + STATUS], /виставлено за 99 € 09.10 \(eBay 306555444333\)/.test(deals.cells['8:' + NOTE])],
+  ['Виставлено', true]);
+ctx.officeCallback({ id: 'q', data: 'L|306111000111|0', message: { chat: { id: 7 }, message_id: 81 } });
+check('sync: not from ledger', /не з обліку/.test(last()[0]), true);
+
+// 17.10: «🗂 На руках» → аркуш з фото (GitHub, режим onhand): групи, фото, номер eBay
+store.PH_4 = JSON.stringify([{ id: 'f4', u: 'u4' }]);
+say('на руках');
+const oh = opened();
+check('on-hand sheet dispatched', [oh.mode, oh.groups.map((g) => [g.kind, g.items.map((i) => i.n)]), oh.groups[0].items[0].item_id,
+  oh.groups[0].items.filter((i) => i.n === 4)[0].photos], ['onhand', [['ebay', [1, 3, 4]]], '1234567890', ['f4']]);
+
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));
 check('rt removed', store.EBAY_RT, undefined);

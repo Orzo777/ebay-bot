@@ -549,6 +549,16 @@ def office_send_studio_preview(photos: list, row: int, file_fn=None) -> int:
     return len(media) if resp.status_code == 200 else 0
 
 
+def office_send_photo(data: bytes, caption: str) -> bool:
+    """Одне фото (JPEG) у бот «Облік і продаж»."""
+    import requests
+    token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN
+    r = requests.post(f"{config.TELEGRAM_API_BASE}/bot{token}/sendPhoto", data={"chat_id": config.TELEGRAM_CHAT_ID, "caption": caption},
+                      files={"photo": ("onhand.jpg", data, "image/jpeg")}, timeout=60)
+    print(f"Telegram: {r.status_code}")
+    return r.status_code == 200
+
+
 def office_send_url_album(pics: list[tuple[str, str]], get) -> int:
     """16.10: фото за посиланнями (eBay / KA) — завантажуємо самі й шлемо альбомом (Telegram не завжди тягне чужі адреси).
     pics — [(підпис, url)]. → скільки надіслано."""
@@ -683,8 +693,46 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
                 token = el.access_token(d["rt"], app, cert, post)
             except Exception as e:
                 print(f"eBay токен: {e.__class__.__name__}")
-        text, kb = listings.report(d, token, post)
+        lots = None
+        if token:
+            try:
+                lots = listings.active(token, post)
+            except Exception as e:
+                print(f"GetMyeBaySelling: {e.__class__.__name__}")
+        text, kb = listings.report(d, token, post, lots=lots)
+        if lots is not None:   # 17.10: заодно — зміни на eBay в облік (як фонова перевірка)
+            ch = listings.sync(lots, d.get("rows") or [])
+            if ch["lots"] or ch["ask"] or ch["ended"]:
+                back({"kind": "sync", **ch}, key)
         return send(text, kb if kb["inline_keyboard"] else None)
+    if mode == "sync":   # 17.10: фонова перевірка (раз на 3 години) — нові оголошення, зміна ціни, завершені → облік
+        import listings
+        if not d.get("rt"):
+            return True
+        try:
+            token = el.access_token(d["rt"], app, cert, post)
+            lots = listings.active(token, post)
+        except Exception as e:
+            print(f"sync: {e.__class__.__name__}")
+            return True
+        ch = listings.sync(lots, d.get("rows") or [])
+        print(f"sync: лотів {len(lots)}, відомих {len(ch['lots'])}, питань {len(ch['ask'])}, завершених {len(ch['ended'])}")
+        if ch["lots"] or ch["ask"] or ch["ended"]:
+            back({"kind": "sync", **ch}, key)
+        return True
+    if mode == "onhand":   # 17.10: «🗂 На руках» — аркуш з фото: під кожним №N — сама планка
+        import onhand
+        import requests
+        token = None
+        if d.get("rt"):
+            try:
+                token = el.access_token(d["rt"], app, cert, post)
+            except Exception as e:
+                print(f"eBay токен: {e.__class__.__name__}")
+        data = onhand.build(d, file_fn, key, token, post, requests.get)
+        if not data:
+            return True
+        return office_send_photo(data, "🗂 На руках — фото")
     if mode != "publish":
         return send(f"⚠️ Невідомий режим «{html.escape(str(mode))}» — напиши Claude.", None)
 

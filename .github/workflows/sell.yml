@@ -57,7 +57,7 @@ jobs:
       - run: mkdir -p photo_cache && find photo_cache -type f -mtime +30 -delete
 
       - name: Self-check (unit tests)
-        run: python -m unittest test_sell test_ebay_list test_ebay_actions test_parcels test_listings test_photo_studio
+        run: python -m unittest test_sell test_ebay_list test_ebay_actions test_parcels test_listings test_photo_studio test_onhand
 
       - name: Prepare listing
         env:

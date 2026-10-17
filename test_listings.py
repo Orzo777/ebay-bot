@@ -57,5 +57,33 @@ class ListingsTest(unittest.TestCase):
         self.assertIn("два тижні", listings.tip(15, 200, 0, 0))
 
 
+
+class SyncTest(unittest.TestCase):
+    """17.10: активні лоти eBay → облік: відомий номер, однозначна назва, схожі кіти — спитати, завершені."""
+
+    ROWS = [dict(n=4, title="2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz CMK32GX4M2A2133C13", status="Виставлено",
+                 note="виставлено за 168 € 12.10 (eBay 306000000004)"),
+            dict(n=5, title="Corsair Vengeance DDR4 DIMM RAM 32 GB (2x16GB) 2400MHz CMK32GX4M2A2400C16", status="Перевірено", note=""),
+            dict(n=6, title="Corsair Vengeance DDR4 DIMM RAM 32 GB (2x16GB) 2400MHz", status="Отримано", note=""),
+            dict(n=8, title="G.SKILL FORTIS 32GB (2x16GB) DDR4-2400", status="Перевірено", note="")]
+
+    def test_known_id_price_and_ended(self):
+        ch = listings.sync([dict(id="306000000004", title="whatever", price=159.0)], self.ROWS)
+        self.assertEqual(ch["lots"], [dict(n=4, id="306000000004", price=159.0)])
+        self.assertEqual(ch["ended"], [])
+        self.assertEqual(listings.sync([], self.ROWS)["ended"], [dict(n=4, id="306000000004")])
+
+    def test_unique_title_links_similar_asks(self):
+        ch = listings.sync([dict(id="306000000008", title="G.Skill Fortis 32GB (2x16GB) DDR4-2400 F4-2400C15D getestet", price=99.0)],
+                           self.ROWS)
+        self.assertEqual([x["n"] for x in ch["lots"]], [8])
+        ch = listings.sync([dict(id="306000000005", title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 getestet", price=175.0)],
+                           self.ROWS)
+        self.assertEqual(ch["lots"], [])                              # №5 і №6 майже однакові — питаємо
+        self.assertEqual(set(ch["ask"][0]["cands"]) >= {5, 6}, True)
+        ch = listings.sync([dict(id="306000000009", title="Lego Star Wars 75192", price=500.0)], self.ROWS)
+        self.assertEqual((ch["lots"], ch["ask"]), ([], []))           # не з обліку — не питаємо
+
+
 if __name__ == "__main__":
     unittest.main()

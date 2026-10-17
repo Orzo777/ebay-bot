@@ -276,6 +276,19 @@ class ReviseModeTest(unittest.TestCase):
                        back=lambda x, k: back.append(x), comp_fn=lambda r: [])
         self.assertIn("нічого не змінено", sent[-1][0])
 
+    def test_sync_mode_posts_changes(self):
+        # 17.10: фонова перевірка лотів — зміни назад в облік, без повідомлення в чат
+        from unittest import mock
+        import ebay_list as el
+        import listings
+        back, sent = [], []
+        rows = [dict(n=4, title="Corsair 2133", status="Виставлено", note="(eBay 306000000004)")]
+        with mock.patch.object(el, "access_token", return_value="tok"),                 mock.patch.object(listings, "active", return_value=[dict(id="306000000004", title="x", price=159.0)]):
+            sell.ebay_mode({"mode": "sync", "rt": "rt", "rows": rows}, "k", post=lambda *a, **k: None,
+                           send=lambda t, m: sent.append(t) or True, back=lambda x, k: back.append(x))
+        self.assertEqual(back, [{"kind": "sync", "lots": [dict(n=4, id="306000000004", price=159.0)], "ask": [], "ended": []}])
+        self.assertEqual(sent, [])
+
     def test_listed_card_has_revise_button(self):
         kb = sell.keyboard({}, sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"), 4, True, listed=True)
         cb = [b.get("callback_data") for row in kb["inline_keyboard"] for b in row]

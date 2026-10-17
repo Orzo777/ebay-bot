@@ -81,6 +81,49 @@ def _row_for(lot: dict, rows: list[dict]) -> dict | None:
     return best if best and len(want & _words(best.get("title", ""))) >= 3 else None
 
 
+_ID_IN_NOTE = re.compile(r"eBay (\d{9,15})")
+SYNC_FREE = ("Отримано", "Перевірено", "Виставлено")   # з цих статусів товар може з'явитись на eBay
+
+
+def _last_id(note: str) -> str:
+    ids = _ID_IN_NOTE.findall(str(note or ""))
+    return ids[-1] if ids else ""
+
+
+def sync(lots: list[dict], rows: list[dict]) -> dict:
+    """17.10 (користувач: «бот сам відслідковує зміни в оголошеннях і заносить в облік»): активні лоти eBay → облік.
+    rows — відкриті рядки {n, title, status, note}. → {"lots": [{n, id, price}] — лот відомого рядка (номер у нотатках або
+    однозначно за назвою: Apps Script записує «Виставлено» / нову ціну), "ask": [{id, title, price, cands}] — не однозначно
+    (спитати кнопками), "ended": [{n, id}] — «Виставлено» з номером, якого вже немає серед активних}."""
+    known, ask = [], []
+    active_ids = {lot["id"] for lot in lots if lot.get("id")}
+    linked = {_last_id(r.get("note")) for r in rows} - {""}
+    for lot in lots:
+        if not lot.get("id"):
+            continue
+        r = next((r for r in rows if _last_id(r.get("note")) == lot["id"]), None)
+        if r:
+            known.append(dict(n=r["n"], id=lot["id"], price=lot.get("price")))
+            continue
+        if lot["id"] in linked:
+            continue
+        free = [r for r in rows if r.get("status") in SYNC_FREE and not _last_id(r.get("note"))]
+        want = _words(lot["title"])
+        scored = sorted(((len(want & _words(r.get("title", ""))), r) for r in free), key=lambda x: -x[0])
+        if not scored or scored[0][0] < 2:
+            continue   # схоже, не з обліку (особисті речі тощо) — не питаємо
+        best = scored[0][0]
+        second = scored[1][0] if len(scored) > 1 else 0
+        if best >= 4 and best - second >= 3:   # схожі кіти (2133 / 2400) — краще спитати одним натиском, ніж переплутати
+            known.append(dict(n=scored[0][1]["n"], id=lot["id"], price=lot.get("price")))
+        else:
+            ask.append(dict(id=lot["id"], title=short(lot["title"], 60), price=lot.get("price"),
+                            cands=[r["n"] for sc, r in scored if sc >= max(2, best - 2)][:4]))
+    ended = [dict(n=r["n"], id=_last_id(r.get("note"))) for r in rows
+             if r.get("status") == "Виставлено" and _last_id(r.get("note")) and _last_id(r.get("note")) not in active_ids]
+    return {"lots": known, "ask": ask, "ended": ended}
+
+
 def tip(days: int | None, views: int | None, watch: int, questions: int) -> str:
     if questions:
         return "💬 є питання — відповідь у Mein eBay → Nachrichten"
@@ -95,17 +138,18 @@ def tip(days: int | None, views: int | None, watch: int, questions: int) -> str:
     return ""
 
 
-def report(d: dict, token: str | None, post, now: datetime | None = None) -> tuple[str, dict]:
-    """→ (повідомлення HTML, клавіатура з посиланнями)."""
+def report(d: dict, token: str | None, post, now: datetime | None = None, lots: list | None = None) -> tuple[str, dict]:
+    """→ (повідомлення HTML, клавіатура з посиланнями). lots — уже отримані активні лоти (інакше запит тут)."""
     now = now or datetime.now(timezone.utc)
     rows = [r for r in d.get("rows") or [] if r.get("status") == "Виставлено"]
-    lots, err = [], ""
-    if token:
+    err = ""
+    if lots is None and token:
         try:
             lots = active(token, post)
         except Exception as e:
             err = f"⚠️ eBay не відповів ({e.__class__.__name__}) — показую з обліку."
             print(f"GetMyeBaySelling: {e.__class__.__name__}")
+    lots = lots or []
     body, kb, used = [], [], set()
     if err:
         body.append(err)
