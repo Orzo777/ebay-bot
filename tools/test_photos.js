@@ -222,6 +222,18 @@ ctx.packCheck_(6);
 const pk = calls('sendPhoto').pop()[1];
 check('pack check: label photo, part number, similar rows', [pk.photo, /Запакуй ось цю: №6/.test(pk.caption), /CMK32GX4M2A2400C16/.test(pk.caption),
   /Схожі на руках: .*№5/.test(pk.caption)], ['L6', true, true, true]);
+// 17.10: Gemini не відповів → фото в черзі; processLedger перечитує → «Перевірено»
+deals.cells['9:11'] = 'Отримано'; delete store.PHS_5; delete store.PH_RETRY;
+gemini = [];
+say(photo('R5', 80, { caption: '5' }));
+check('Gemini down → retry queued', [JSON.parse(store.PH_RETRY).map((x) => x.id), deals.cells['9:11']], [['R5'], 'Отримано']);
+gemini = [{ kind: 'memtest', memtest: { errors: 0, pass_done: true, result: 'PASS' } }];
+ctx.photoRetry_();
+check('retry reads it → Перевірено', [deals.cells['9:11'], JSON.parse(store.PH_RETRY).length], ['Перевірено', 0]);
+gemini = [];
+say(photo('R6', 81, { caption: '5' }));
+ctx.photoRetry_(); ctx.photoRetry_(); ctx.photoRetry_();
+check('gives up after 3 tries', JSON.parse(store.PH_RETRY).length, 0);
 // 09.10: звіт MemTest86 файлом (HTML з флешки)
 const rep = '<html><body><h2>MemTest86 Report</h2><table><tr><td>Test Result:</td><td>PASS</td></tr>' +
   '<tr><td>Errors:</td><td>0</td></tr><tr><td>Passes completed:</td><td>1</td></tr>' +

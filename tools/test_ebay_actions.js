@@ -44,7 +44,7 @@ const ctx = {
   },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in store ? store[k] : null),
     setProperty: (k, v) => { store[k] = v; }, deleteProperty: (k) => { delete store[k]; } }) },
-  LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return true; }, releaseLock() {} }) },
   HtmlService: { createHtmlOutput: (x) => x },
   UrlFetchApp: { fetch: (u, o) => {
     if (/api\.github\.com/.test(u)) { gh.push(JSON.parse(o.payload).inputs); return { getResponseCode: () => dispatchCode, getContentText: () => '' }; }

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-17e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-17f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -457,6 +457,7 @@ function processLedger() {
   try { listingsWatch_(); } catch (e) { console.log('лоти: ' + e); }
   try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
+  try { photoRetry_(); } catch (e) { console.log('фото ще раз: ' + e); }
   try { fixAlbum1010_(); } catch (e) { console.log('fixAlbum1010_: ' + e); }
   try { fixSalePrice1011_(); } catch (e) { console.log('fixSalePrice1011_: ' + e); }
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
@@ -2401,8 +2402,31 @@ function attachPhoto_(n, f, messageId) {
   photosChanged_(n);
   let g = null;
   try { g = photoGemini_(f.id); } catch (e) { console.log('фото Gemini: ' + e); }
+  if (!g && props.getProperty('GEMINI_API_KEY')) photoRetryAdd_(n, f.id);   // 17.10: не відповів — перечитаємо пізніше
   if (g && g.kind === 'receipt') g.line = receiptShipped_(n, g);   // 10.10: квитанція → «відправив N трек» + подяка покупцю
   photoSummary_(n, g, list.length, f.id);
+}
+
+/** 17.10: фото, яке Gemini не прочитав (перевантажений / помилка), — у чергу; processLedger перечитує (до 3 спроб). */
+function photoRetryAdd_(n, id) {
+  const props = PropertiesService.getScriptProperties(), q = JSON.parse(props.getProperty('PH_RETRY') || '[]');
+  if (!q.some(function (x) { return x.id === id; })) q.push({ n: n, id: id, k: 0 });
+  props.setProperty('PH_RETRY', JSON.stringify(q.slice(-20)));
+}
+
+function photoRetry_() {
+  const props = PropertiesService.getScriptProperties(), q = JSON.parse(props.getProperty('PH_RETRY') || '[]');
+  if (!q.length) return;
+  const x = q.shift();
+  let g = null;
+  if (cleanPhotos_(x.n).some(function (p) { return p.id === x.id; })) {
+    try { g = photoGemini_(x.id); } catch (e) { console.log('фото Gemini (ще раз): ' + e); }
+    if (g) {
+      if (g.kind === 'receipt') g.line = receiptShipped_(x.n, g);
+      photoSummary_(x.n, g, cleanPhotos_(x.n).length, x.id);
+    } else if (x.k < 2) q.push({ n: x.n, id: x.id, k: x.k + 1 });
+  }
+  props.setProperty('PH_RETRY', JSON.stringify(q));
 }
 
 /** Gemini: що на фото — екран MemTest86, наклейка пам'яті чи інше. null — не вдалося. */

@@ -2,10 +2,12 @@
 const fs = require('fs');
 const vm = require('vm');
 const store = {}, fetched = [], office = [];
+let busy = false;
 const ctx = {
   console: { log: () => {} },
-  LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
-  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => store[k] || null, setProperty: (k, v) => { store[k] = v; } }) },
+  LockService: { getScriptLock: () => ({ waitLock: () => {}, tryLock: () => !busy, releaseLock: () => {} }) },
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => store[k] || null, setProperty: (k, v) => { store[k] = v; },
+    deleteProperty: (k) => { delete store[k]; }, getKeys: () => Object.keys(store) }) },
   HtmlService: { createHtmlOutput: (t) => t },
   UrlFetchApp: { fetch: (u) => { fetched.push(u); return { getResponseCode: () => 204, getContentText: () => '' }; } },
   officeMessage: (m) => office.push(m.text),
@@ -29,5 +31,17 @@ check('main dedup', fetched.length, 1);
 post(5, 'звіт');
 check('office command from main bot → ledger, not GitHub', [fetched.length, office[office.length - 1]], [1, 'звіт']);
 
+// 17.10: замок зайнятий (альбом — інше фото ще читається) → у чергу, не губимо; наступний виклик обробляє чергу по порядку
+busy = true;
+post(6, 'фото-1', 'office');
+post(7, 'фото-2', 'office');
+busy = false;
+check('busy → queued, not lost', [office.length, Object.keys(store).filter((k) => k.indexOf('TGQ_') === 0).length], [2, 2]);
+post(8, 'на руках', 'office');
+check('queue drained in order after own update', [office.slice(-3), Object.keys(store).filter((k) => k.indexOf('TGQ_') === 0).length],
+  [['на руках', 'фото-1', 'фото-2'], 0]);
+busy = true; post(9, 'пізно', 'office'); busy = false;
+ctx.drainQueued_();
+check('check() trigger drains too', office[office.length - 1], 'пізно');
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

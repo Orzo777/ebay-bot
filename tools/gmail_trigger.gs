@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-10-14a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-10-17a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -25,6 +25,7 @@ const WORKFLOW = 'ram_mail_alert.yml';
 const QUERY = 'from:noreply@kleinanzeigen.de in:anywhere';
 
 function check() {
+  try { drainQueued_(); } catch (e) { console.log('черга: ' + e); }   // 17.10: повідомлення, що не дочекались черги
   const props = PropertiesService.getScriptProperties();
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   if (!token) throw new Error('Немає токена: додайте GITHUB_TOKEN у ⚙ «Властивості скрипту» (крок 2).');
@@ -70,8 +71,50 @@ function doPost(e) {
   // Apps Script відповідає Telegram перенаправленням 302, і Telegram повторює те саме повідомлення
   // ще 5–7 разів (26.09: 7 однакових карток). Тому кожен update_id обробляємо лише раз.
   const lock = LockService.getScriptLock();
+  const bot = e.parameter && e.parameter.bot ? String(e.parameter.bot) : '';
+  // 17.10: альбом — кілька update одночасно; поки перший читає фото через Gemini (10+ с), інші не дочікувались замка й
+  // мовчки губились (фото планок №6). Тепер чекаємо до 25 с, а не дочекались — у чергу (обробить наступний виклик / check()).
+  if (!lock.tryLock(25000)) {
+    let uid = 0;
+    try { uid = Number(JSON.parse(e.postData.contents).update_id) || 0; } catch (err) { uid = 0; }
+    PropertiesService.getScriptProperties().setProperty('TGQ_' + Date.now() + '_' + ('000000000000' + uid).slice(-12) + '_' + bot,
+      e.postData.contents);   // ключ — час і update_id: порядок альбому зберігається
+    return HtmlService.createHtmlOutput('ok');
+  }
   try {
-    lock.waitLock(10000);
+    handleUpdate_(e.postData.contents, bot);
+    drainQueued_(true);
+  } catch (err) {
+    console.log('doPost: ' + err);
+  } finally {
+    lock.releaseLock();
+  }
+  return HtmlService.createHtmlOutput('ok');
+}
+
+/** Повідомлення з черги (не дочекались замка) — по черзі, найстаріші першими. held — замок уже взято. */
+function drainQueued_(held) {
+  const props = PropertiesService.getScriptProperties();
+  const keys = props.getKeys().filter(function (k) { return k.indexOf('TGQ_') === 0; }).sort();
+  if (!keys.length) return 0;
+  const lock = held ? null : LockService.getScriptLock();
+  if (lock && !lock.tryLock(25000)) return 0;
+  try {
+    keys.forEach(function (k) {
+      const body = props.getProperty(k);
+      props.deleteProperty(k);
+      if (!body) return;
+      try { handleUpdate_(body, k.split('_').slice(3).join('_')); } catch (err) { console.log('черга: ' + err); }
+    });
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+  return keys.length;
+}
+
+function handleUpdate_(contents, bot) {
+  const e = { postData: { contents: contents }, parameter: bot ? { bot: bot } : {} };
+  try {
     const update = JSON.parse(e.postData.contents);
     // 09.10: зашифроване з GitHub (ключ eBay, «виставлено») — не Telegram; перевіряє підпис sealedPost у ledger.gs
     if (update.sealed) {
@@ -125,8 +168,6 @@ function doPost(e) {
     if (resp.getResponseCode() !== 204) console.log('GitHub ' + resp.getResponseCode() + ': ' + resp.getContentText());
   } catch (err) {
     console.log('doPost: ' + err);
-  } finally {
-    lock.releaseLock();
   }
   // HtmlService, а НЕ ContentService: ContentService відповідає 302 (перенаправлення), Telegram вважає це
   // помилкою і безкінечно повторює найстаріше повідомлення, а нові стоять у черзі (26.09: бот «мовчав»).

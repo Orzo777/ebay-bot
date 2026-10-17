@@ -26,7 +26,7 @@ const ctx = {
     newTrigger: (fn) => ({ timeBased: () => ({ after: (ms) => ({ create: () => { triggers.push({ getHandlerFunction: () => fn, ms }); } }) }) }),
     deleteTrigger: (t) => { triggers = triggers.filter((x) => x !== t); },
   },
-  LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return true; }, releaseLock() {} }) },
   HtmlService: { createHtmlOutput: (x) => x },
   UrlFetchApp: { fetch: (u, o) => {
     if (/api\.github\.com/.test(u)) { gh.push(JSON.parse(o.payload).inputs); return { getResponseCode: () => 204, getContentText: () => '' }; }

@@ -36,7 +36,7 @@ const ctx = {
     : { 'yyyy-MM-dd': d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) }[f]) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in store ? store[k] : null),
     setProperty: (k, v) => { store[k] = v; }, deleteProperty: (k) => { delete store[k]; } }) },
-  LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return true; }, releaseLock() {} }) },
   HtmlService: { createHtmlOutput: (x) => x },
   UrlFetchApp: { fetch: (u, o) => {
     fetched.push([u, o]);
