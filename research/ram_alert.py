@@ -49,7 +49,6 @@ REAL_BASE = {
     ("ddr4", "udimm", False, 64, 2): dict(p25=300, med=357, st=6, period=30, name="DDR4 UDIMM 64 ГБ (2×32) кіт"),
     # 4 планки — свій ринок, а не «дві пари»: 4×16 DDR4 продається за 260 €, а як дві пари бот рахував ~338 € (завищено)
     ("ddr4", "udimm", False, 64, 4): dict(p25=214, med=260, st=6, period=30, name="DDR4 UDIMM 64 ГБ (4×16) кіт"),
-    ("ddr4", "udimm", False, 32, 4): dict(p25=102, med=127, st=10, period=14, name="DDR4 UDIMM 32 ГБ (4×8) кіт"),
     ("ddr4", "sodimm", False, 32, 1): dict(p25=137, med=161, st=15, period=14, name="DDR4 SO-DIMM 32 ГБ"),
     ("ddr4", "sodimm", False, 64, 2): dict(p25=244, med=276, st=5, period=30, name="DDR4 SO-DIMM 64 ГБ (2×32) кіт"),
 }
@@ -207,7 +206,6 @@ SEG_PRICES = {
     ("ddr4", "udimm", False, 64, 2): {"brand": (314, 370), "oem": (230, 289), "brand_fast": (336, 377), "oem_fast": (233, 289),
                                       "oem_slow": (230, 260)},
     ("ddr4", "udimm", False, 64, 4): {"brand": (256, 284), "oem": (171, 185), "brand_fast": (278, 317), "brand_slow": (214, 232)},
-    ("ddr4", "udimm", False, 32, 4): {"brand": (127, 153), "oem": (84, 86), "brand_fast": (127, 153), "oem_slow": (84, 86)},
     ("ddr4", "sodimm", False, 32, 1): {"oem_fast": (141, 161), "oem_slow": (108, 119)},
     ("ddr4", "sodimm", False, 32, 2): {"brand": (118, 143), "oem": (103, 121), "oem_fast": (102, 122), "oem_slow": (103, 110)},
     ("ddr4", "sodimm", False, 64, 2): {"oem": (238, 276), "oem_fast": (253, 299)},
@@ -245,6 +243,10 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     if p["modules"] == 1 and p.get("kit_word") and re.search(r"quad", title, re.I) and p["total"] % 4 == 0:
         p = dict(p, modules=4)   # «64GB DDR4 Quad-Kit» — 4 планки
         key = key[:4] + (4,)
+    if p["modules"] == 4 and p["total"] // 4 <= 8:   # 18.10 (користувач): 4×8 — мало в кого 4 слоти, продається погано
+        return dict(verdict="SKIP", reason=f"{p['gen'].upper()} {p['total']} ГБ з 4 планок по {p['total'] // 4} ГБ — не купуємо: "
+                                           f"потрібні 4 слоти, продається погано (рішення 18.10)",
+                    title=title, price=total_price, wrong_type=True)
     real = REAL.get(key)
     quad = None
     if not real and p["modules"] == 4 and p["total"] % 4 == 0:

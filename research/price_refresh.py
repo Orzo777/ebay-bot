@@ -55,7 +55,6 @@ QUERIES = {  # ключ як у ram_alert.REAL → пошуковий запит
     ("ddr4", "sodimm", False, 32, 1): "DDR4 SODIMM 32GB",
     ("ddr4", "sodimm", False, 64, 2): "DDR4 SODIMM 64GB 2x32GB",
     ("ddr4", "udimm", False, 64, 4): "DDR4 64GB 4x16GB",   # 11.10: набори з 4 планок — свій тип (Terapeak)
-    ("ddr4", "udimm", False, 32, 4): "DDR4 32GB 4x8GB",
     ("ddr5", "udimm", False, 64, 4): "DDR5 64GB 4x16GB",
 }
 CONSOLE_QUERIES = {   # ключ як у console_alert.CONSOLE_TYPES → запит (лише вживані)

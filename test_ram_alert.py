@@ -403,7 +403,11 @@ class TestQuadKits1010(unittest.TestCase):
         self.assertEqual(evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 300)["verdict"], "SKIP")
         self.assertIn("4×16", evaluate("64GB DDR4 Quad-Kit G.Skill Trident Z 3200", 150)["type"])
         self.assertNotEqual(evaluate("Crucial Pro DDR5-5600 64GB (4x16GB) UDIMM", 300)["verdict"], "SKIP")
-        self.assertTrue(evaluate("Corsair Vengeance LPX 32GB (4x8GB) DDR4", 60)["verdict"].startswith("BUY"))   # 4×8 — тепер наш тип
+        # 18.10 (користувач): 4×8 не купуємо — 4 слоти мало в кого, продається погано; DDR5 4×8 — теж (не «дві пари»)
+        self.assertEqual(evaluate("Corsair Vengeance LPX 32GB (4x8GB) DDR4", 60)["verdict"], "SKIP")
+        self.assertIn("4 планок по 8", evaluate("Corsair Vengeance LPX 32GB (4x8GB) DDR4", 60)["reason"])
+        self.assertEqual(evaluate("Kingston Fury 32GB (4x8GB) DDR5 5600", 90)["verdict"], "SKIP")
+        self.assertEqual(evaluate("G.Skill 16GB (4x4GB) DDR4 3200", 20)["verdict"], "SKIP")
 
     def test_speed_segments(self):
         from ram_alert import evaluate
