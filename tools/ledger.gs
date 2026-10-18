@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18j';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18k';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -584,6 +584,19 @@ function notify_(text, markup, mode) {
   const props = PropertiesService.getScriptProperties();
   const tok = officeToken_(props), chat = props.getProperty('TELEGRAM_CHAT_ID');
   if (!tok || !chat) return null;
+  text = String(text);
+  if (text.length > 3900) {   // 18.10 (аудит): Telegram — до 4096; довше відхиляє цілком. Ріжемо між абзацами, кнопки — під останнім
+    const parts = [];
+    let cur = '';
+    text.split('\n\n').forEach(function (b) {
+      if (cur && cur.length + b.length + 2 > 3900) { parts.push(cur); cur = ''; }
+      cur = cur ? cur + '\n\n' + b : b;
+    });
+    if (cur) parts.push(cur);
+    let last = null;
+    parts.forEach(function (x, i) { last = notify_(x.slice(0, 3900), i === parts.length - 1 ? markup : null, mode); });   // ≤3900 — без рекурсії
+    return last;
+  }
   const payload = { chat_id: chat, text: text, disable_web_page_preview: 'true' };
   if (mode) payload.parse_mode = mode;
   if (markup) payload.reply_markup = JSON.stringify(markup);

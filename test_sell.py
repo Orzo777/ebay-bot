@@ -5,6 +5,8 @@ import os
 import sys
 import unittest
 
+NL, NL2 = chr(10), chr(10) * 2
+
 os.environ["RAM_PRICES_OFF"] = "1"
 sys.path.insert(0, ".")
 sys.path.insert(0, "research")
@@ -289,6 +291,20 @@ class ReviseModeTest(unittest.TestCase):
         self.assertEqual(url, "https://i.ebayimg.com/x.jpg")
         self.assertIn("№6", cap)
         self.assertIn("CMK32GX4M2A2400C16", cap)
+
+    def test_long_html_split(self):
+        # 18.10 (аудит): довше 4096 — кількома повідомленнями, кнопки під останнім (раніше — обрізка посеред тегу, втрата)
+        from unittest import mock
+        calls = []
+
+        class R:
+            status_code = 200
+        t = NL2.join(f"<b>лот {i}</b>" + NL + "<blockquote>" + "x" * 240 + "</blockquote>" for i in range(30))
+        with mock.patch("requests.post", side_effect=lambda url, data=None, **k: calls.append(data) or R()):
+            self.assertTrue(sell.office_send_html(t, {"inline_keyboard": [[{"text": "k", "url": "https://x"}]]}))
+        self.assertGreater(len(calls), 1)
+        self.assertTrue(all(len(c["text"]) <= 4096 and c["text"].count("<blockquote>") == c["text"].count("</blockquote>") for c in calls))
+        self.assertEqual([("reply_markup" in c) for c in calls], [False] * (len(calls) - 1) + [True])
 
     def test_sync_mode_posts_changes(self):
         # 17.10: фонова перевірка лотів — зміни назад в облік, без повідомлення в чат

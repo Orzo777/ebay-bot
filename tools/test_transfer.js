@@ -76,5 +76,16 @@ const n2 = Object.keys(evStore).length;
 ctx.pruneProps_();
 check('prune once a day', Object.keys(evStore).length, n2);
 
+// 18.10: довге повідомлення — кількома (≤3900), кнопки під останнім; один задовгий абзац — без нескінченної рекурсії
+const posted = [];
+current = project({ OFFICE_BOT_TOKEN: 'O', TELEGRAM_CHAT_ID: '7' });
+ctx.UrlFetchApp = { fetch: (u, o) => { posted.push(o.payload); return { getResponseCode: () => 200 }; } };
+ctx.notify_(Array.from({ length: 30 }, (_, i) => 'лот ' + i + ' ' + 'x'.repeat(240)).join('\n\n'), { inline_keyboard: [[{ text: 'k' }]] }, 'HTML');
+check('split long message', [posted.length > 1, posted.every((p) => p.text.length <= 3900), posted.slice(0, -1).every((p) => !p.reply_markup),
+  !!posted[posted.length - 1].reply_markup], [true, true, true, true]);
+posted.length = 0;
+ctx.notify_('y'.repeat(4000));
+check('one huge paragraph — sent once, trimmed', [posted.length, posted[0].text.length], [1, 3900]);
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

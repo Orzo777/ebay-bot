@@ -477,7 +477,23 @@ def make(title: str, cost: float | None, row: int | None = None, comp_fn=competi
     return build_card(row, title, r, pr, comp, tx, cost, p["edited"]), keyboard(tx, r, row, ebay, listed), build_steps(row, pr, tx)
 
 
+def split_html(text: str, limit: int = 3900) -> list[str]:
+    """18.10 (аудит): Telegram — до 4096 символів; обрізаний посеред тегу HTML він відхиляє цілком (повідомлення губилось,
+    напр. «🏷 Виставлено» з ~16+ лотами). Ріжемо між абзацами (порожній рядок), не розриваючи блоків."""
+    out, cur = [], ""
+    for block in text.split("\n\n"):
+        if cur and len(cur) + len(block) + 2 > limit:
+            out.append(cur)
+            cur = ""
+        cur = (cur + "\n\n" + block) if cur else block
+    out.append(cur)
+    return [x[:4096] for x in out if x]
+
+
 def office_send_html(text: str, markup: dict | None) -> bool:
+    parts = split_html(text)
+    if len(parts) > 1:   # кнопки — під останнім шматком
+        return all([office_send_html(x, markup if i == len(parts) - 1 else None) for i, x in enumerate(parts)])
     import requests
     token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN
     data = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text[:4096], "parse_mode": "HTML", "disable_web_page_preview": "true"}
