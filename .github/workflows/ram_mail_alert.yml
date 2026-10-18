@@ -60,8 +60,8 @@ jobs:
 
       - name: Check mail
         env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_USER: ${{ secrets.NEW_GMAIL_USER }}   # 18.10: окрема пошта проєкту
+          GMAIL_APP_PASSWORD: ${{ secrets.NEW_GMAIL_APP_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}   # службові сповіщення (квота, Gemini)

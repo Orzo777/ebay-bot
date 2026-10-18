@@ -35,10 +35,13 @@ class DeployError(Exception):
     pass
 
 
-def credentials(raw: str) -> dict:
-    """Вміст ~/.clasprc.json (clasp 3: tokens.default; clasp 2: token + oauth2ClientSettings) → client_id/secret/refresh."""
+def credentials(raw: str, user: str = "default") -> dict:
+    """Вміст ~/.clasprc.json (clasp 3: tokens.<user>; clasp 2: token + oauth2ClientSettings) → client_id/secret/refresh.
+    18.10: user «new» — вхід нового акаунта (окрема пошта), у тому ж файлі поруч зі старим «default»."""
     d = json.loads(raw)
-    t = (d.get("tokens") or {}).get("default")
+    t = (d.get("tokens") or {}).get(user)
+    if user != "default" and not t:
+        raise DeployError(f"у CLASPRC_JSON немає входу «{user}» — повтори clasp login --user {user} і онови секрет")
     if t:
         return {"client_id": t["client_id"], "client_secret": t["client_secret"], "refresh_token": t["refresh_token"]}
     s, t = d.get("oauth2ClientSettings") or {}, d.get("token") or {}
@@ -194,7 +197,7 @@ def main():
         print("секрети CLASPRC_JSON / APPS_SCRIPT_ID не налаштовані — автооновлення вимкнене, оновлюй вручну")
         return 0
     try:
-        changed = deploy(Api(credentials(raw), sid), repo_files(), dry)
+        changed = deploy(Api(credentials(raw, os.getenv("CLASP_USER") or "default"), sid), repo_files(), dry)
     except DeployError as e:
         print("⛔ " + str(e))
         if not dry:

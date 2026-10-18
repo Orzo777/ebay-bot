@@ -143,5 +143,16 @@ class RetryTest(unittest.TestCase):
         self.assertEqual(req.call_count, 1)
 
 
+class CredentialsUserTest(unittest.TestCase):
+    def test_named_user(self):
+        import json as _j
+        raw = _j.dumps({"tokens": {"default": {"client_id": "a", "client_secret": "b", "refresh_token": "old"},
+                                   "new": {"client_id": "a", "client_secret": "b", "refresh_token": "new"}}})
+        self.assertEqual(credentials(raw)["refresh_token"], "old")
+        self.assertEqual(credentials(raw, "new")["refresh_token"], "new")
+        with self.assertRaises(DeployError):
+            credentials(_j.dumps({"tokens": {"default": {"client_id": "a", "client_secret": "b", "refresh_token": "x"}}}), "new")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -43,8 +43,10 @@ jobs:
 
       - name: Deploy
         env:
-          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
-          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+          # 18.10: перехід на окрему пошту — новий проєкт у новому акаунті (вхід clasp «new»)
+          CLASPRC_JSON: ${{ secrets.NEW_CLASPRC_JSON }}
+          APPS_SCRIPT_ID: ${{ secrets.NEW_APPS_SCRIPT_ID }}
+          CLASP_USER: new
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PYTHONIOENCODING: utf-8

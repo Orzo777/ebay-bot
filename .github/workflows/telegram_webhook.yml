@@ -1,13 +1,15 @@
 name: telegram-webhook
 
-# Один раз після розгортання вебзастосунку Apps Script: прив'язує Telegram-бота до його адреси (…/exec),
-# щоб повідомлення, якими користувач ділиться з ботом, приходили в doPost. Токен бота — лише із секретів.
+# Після розгортання вебзастосунку Apps Script: прив'язує ботів Telegram до його адреси (…/exec), щоб повідомлення
+# й кнопки приходили в doPost. 18.10 (перехід на окрему пошту): одним запуском — основний бот, «Облік і продаж»
+# (?bot=office) і «Помічник» (?bot=assist). url = «new» → адреса з секрету NEW_WEBAPP_URL (не світимо в публічних логах).
+# Токени — лише із секретів; у лог — лише ok / опис помилки, без адрес.
 
 on:
   workflow_dispatch:
     inputs:
       url:
-        description: "Адреса вебзастосунку Apps Script (https://script.google.com/macros/s/…/exec); порожньо — показати стан"
+        description: "Адреса вебзастосунку (https://script.google.com/macros/s/…/exec), «new» — з секрету NEW_WEBAPP_URL; порожньо — показати стан"
         required: false
         default: ""
 
@@ -19,15 +21,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Set or show webhook
+      - name: Set or show webhooks
         env:
-          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          HOOK_URL: ${{ inputs.url }}
+          MAIN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OFFICE: ${{ secrets.OFFICE_BOT_TOKEN }}
+          ASSIST: ${{ secrets.ASSIST_BOT_TOKEN }}
+          HOOK_URL: ${{ inputs.url == 'new' && secrets.NEW_WEBAPP_URL || inputs.url }}
         run: |
+          set_hook () {   # $1 — токен, $2 — суфікс адреси, $3 — allowed_updates, $4 — назва
+            [ -n "$1" ] || { echo "$4: токена немає — пропускаю"; return; }
+            curl -sS "https://api.telegram.org/bot$1/setWebhook" --data-urlencode "url=${HOOK_URL}$2" \
+              --data-urlencode "allowed_updates=$3" -d drop_pending_updates=false | sed 's/"url":"[^"]*"/"url":"(set)"/'
+            echo " ← $4"
+          }
+          show () {
+            [ -n "$1" ] || return
+            curl -sS "https://api.telegram.org/bot$1/getWebhookInfo" | sed 's#"url":"[^"]*"#"url":"(set)"#; s#"last_error_message":"[^"]*"#"last_error_message":"(є)"#'
+            echo " ← $2"
+          }
           if [ -n "$HOOK_URL" ]; then
             case "$HOOK_URL" in https://script.google.com/macros/s/*/exec) ;; *) echo "не схоже на адресу Apps Script"; exit 1;; esac
-            curl -sS "https://api.telegram.org/bot${TOKEN}/setWebhook" \
-              --data-urlencode "url=${HOOK_URL}" -d 'allowed_updates=["message"]' -d drop_pending_updates=true
-            echo
+            set_hook "$MAIN" "" '["message","callback_query"]' "основний бот"
+            set_hook "$OFFICE" "?bot=office" '["message","callback_query"]' "Облік і продаж"
+            set_hook "$ASSIST" "?bot=assist" '["message"]' "Помічник"
           fi
-          curl -sS "https://api.telegram.org/bot${TOKEN}/getWebhookInfo" | sed 's/"url":"[^"]*"/"url":"(set)"/'
+          show "$MAIN" "основний бот"
+          show "$OFFICE" "Облік і продаж"
+          show "$ASSIST" "Помічник"
