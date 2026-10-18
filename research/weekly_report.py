@@ -58,7 +58,17 @@ def money(rows: list[dict], today: date) -> list[str]:
     del open_
     out += month_lines(sold, today)
     out += tax_lines(sold, today)
+    out += docs_missing(rows, today)
     return out
+
+
+def docs_missing(rows: list[dict], today: date) -> list[str]:
+    """18.10: самовивіз за готівку — листа eBay / KA / PayPal немає, для податкової потрібен чек чи скрін («чек N»).
+    Покупки eBay і KA з оплатою через сервіс мають лист у пошті — їх не нагадуємо."""
+    miss = [r["n"] for r in rows if "Самовивіз" in str(r.get("src") or "") and not r.get("doc")
+            and (_d(r["date"]) or date.min).year == today.year and r["status"] not in ("Скасовано",)]
+    return ["🧾 Без документа покупки (самовивіз): " + ", ".join(f"№{n}" for n in miss[:10])
+            + " — фото чека / переписки з підписом «чек N»"] if miss else []
 
 
 TREND_DAYS, TREND_WARN = 14, 0.08

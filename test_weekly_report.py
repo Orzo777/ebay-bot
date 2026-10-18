@@ -200,6 +200,17 @@ class MarketTrendTest(unittest.TestCase):
         self.assertIn("замало замірів", lines[0])
 
 
+class DocsMissingTest(unittest.TestCase):
+    def test_pickup_without_receipt(self):
+        # 18.10: самовивіз за готівку без «чек N» — нагадати; eBay / KA (є лист) і з документом — ні
+        rows = [{"n": 9, "src": "Самовивіз Гамбург", "date": "2026-10-18", "status": "Виставлено"},
+                {"n": 10, "src": "Самовивіз Гамбург", "date": "2026-10-18", "status": "Отримано", "doc": True},
+                {"n": 11, "src": "eBay", "date": "2026-10-18", "status": "Отримано"}]
+        self.assertEqual(wr.docs_missing(rows, date(2026, 10, 20)),
+                         ["🧾 Без документа покупки (самовивіз): №9 — фото чека / переписки з підписом «чек N»"])
+        self.assertEqual(wr.docs_missing(rows[1:], date(2026, 10, 20)), [])
+
+
 if __name__ == "__main__":
     unittest.main()
 

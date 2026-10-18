@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18l';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18m';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -524,6 +524,7 @@ const MENU = {
     '• купив 45 OWC 2x16 DDR4 — записати вручну (додай «ebay» або «самовивіз», якщо не KA)\n' +
     '• отримав 3 — посилка №3 прийшла\n' +
     '• фото з підписом 3 (або «фото 3») — наклейки й екран MemTest86; без помилок і наклейка збігається → «Перевірено» сам\n' +
+    '• фото чи PDF чека з підписом «чек 3» — документ покупки для податкової (аркуш «Документи»), показати — «документи 3»\n' +
     '• перевірив 3 / проблема 3 — протестовано / щось не так (підкажу, як заявити)\n' +
     '• межі — межі цін у підписках KA', ['на руках']],
   sell: ['💶 Продаж', '• продати — що вже можна продавати; продати 3 — готове оголошення (ціна, назва, опис німецькою) ' +
@@ -673,7 +674,8 @@ function officeMessage(msg) {
   const alias = KEY_ALIAS[String(msg.text || '').trim().toLowerCase()];   // кнопки клавіатури з емодзі → команда
   if (alias) msg = Object.assign({}, msg, { text: alias });
   else if (canonCmd_(msg.text) !== String(msg.text || '').trim()) msg = Object.assign({}, msg, { text: canonCmd_(msg.text) });
-  if (memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
+  if (docMessage_(msg) || docShowCommand_(msg) ||
+      memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       photoDeleteCommand_(msg) ||
       onHandCommand_(msg)) return;
   if (parcelsCommand_(msg) || listingsCommand_(msg) || editCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
@@ -1619,6 +1621,9 @@ function weeklyReport() {
     if (i < 0) break;
     rows.splice(i, 1);
   }
+  let docs = {};   // 18.10: до яких покупок є документ (самовивіз за готівку без чека — нагадати)
+  try { docs = docRows_(); } catch (e) { console.log('документи: ' + e); }
+  rows.forEach(function (r) { if (docs[r.n]) r.doc = true; });
   const photos = {};   // 17.10: фото непроданого — аркуш «що зробити з товаром»
   rows.forEach(function (r) {
     if (['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0) {
@@ -2383,6 +2388,86 @@ function dropPhotoAsk_() {
 }
 
 /** Фото альбому, що прийшли раніше за підписане, — до того ж рядка, без питань. */
+// ------------------------------------------------------------------ документи покупок (18.10)
+// Фото / PDF з підписом «чек 5» (рахунок, документ, beleg, rechnung) — документ покупки №5 для податкової, а не фото для
+// eBay: рядок в аркуші «Документи» таблиці обліку (дата, №, товар, тип, file_id — файл лишається в Telegram, повідомлення
+// в чаті не видаляємо). Альбом — за підписом будь-якого фото альбому. «документи 5» — надіслати назад.
+// «квитанція» — ні: квитанцію відправки з підписом «5» бот читає як трек («відправив»)
+const DOC_RE = /^\s*(?:чек|чеки|рахунок|документ|документи|beleg|rechnung|invoice)\s*№?\s*(\d{1,4})\b/i;
+const DOC_SHEET = 'Документи';
+
+function docFile_(msg) {
+  if (msg.photo && msg.photo.length) {
+    const p = msg.photo[msg.photo.length - 1];
+    return { id: p.file_id, t: 'photo', u: p.file_unique_id || p.file_id, name: 'фото' };
+  }
+  if (msg.document) return { id: msg.document.file_id, t: 'document', u: msg.document.file_unique_id || msg.document.file_id,
+    name: msg.document.file_name || 'файл' };
+  return null;
+}
+
+function docSheet_() {
+  const ss = ledger_();
+  let sh = ss.getSheetByName(DOC_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(DOC_SHEET);
+    sh.appendRow(['Дата', '№', 'Товар', 'Файл', 'Підпис', 'file_unique_id', 'file_id']);
+  }
+  return sh;
+}
+
+/** → true, якщо записали (дубль — false). */
+function saveDoc_(n, title, f, caption) {
+  const sh = docSheet_(), last = sh.getLastRow();
+  if (last > 1 && sh.getRange(2, 6, last - 1, 1).getValues().some(function (r) { return String(r[0]) === String(f.u); })) return false;
+  sh.appendRow([new Date(), n, String(title || '').slice(0, 90), f.name, String(caption || '').slice(0, 100), f.u, f.id]);
+  return true;
+}
+
+function docMessage_(msg) {
+  const f = docFile_(msg);
+  if (!f) return false;
+  const props = PropertiesService.getScriptProperties();
+  const mgId = msg.media_group_id ? String(msg.media_group_id) : '';
+  const m = String(msg.caption || '').match(DOC_RE);
+  let n = m ? Number(m[1]) : 0;
+  if (n && mgId) props.setProperty('MGD_' + mgId, String(n));
+  if (!n && mgId) n = Number(props.getProperty('MGD_' + mgId) || 0);
+  if (!n) return false;   // не документ — далі як звичайне фото
+  if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID'))) return true;
+  const r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + ' — документ не записав.'); return true; }
+  let saved = saveDoc_(n, r.title, f, msg.caption) ? 1 : 0;
+  if (m && mgId) {   // фото альбому без підпису, що прийшли раніше і чекають номер як фото товару, — теж документи
+    const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');
+    const mine = pend.filter(function (p) { return p.mg === 'MG_' + mgId; }), rest = pend.filter(function (p) { return p.mg !== 'MG_' + mgId; });
+    mine.forEach(function (p) { saved += saveDoc_(n, r.title, Object.assign({ name: 'фото' }, p.f), '') ? 1 : 0; });
+    if (mine.length) { if (rest.length) props.setProperty('PH_PENDING', JSON.stringify(rest)); else props.deleteProperty('PH_PENDING'); }
+  }
+  if (m) notify_('🧾 Документ покупки №' + n + ' «' + String(r.title).slice(0, 40) + '» записав' + (saved > 1 ? ' (' + saved + ' файли)' : '') +
+                 ' — аркуш «Документи». Показати — «документи ' + n + '».');
+  return true;
+}
+
+/** «документи 5» — надіслати збережені документи покупки. */
+function docShowCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?(?:документи|чеки|docs)\s+(\d{1,4})$/i);
+  if (!m) return false;
+  const n = Number(m[1]), sh = ledger_().getSheetByName(DOC_SHEET), last = sh ? sh.getLastRow() : 0;
+  const list = last > 1 ? sh.getRange(2, 1, last - 1, 7).getValues().filter(function (r) { return Number(r[1]) === n; })
+    .map(function (r) { return { id: String(r[6]), t: String(r[3]) === 'фото' ? 'photo' : 'document' }; }) : [];
+  if (!list.length) { notify_('🧾 До №' + n + ' документів ще немає — надішли фото чи PDF чека з підписом «чек ' + n + '».'); return true; }
+  sendAlbum_(list, '🧾 №' + n + ' — документи покупки');
+  return true;
+}
+
+/** Номери рядків, до яких є документ (для тижневого звіту). */
+function docRows_() {
+  const sh = ledger_().getSheetByName(DOC_SHEET), last = sh ? sh.getLastRow() : 0, out = {};
+  if (last > 1) sh.getRange(2, 2, last - 1, 1).getValues().forEach(function (r) { if (r[0]) out[Number(r[0])] = 1; });
+  return out;
+}
+
 function flushPending_(n, mg) {
   const props = PropertiesService.getScriptProperties();
   const pend = JSON.parse(props.getProperty('PH_PENDING') || '[]');
