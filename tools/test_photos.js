@@ -78,6 +78,13 @@ check('8GB sticker on 2x16 → mismatch', chk('Corsair Vengeance LPX 32GB (2x16G
 check('desktop sticker for SO-DIMM purchase → mismatch', /ноутбучну/.test(chk('OWC 32GB (2x16GB) DDR4 SO-DIMM', { form: 'desktop' })[1][0]), true);
 check('registered → warning', /серверна/.test(chk('SK Hynix 2x16GB DDR4', { registered: true, ddr: 'DDR4' })[1][0]), true);
 check('DDR5 sticker on DDR4 purchase', /DDR5, а купував DDR4/.test(chk('Kingston 2x16GB DDR4', { ddr: 'DDR5' })[1][0]), true);
+// 18.10: прийшла 4800 замість 5600 (eBay 267809865959)
+check('speed mismatch on label', chk('SK Hynix32GB (2x16GB) DDR5  5600B MHz RAM Kit für Notebooks',
+  { part_number: 'HMCG78AEBSA095N', text: '16GB 1Rx8 PC5-4800B-SA0-1010-XT', gb_per_module: 16, ddr: 'DDR5', form: 'laptop' })[1],
+  ['на наклейці 4800 МГц, а купував 5600']);
+check('speed ok on label', chk('SK Hynix32GB (2x16GB) DDR5  5600B MHz RAM Kit', { text: '16GB 1Rx8 PC5-5600B-SA0-1010-XT', ddr: 'DDR5' })[1], []);
+check('speeds parsed', [ctx.speedOf_('PC4-19200'), ctx.speedOf_('DDR4-3200 CL16'), ctx.speedOf_('PC4-2666V-R'), ctx.speedOf_('32GB DDR4')],
+  [2400, 3200, 2666, 0]);
 const ts = ctx.titleSpec_('OWC 32GB (16GB x 2) PC4-19200 DDR4-2400 Kit');
 check('«16GB x 2» parsed', [ts.per, ts.modules, ts.ddr], [16, 2, '4']);
 

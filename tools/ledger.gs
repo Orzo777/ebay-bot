@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-17g';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -2491,7 +2491,18 @@ function titleSpec_(t) {
   if (nx) { spec.modules = Number(nx[1]); spec.per = Number(nx[2]); }
   else if (xn) { spec.per = Number(xn[1]); spec.modules = Number(xn[2]); }
   spec.total = spec.modules && spec.per ? spec.modules * spec.per : total;
+  spec.speed = speedOf_(t);   // 18.10: частота з назви («DDR5 5600B», «DDR4-3200», «PC5-5600B»)
   return spec;
+}
+
+/** Частота (MT/s) з назви чи наклейки: «PC5-4800B», «PC4-19200» (= 2400), «DDR4-3200», «5600 MHz». 0 — не видно. */
+function speedOf_(t) {
+  t = String(t || '');
+  let m = t.match(/\bPC[345]-?(\d{4,5})/i);
+  if (m) { const v = Number(m[1]); return v > 9999 ? Math.round(v / 8 / 100) * 100 + (v / 8 % 100 > 50 ? 33 : 0) : v; }
+  m = t.match(/ddr\s?[345]\s*[-\s]\s*(\d{4})\b/i) || t.match(/\b(\d{4})\s*(?:mhz|mt\/?s|b\b)/i);
+  const v = m ? Number(m[1]) : 0;
+  return v >= 1600 && v <= 9600 ? v : 0;
 }
 
 /** Наклейка vs назва покупки → {ok: [...], bad: [...]}. */
@@ -2500,6 +2511,9 @@ function labelCheck_(title, label) {
   label = label || {};
   const lp = String(label.part_number || label.text || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (lp && t.parts.some(function (p) { return p.length >= 8 && (lp.indexOf(p) >= 0 || p.indexOf(lp) >= 0); })) ok.push('модель ' + label.part_number);
+  const ls = speedOf_(String(label.text || '') + ' ' + String(label.part_number || ''));   // 18.10: прийшла 4800 замість 5600
+  if (ls && t.speed) (Math.abs(ls - t.speed) < 100 ? ok : bad).push(Math.abs(ls - t.speed) < 100 ? ls + ' МГц'
+    : 'на наклейці ' + ls + ' МГц, а купував ' + t.speed);
   const ddr = String(label.ddr || '').replace(/\D/g, '');
   if (ddr && t.ddr) (ddr === t.ddr ? ok : bad).push('DDR' + ddr + (ddr === t.ddr ? '' : ', а купував DDR' + t.ddr));
   if (label.form && t.form) (label.form === t.form ? ok : bad).push(label.form === t.form ? (t.form === 'laptop' ? 'для ноутбука' : 'для ПК')
@@ -2536,8 +2550,12 @@ function photoSummary_(n, g, count, fileId) {
     st.lines.receipt = g.line;
   } else if (g && g.kind === 'ram_label' && g.label && r) {
     if (fileId && !st.lf) st.lf = fileId;   // 17.10: для «запакуй ось цю» — фото наклейки й номер з неї
-    if (g.label.part_number && !st.pn) st.pn = String(g.label.part_number).slice(0, 40);
+    const pn = String(g.label.part_number || '').slice(0, 40), norm = function (x) { return String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    // 18.10: дві різні планки в наборі (прийшли 4800 і 5600 замість кіту 5600) — «не як в описі»
+    const mixed = pn && st.pn && norm(pn) !== norm(st.pn) ? st.pn + ' і ' + pn : '';
+    if (pn && !st.pn) st.pn = pn;
     const c = labelCheck_(r.title, g.label);
+    if (mixed) c.bad.unshift('планки різні: ' + mixed + ' — це не набір з оголошення; заява продавцю — «проблема ' + n + '»');
     st.lines.label = c.bad.length ? '⚠️ Наклейка не збігається з покупкою: ' + c.bad.map(esc_).join('; ')
       : c.ok.length ? '✅ Наклейка збігається: ' + c.ok.map(esc_).join(', ') : 'ℹ️ Наклейку прочитав (' + esc_(String(g.label.text || '').slice(0, 60)) + '), але звірити нема з чим';
   }
