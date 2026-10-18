@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18k';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18l';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -961,6 +961,7 @@ function stepsCommand_(msg) {
 function sellDispatch_(data) {
   const props = PropertiesService.getScriptProperties();
   const sealed = seal_(data, officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
+  if (JSON.stringify(sealed).length > 60000) { console.log('sellDispatch_: завеликі дані — ' + JSON.stringify(sealed).length); return 413; }
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/sell.yml/dispatches', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -1256,6 +1257,12 @@ function parcelsWatch_() {
   return sellDispatch_(Object.assign({ mode: 'parcels', watch: true, rt: props.getProperty('EBAY_RT') || '' }, d)) === 204;
 }
 
+/** 18.10 (аудит): у GitHub — лише номер оголошення eBay з нотаток (Python більше нічого з них не бере); повні нотатки
+ *  з часом ростуть, а вхідні дані запуску GitHub обмежені (~65 000 символів — інакше «GitHub 422»). */
+function rowsForGithub_(rows) {
+  return rows.map(function (r) { const id = listingId_(r.note); return { n: r.n, title: r.title, status: r.status, note: id ? '(eBay ' + id + ')' : '' }; });
+}
+
 /** Відкриті рядки (не продані / не повернені) з нотатками — для зіставлення з лотами eBay. */
 function openRowsNotes_() {
   const rows = ledgerRows_().filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; });
@@ -1273,7 +1280,7 @@ function listingsWatch_() {
   const rows = openRowsNotes_();
   if (!rows.length) return false;
   props.setProperty('LISTINGS_WATCH_AT', String(now));
-  return sellDispatch_({ mode: 'sync', rt: rt, rows: rows }) === 204;
+  return sellDispatch_({ mode: 'sync', rt: rt, rows: rowsForGithub_(rows) }) === 204;
 }
 
 /** Зміни з eBay → облік: lots — відомі рядки (записати «Виставлено» / нову ціну), ask — спитати кнопками, ended — повідомити. */
@@ -1341,7 +1348,7 @@ function listingsCommand_(msg) {
   const rows = openRowsNotes_();
   const rt = props.getProperty('EBAY_RT') || '';
   if (!rt && !rows.some(function (r) { return r.status === 'Виставлено'; })) { notify_('🏷 Нічого не виставлено. Продати — «💶 Продати».'); return true; }
-  const code = sellDispatch_({ mode: 'listings', rt: rt, rows: rows });
+  const code = sellDispatch_({ mode: 'listings', rt: rt, rows: rowsForGithub_(rows) });
   notify_(code === 204 ? '⏳ Дивлюся виставлене — до хвилини.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
   return true;
 }

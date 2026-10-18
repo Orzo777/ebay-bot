@@ -87,5 +87,10 @@ posted.length = 0;
 ctx.notify_('y'.repeat(4000));
 check('one huge paragraph — sent once, trimmed', [posted.length, posted[0].text.length], [1, 3900]);
 
+// 18.10: у GitHub — лише номер оголошення з нотаток
+check('compact notes for GitHub', ctx.rowsForGithub_([{ n: 4, title: 'T', status: 'Виставлено', note: 'довга історія; виставлено (eBay 111111111); ' +
+  'ціна → 159 €; оновлено (eBay 336844624233); ще багато тексту' }, { n: 5, title: 'U', status: 'Перевірено', note: 'на KA' }]),
+  [{ n: 4, title: 'T', status: 'Виставлено', note: '(eBay 336844624233)' }, { n: 5, title: 'U', status: 'Перевірено', note: '' }]);
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
