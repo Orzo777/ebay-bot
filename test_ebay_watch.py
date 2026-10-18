@@ -57,7 +57,7 @@ class TestEvaluate(unittest.TestCase):
 
     def test_pickup_only_outside_hamburg_skipped(self):
         self.assertEqual(evaluate_ebay(item("Xbox Series X Konsole", 200, ship=None))["verdict"], "SKIP")
-        r = evaluate_ebay(item("Xbox Series X Konsole", 250, ship=None, zip_="22305"))
+        r = evaluate_ebay(item("Xbox Series X Konsole", 250, ship=None, zip_="20095"))
         self.assertTrue(r["verdict"].startswith("BUY") and r["pickup"])
 
     def test_offer_only_with_best_offer(self):
