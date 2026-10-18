@@ -182,6 +182,14 @@ def load_state(path):
     return {"seen_ids": []}
 
 
+class _Seen(dict):
+    """18.10 (аудит): «вже бачив» з порядком додавання. Раніше — set: при обрізанні до 2000 / 3000 випадали ВИПАДКОВІ
+    записи (могли й щойно оброблені листи — тоді повторна картка), тепер — найстаріші."""
+
+    def add(self, k):
+        self[k] = None
+
+
 def save_state(path, state):
     state["seen_ids"] = state["seen_ids"][-2000:]
     state["seen_ads"] = state.get("seen_ads", [])[-3000:]
@@ -667,8 +675,8 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
     state = load_state(state_path)
     global CARDS
     CARDS = state.setdefault("cards", {})
-    seen = set() if dry_run else set(state["seen_ids"])   # діагностика бачить усе, навіть уже оброблене
-    seen_ads = set() if dry_run else set(state.get("seen_ads", []))
+    seen = _Seen() if dry_run else _Seen.fromkeys(state["seen_ids"])   # діагностика бачить усе, навіть уже оброблене
+    seen_ads = _Seen() if dry_run else _Seen.fromkeys(state.get("seen_ads", []))
     hint_times = {} if dry_run else dict(state.get("hint_times", {}))
     gmail_user = os.getenv("GMAIL_USER", "")
     gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")

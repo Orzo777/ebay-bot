@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18i';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18j';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -481,6 +481,7 @@ function processLedger() {
   try { listingsWatch_(); } catch (e) { console.log('лоти: ' + e); }
   try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
+  try { pruneProps_(); } catch (e) { console.log('прибирання: ' + e); }
   try { photoRetry_(); } catch (e) { console.log('фото ще раз: ' + e); }
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
@@ -853,6 +854,8 @@ const PART_UA = { price: 'ціна', title: 'назва', desc: 'опис', phot
 
 /** Фото №N змінились (надіслав / прибрав / переніс) — для «🔁» виставленого товару. */
 function photosChanged_(n) {
+  const r = rowByN_(n);
+  if (!r || r.status !== 'Виставлено') return;   // 18.10: «🔁» — лише для виставленого; решту фото й так іде при 🚀
   const props = PropertiesService.getScriptProperties(), ed = sellEdits_();
   ed[n] = Object.assign(ed[n] || {}, { photos: true });
   props.setProperty('SELL_EDITS', JSON.stringify(ed));
@@ -1301,8 +1304,8 @@ function syncApply_(d) {
     notify_('🏷 Нове оголошення на eBay: «' + h_(a.title) + '»' + (a.price ? ' — ' + a.price + ' €' : '') + '.\nЦе який номер з обліку?',
             { inline_keyboard: kb }, 'HTML');
   });
-  props.setProperty('SYNC_ASKED', JSON.stringify(asked));
-  props.setProperty('SYNC_LOTS', JSON.stringify(lots));
+  props.setProperty('SYNC_ASKED', JSON.stringify(capKeys_(asked, 200)));
+  props.setProperty('SYNC_LOTS', JSON.stringify(capKeys_(lots, 50)));
 }
 
 /** Кнопка під «Нове оголошення на eBay … це який номер?» — L|<eBay id>|<№> (0 — не з обліку). */
@@ -1553,7 +1556,7 @@ function sealedPost(s) {
     sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'завершено ' + Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + ' (перевиставлення)');
     const asked = JSON.parse(props.getProperty('SYNC_ASKED') || '{}');
     asked['E' + d.row + ':' + d.item_id] = 1;   // «оголошення більше не активне» — не писати, ми самі завершили
-    props.setProperty('SYNC_ASKED', JSON.stringify(asked));
+    props.setProperty('SYNC_ASKED', JSON.stringify(capKeys_(asked, 200)));
   } else if (d.kind === 'sync') {   // 17.10: зміни на eBay → облік
     syncApply_(d);
   } else if (d.kind === 'parcels' && Array.isArray(d.events)) {
@@ -1666,8 +1669,69 @@ function addDays_(iso, n) {
   const d = new Date(Date.parse(iso) + n * 86400000);
   return ('0' + d.getUTCDate()).slice(-2) + '.' + ('0' + (d.getUTCMonth() + 1)).slice(-2);
 }
-function events_() { return JSON.parse(PropertiesService.getScriptProperties().getProperty('LEDGER_EVENTS') || '{}'); }
-function saveEvents_(ev) { PropertiesService.getScriptProperties().setProperty('LEDGER_EVENTS', JSON.stringify(ev)); }
+// 18.10 (аудит): події всіх товарів були ОДНИМ записом LEDGER_EVENTS (~250 символів на товар), а межа Google — 9 КБ на
+// запис: ~35 товарів — і «отримав», «відправив», нагадування перестали б працювати. Тепер — запис на товар (EV_<№>);
+// старий спільний розкладається при першому збереженні. Без getProperties (прості заглушки в тестах) — як раніше.
+function events_() {
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperties) return JSON.parse(p.getProperty('LEDGER_EVENTS') || '{}');
+  const all = p.getProperties(), ev = {};
+  if (all.LEDGER_EVENTS) { try { Object.assign(ev, JSON.parse(all.LEDGER_EVENTS)); } catch (e) { console.log('LEDGER_EVENTS: ' + e); } }
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf('EV_') === 0) { try { ev[k.slice(3)] = JSON.parse(all[k]); } catch (e) { console.log(k + ': ' + e); } }
+  });
+  return ev;
+}
+function saveEvents_(ev) {
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperties) { p.setProperty('LEDGER_EVENTS', JSON.stringify(ev)); return; }
+  const cur = p.getProperties(), out = {};
+  Object.keys(ev).forEach(function (n) {
+    const v = JSON.stringify(ev[n] || {});
+    if (cur['EV_' + n] !== v) out['EV_' + n] = v;
+  });
+  if (Object.keys(out).length) p.setProperties(out, false);
+  if (cur.LEDGER_EVENTS) p.deleteProperty('LEDGER_EVENTS');
+}
+
+/** 18.10 (аудит): раз на добу — службові записи закритих угод (продано / повернено / скасовано). Правки, назви, ціни
+ *  оголошень — одразу; фото, підсумок фото й події — через 90 днів після закриття (на випадок спору). Межа Google —
+ *  500 КБ на всі записи разом; без прибирання фото за рік її б вичерпали. */
+function pruneProps_() {
+  const p = PropertiesService.getScriptProperties(), today = iso_(new Date());
+  if (!p.getProperties || p.getProperty('PRUNE_DAY') === today) return 0;
+  p.setProperty('PRUNE_DAY', today);
+  const closed = {}, old = {};
+  ledgerRows_().forEach(function (r) {
+    if (['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0) return;
+    closed[r.n] = 1;
+    const d = r.sdate || r.date;
+    if (d && days_(d, today) >= 90) old[r.n] = 1;
+  });
+  let n = 0;
+  ['SELL_EDITS', 'SELL_TITLES', 'LISTED_PRICE', 'OFFER_PENDING'].forEach(function (k) {
+    const m = JSON.parse(p.getProperty(k) || '{}'), before = Object.keys(m).length;
+    Object.keys(m).forEach(function (row) { if (closed[row]) delete m[row]; });
+    if (Object.keys(m).length !== before) { p.setProperty(k, JSON.stringify(m)); n += before - Object.keys(m).length; }
+  });
+  const pub = JSON.parse(p.getProperty('EBAY_PUB') || '{}'), now = Date.now();
+  Object.keys(pub).forEach(function (row) { if (now - pub[row] > 86400000) delete pub[row]; });
+  p.setProperty('EBAY_PUB', JSON.stringify(pub));
+  const all = p.getProperties();
+  Object.keys(all).forEach(function (k) {
+    const m = k.match(/^(?:PH|PHS|EV)_(\d+)$/);
+    if (m && old[m[1]]) { p.deleteProperty(k); n++; }
+  });
+  console.log('прибрано службових записів: ' + n);
+  return n;
+}
+
+/** Об'єкт «ключ → 1» без кінця росте — лишаємо останні max ключів (порядок додавання). */
+function capKeys_(obj, max) {
+  const keys = Object.keys(obj);
+  keys.slice(0, Math.max(0, keys.length - max)).forEach(function (k) { delete obj[k]; });
+  return obj;
+}
 function markEvent_(n, key, val) {
   const ev = events_();
   ev[n] = ev[n] || {};

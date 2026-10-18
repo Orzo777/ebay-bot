@@ -104,5 +104,22 @@ class ImapTest(unittest.TestCase):
         self.assertIn("Продавець змінив ціну: у листі було 80 €, зараз 70 €", self.cards[0][0])
 
 
+class SeenOrderTest(unittest.TestCase):
+    def test_trim_drops_oldest(self):
+        # 18.10 (аудит): set обрізався випадково — могли випасти щойно оброблені листи (повторна картка)
+        import json as _j
+        import os as _o
+        import tempfile
+        import ram_mail_check as rmc
+        seen = rmc._Seen.fromkeys(str(i) for i in range(2500))
+        seen.add("new")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _o.path.join(tmp, "s.json")
+            rmc.save_state(path, {"seen_ids": list(seen), "seen_ads": []})
+            with open(path, encoding="utf-8") as fh:
+                ids = _j.load(fh)["seen_ids"]
+        self.assertEqual((len(ids), ids[-1], ids[0]), (2000, "new", "501"))
+
+
 if __name__ == "__main__":
     unittest.main()

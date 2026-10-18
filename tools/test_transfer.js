@@ -51,5 +51,30 @@ const deleted = [];
 ctx.ScriptApp = { getProjectTriggers: () => ['a', 'b', 'c'], deleteTrigger: (t) => deleted.push(t) };
 check('uninstallAll removes every trigger', [ctx.uninstallAll(), deleted], [3, ['a', 'b', 'c']]);
 
+// 18.10: події — запис на товар (EV_<№>); старий спільний LEDGER_EVENTS розкладається; прибирання закритих угод
+const evStore = { LEDGER_EVENTS: JSON.stringify({ 1: { got: '2026-10-01' }, 2: { sent: '2026-10-02' } }) };
+current = Object.assign(project(evStore), { getProperties: () => Object.assign({}, evStore),
+  setProperties: (o) => { Object.assign(evStore, o); }, deleteProperty: (k) => { delete evStore[k]; } });
+check('legacy events read', ctx.events_()[2].sent, '2026-10-02');
+ctx.markEvent_(3, 'got', '2026-10-18');
+check('sharded after first save', [evStore.LEDGER_EVENTS, JSON.parse(evStore.EV_1).got, JSON.parse(evStore.EV_3).got], [undefined, '2026-10-01', '2026-10-18']);
+ctx.markEvent_(3, 'rem', 'test0');
+check('one row updated, others intact', [JSON.parse(evStore.EV_3).rem.test0, ctx.events_()[1].got], [1, '2026-10-01']);
+check('capKeys_ keeps the newest', Object.keys(ctx.capKeys_({ a: 1, b: 1, c: 1, d: 1 }, 2)), ['c', 'd']);
+// прибирання: №1 продано 100 днів тому (усе його — геть), №2 продано вчора (лише правки / назви / ціни), №3 відкритий
+Object.assign(evStore, { PH_1: '[1]', PHS_1: '{}', EV_2: '{}', PH_2: '[2]', PH_3: '[3]',
+  SELL_EDITS: JSON.stringify({ 1: { price: 1 }, 2: { price: 2 }, 3: { price: 3 } }), SELL_TITLES: JSON.stringify({ 2: 'x', 3: 'y' }),
+  LISTED_PRICE: JSON.stringify({ 2: 175 }), EBAY_PUB: JSON.stringify({ 3: Date.now() - 2 * 86400000 }) });
+vm.runInContext('ledgerRows_ = function () { return __rows; }; iso_ = function () { return "2026-10-18"; };', Object.assign(ctx, { __rows: [
+  { n: 1, status: 'Продано', sdate: '2026-07-10', date: '2026-07-01' }, { n: 2, status: 'Продано', sdate: '2026-10-17' },
+  { n: 3, status: 'Виставлено', date: '2026-10-10' }] }));
+ctx.pruneProps_();
+check('prune', [evStore.PH_1, evStore.PHS_1, evStore.EV_1, evStore.PH_2, evStore.EV_2, evStore.PH_3,
+  Object.keys(JSON.parse(evStore.SELL_EDITS)), JSON.parse(evStore.SELL_TITLES), evStore.LISTED_PRICE, evStore.EBAY_PUB],
+  [undefined, undefined, undefined, '[2]', '{}', '[3]', ['3'], { 3: 'y' }, '{}', '{}']);
+const n2 = Object.keys(evStore).length;
+ctx.pruneProps_();
+check('prune once a day', Object.keys(evStore).length, n2);
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
