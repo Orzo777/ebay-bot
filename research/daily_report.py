@@ -41,8 +41,8 @@ def run_stats(runs: list[dict], now: datetime, hours: int = 24) -> dict:
     cut = now - timedelta(hours=hours)
     by, ebay_min, spans = {}, 0.0, []
     for r in runs:
-        t0 = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
-        t1 = now if r.get("status") != "completed" else             datetime.fromisoformat((r.get("updated_at") or r["created_at"]).replace("Z", "+00:00"))
+        t1 = now if r.get("status") != "completed" else \
+            datetime.fromisoformat((r.get("updated_at") or r["created_at"]).replace("Z", "+00:00"))
         if t1 < cut or r.get("conclusion") == "cancelled":   # запуск, що почався до межі доби, рахуємо частково
             continue
         name = r.get("name") or r.get("path") or "?"

@@ -686,7 +686,6 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 tail = checks_block([f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} €",
                                      f"👤 {esc(lst['seller'])} ({lst['fb']})", *[f"⚠️ {esc(s)}" for s in risk["soft"]]])
                 card = auction_card(it, r, head, tail)
-                text = live_text(card, now)
                 if dry_run:
                     print("   [DRY RUN] надіслав би картку аукціону")
                 else:

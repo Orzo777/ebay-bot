@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18i';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -119,31 +119,7 @@ function saleFee_(sh, row, src) {
 const FEE_NOTE = 'Приватний продавець на eBay.de: продаж у Німеччині без комісії (довідка eBay, 09.10.2026). ' +
   'Якщо виплата буде менша за ціну — впиши реальну комісію.';
 
-/** 09.10: комісію eBay прибрано (0%) — у вже створеній таблиці міняємо лише старі значення 6,5% / 0,45 €, один раз. */
-function feeZero_() {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('FEE_ZERO') === '1') return;
-  const set = ledger_().getSheetByName('Налаштування');
-  if (!set) return;
-  const v = set.getRange('B3:B4').getValues();
-  if (Math.abs(Number(v[0][0]) - 0.065) < 1e-9) set.getRange('B3').setValue(0);
-  if (Math.abs(Number(v[1][0]) - 0.45) < 1e-9) set.getRange('B4').setValue(0);
-  set.getRange('C3:C4').setValues([[FEE_NOTE], [FEE_NOTE]]);
-  props.setProperty('FEE_ZERO', '1');
-}
-
 const PACK_NOTE = 'Підставляється, коли «Пакування» в «Угоди» порожнє. 1 € — коробка з дому, пакет від планок, скотч (10.10).';
-
-/** 10.10: пакування за замовчуванням 4 → 1 € у вже створеній таблиці (лише якщо там досі 4), один раз. */
-function packOne_() {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('PACK_ONE') === '1') return;
-  const set = ledger_().getSheetByName('Налаштування');
-  if (!set) return;
-  if (Number(set.getRange('B5').getValue()) === 4) set.getRange('B5').setValue(1);
-  set.getRange('C5').setValue(PACK_NOTE);
-  props.setProperty('PACK_ONE', '1');
-}
 
 function buildLedger_(ss) {
   const deals = ss.getSheets()[0];
@@ -425,8 +401,6 @@ function parseMail_(msg) {
 }
 
 function processLedger() {
-  try { feeZero_(); } catch (e) { console.log('feeZero_: ' + e.message); }
-  try { packOne_(); } catch (e) { console.log('packOne_: ' + e.message); }
   const ss = ledger_();
   const log = ss.getSheetByName('Лог листів');
   const deals = ss.getSheetByName('Угоди');
@@ -508,12 +482,8 @@ function processLedger() {
   try { processEbayMail_(log, done); } catch (e) { console.log('листи eBay: ' + e); }
   try { photoPendingCheck_(); } catch (e) { console.log('фото: ' + e); }
   try { photoRetry_(); } catch (e) { console.log('фото ще раз: ' + e); }
-  try { fixAlbum1010_(); } catch (e) { console.log('fixAlbum1010_: ' + e); }
-  try { fixSalePrice1011_(); } catch (e) { console.log('fixSalePrice1011_: ' + e); }
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
-  try { keyboard1013_(); } catch (e) { console.log('keyboard1013_: ' + e); }
-  try { keyboard1016_(); } catch (e) { console.log('keyboard1016_: ' + e); }
   try { tidySheet1013_(); } catch (e) { console.log('tidySheet1013_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
@@ -1040,6 +1010,7 @@ function ebayCommand_(msg) {
   if ((m = t.match(/^\/?так-перевист\s+(\d{1,4})$/i))) { relistCommand_(Number(m[1])); return true; }
   if ((m = t.match(/^\/?спостерігачам\s+(\d{1,4})\s+(\d{1,5})$/i))) { watchersAsk_(Number(m[1]), Number(m[2])); return true; }
   if ((m = t.match(/^\/?додати-до\s+(\d{1,4})$/i))) { mergeCommand_(Number(m[1])); return true; }
+  if ((m = t.match(/^\/?окремо\s+(\d{1,4})$/i))) { publishCommand_(Number(m[1]), false, true); return true; }
   if ((m = t.match(/^\/?так-спостер\s+(\d{1,4})$/i))) {
     const props = PropertiesService.getScriptProperties(), pend = JSON.parse(props.getProperty('OFFER_PENDING') || '{}');
     const n = Number(m[1]), price = pend[n], r = rowByN_(n);
@@ -1502,7 +1473,7 @@ function assistConnect_() {
   if (hi.code !== 200) notify_('🤖 Бот «Помічник» підключено. Відкрий його в Telegram і натисни «Start» — він не може написати першим.');
 }
 
-function publishCommand_(n, dry) {
+function publishCommand_(n, dry, separate) {
   const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
   if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
   const r = ledgerRows_().filter(function (x) { return x.n === n; })[0];
@@ -1515,11 +1486,12 @@ function publishCommand_(n, dry) {
   const pub = JSON.parse(props.getProperty('EBAY_PUB') || '{}'), now = Date.now();
   if (!dry && pub[n] && now - pub[n] < 15 * 60 * 1000) { notify_('⏳ №' + n + ' уже виставляється — дочекайся відповіді.'); return; }
   const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
-  const twin = dry ? null : twinListing_(n);
+  const twin = dry || separate ? null : twinListing_(n);
   if (twin) {   // 18.10: окреме оголошення на той самий товар — дубль (eBay ховає / попереджає); додаємо кількість
     notify_('🧩 №' + n + ' — такий самий товар, як №' + twin.n + ' (' + twin.pn + '), що вже на eBay' + (twin.price ? ' за ' + twin.price + ' €' : '') +
             '.\nОкреме оголошення eBay вважає дублем — краще додати №' + n + ' до того самого (стане на 1 шт більше).',
-            { inline_keyboard: [[{ text: '➕ Додати до оголошення №' + twin.n, callback_data: 'c|додати-до|' + n }]] });
+            { inline_keyboard: [[{ text: '➕ Додати до оголошення №' + twin.n, callback_data: 'c|додати-до|' + n }],
+              [{ text: '🚀 Це інший товар — окремим оголошенням', callback_data: 'c|окремо|' + n }]] });
     return;
   }
   const code = sellDispatch_({ mode: 'publish', dry: !!dry, row: n, title: title, cost: r.spent, photos: photos, rt: rt,
@@ -2377,39 +2349,6 @@ function movePhotos_(a, b, k) {
   return take.length;
 }
 
-/** 10.10, один раз: два фото альбому «2» (упаковка проданого) потрапили до №1 — переносимо назад. */
-/** 11.10, один раз: продажі, записані без ціни (лист «Artikel verkauft» з «Verkauft: EUR …»), — ціну з того самого листа. */
-function fixSalePrice1011_() {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('SALE_PRICE_1011') === '1') return;
-  const sh = ledger_().getSheetByName('Угоди');
-  const n = Math.max(sh.getLastRow() - LEDGER_FIRST + 1, 0);
-  const data = n ? sh.getRange(LEDGER_FIRST, 1, n, COL.id).getValues() : [];
-  const empty = [];
-  data.forEach(function (v, i) { if (v[COL.title - 1] && v[COL.status - 1] === 'Продано' && v[COL.sprice - 1] === '') empty.push(i); });
-  if (empty.length) {
-    GmailApp.search('from:ebay subject:verkauft newer_than:30d', 0, 20).forEach(function (th) {
-      th.getMessages().forEach(function (m) {
-        const p = parseMail_(m);
-        const amount = p.total != null ? p.total : p.price;
-        if (p.skip || p.kind !== 'sale' || amount == null || !empty.length) return;
-        const want = words_(p.title);
-        let best = -1, bs = 0;
-        empty.forEach(function (i) {
-          const have = words_(data[i][COL.title - 1]);
-          const s = want.filter(function (w) { return have.indexOf(w) >= 0; }).length;
-          if (s > bs) { bs = s; best = i; }
-        });
-        if (best < 0 || bs < 2) return;
-        sh.getRange(LEDGER_FIRST + best, COL.sprice).setValue(amount);
-        empty.splice(empty.indexOf(best), 1);
-        notify_('💰 Дописав ціну продажу №' + (best + 1) + ': ' + amount + ' € — тепер прибуток рахується (напиши «облік»).');
-      });
-    });
-  }
-  props.setProperty('SALE_PRICE_1011', '1');
-}
-
 /** 11.10, один раз: скасовані купівлі (гроші повернуто) не входять у «Витрачено» в «Підсумку» — ні загалом, ні за категоріями. */
 function summaryNoCancelled1011_() {
   const props = PropertiesService.getScriptProperties();
@@ -2478,37 +2417,6 @@ function tidySheet1013_() {
   });
   ['Лог листів', 'Налаштування'].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) sh.hideSheet(); });
   props.setProperty('TIDY_1013', '1');
-}
-
-/** 16.10, один раз: кнопка «🏷 Виставлено» на клавіатурі (Telegram оновлює її лише з новим повідомленням). */
-function keyboard1016_() {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('KEYBOARD_1016') === '1' || props.getProperty('KEYBOARD_1013') !== '1') {
-    if (props.getProperty('KEYBOARD_1013') !== '1') props.setProperty('KEYBOARD_1016', '1');   // свіжий бот — нова клавіатура й так прийде
-    return;
-  }
-  props.setProperty('KEYBOARD_1016', '1');
-  notify_('🏷 Нова кнопка внизу — «Виставлено»: що зараз на продажу, ціна, дні, перегляди, спостерігачі й посилання на лот.', OFFICE_KEYBOARD);
-}
-
-/** 13.10, один раз: новий головний екран (Telegram оновлює постійну клавіатуру лише з новим повідомленням) + меню. */
-function keyboard1013_() {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('KEYBOARD_1013') === '1') return;
-  props.setProperty('KEYBOARD_1013', '1');
-  notify_('✨ Оновив бот, щоб було простіше:\n• унизу — головне: посилки, облік, продати, звіт, на руках\n' +
-          '• «☰ Меню» — усе інше розділами, замість довгої довідки. Команди текстом працюють як раніше.', OFFICE_KEYBOARD);
-  notify_(OFFICE_HELP, menuMarkup_());
-}
-
-function fixAlbum1010_() {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('FIX_ALBUM_1010') === '1') return;
-  props.setProperty('FIX_ALBUM_1010', '1');
-  const r1 = rowByN_(1), r2 = rowByN_(2);
-  if (!r1 || !r2 || ['Продано', 'Виставлено'].indexOf(r2.status) < 0 || photosOf_(1).length < 2) return;
-  if (movePhotos_(1, 2, 2)) notify_('📸 Два фото з альбому «2» (упаковка) помилково потрапили до №1 — переніс до №2. ' +
-    'Альбоми тепер завжди йдуть за підписом, навіть якщо фото з підписом приходить останнім.');
 }
 
 function openRows_() {
@@ -2647,7 +2555,9 @@ function titleSpec_(t) {
   const total = Number((t.match(/(\d{1,3})\s*gb/i) || [])[1] || 0);
   const spec = { ddr: ((t.match(/ddr\s?([345])/i) || [])[1] || ''),
     form: /so-?dimm|laptop|notebook|imac|macbook|\bpc[345]-\d+[a-z]?s\b/i.test(t) ? 'laptop' : /desktop|\budimm\b|\bdimm\b|\bpc\b/i.test(t) ? 'desktop' : '',
-    parts: (t.match(/\b[A-Z0-9][A-Z0-9-]{7,}\b/g) || []).filter(function (x) { return /\d/.test(x) && /[A-Z]/.test(x); })
+    // 18.10: «DDR4-3200», «PC4-25600», «LPDDR5-6400» — характеристики, а не номер моделі (інакше будь-які два кіти 3200 — «той самий товар»)
+    parts: (t.match(/\b[A-Z0-9][A-Z0-9-]{7,}\b/g) || []).filter(function (x) {
+      return /\d/.test(x) && /[A-Z]/.test(x) && !/^(?:LP)?DDR\d|^PC\d/i.test(x); })
       .map(function (x) { return x.replace(/[^A-Z0-9]/g, ''); }) };
   const nx = t.match(/\b(\d)\s*[x×]\s*(\d{1,2})\s*gb/i), xn = t.match(/\b(\d{1,2})\s*gb\s*[x×]\s*(\d)\b/i);   // «2x16GB» / «16GB x 2»
   if (nx) { spec.modules = Number(nx[1]); spec.per = Number(nx[2]); }
@@ -2661,7 +2571,12 @@ function titleSpec_(t) {
 function speedOf_(t) {
   t = String(t || '');
   let m = t.match(/\bPC[345]-?(\d{4,5})/i);
-  if (m) { const v = Number(m[1]); return v > 9999 ? Math.round(v / 8 / 100) * 100 + (v / 8 % 100 > 50 ? 33 : 0) : v; }
+  if (m) {   // «PC4-21300» — пропускна здатність МБ/с: ÷8 і до найближчої стандартної частоти (2662 → 2666, 2125 → 2133)
+    const v = Number(m[1]);
+    if (v <= 9999) return v;
+    return [1600, 1866, 2133, 2400, 2666, 2933, 3200, 3600, 4000, 4400, 4800, 5200, 5600, 6000, 6400, 7200, 8000]
+      .reduce(function (best, x) { return Math.abs(x - v / 8) < Math.abs(best - v / 8) ? x : best; }, 1600);
+  }
   m = t.match(/ddr\s?[345]\s*[-\s]\s*(\d{4})\b/i) || t.match(/\b(\d{4})\s*(?:mhz|mt\/?s|b\b)/i);
   const v = m ? Number(m[1]) : 0;
   return v >= 1600 && v <= 9600 ? v : 0;
@@ -2766,7 +2681,7 @@ function sendAlbum_(list, caption) {
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
   'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю',
-  'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю', 'так-спостер': '✅ Надсилаю', 'додати-до': '➕ Додаю' };
+  'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю', 'так-спостер': '✅ Надсилаю', 'додати-до': '➕ Додаю', 'окремо': '🚀 Виставляю' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {

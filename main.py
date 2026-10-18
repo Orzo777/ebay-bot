@@ -1356,10 +1356,10 @@ def discovery_report() -> int:
     md.append(f"- Період: **{dates[0]} … {dates[-1]}** ({span_days} дн., "
               f"{span_weeks:.1f} тижн.)")
     md.append(f"- Рядків у `{config.DISCOVERY_LOG_FILE}`: **{len(rows)}**")
-    md.append(f"- `score` = (кандидатів/тиждень) × (частка кандидатів з "
-              f"ліквідністю OK+MEDIUM)")
-    md.append(f"- `epid` / `ttl` — ключів товару за epid / за назвою; "
-              f"`LC` — кандидатів нижчої впевненості (ключ за назвою)\n")
+    md.append("- `score` = (кандидатів/тиждень) × (частка кандидатів з "
+              "ліквідністю OK+MEDIUM)")
+    md.append("- `epid` / `ttl` — ключів товару за epid / за назвою; "
+              "`LC` — кандидатів нижчої впевненості (ключ за назвою)\n")
     md.append("| # | Категорія | epid | ttl | Канд. | LC | /тижд | OK | MED | "
               "LOW | UNK | Медз% | Score |")
     md.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")

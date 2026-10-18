@@ -272,8 +272,14 @@ const ghN = gh.length;
 ctx.officeCallback({ id: 'q', data: 'c|так-авто|7', message: { chat: { id: 7 }, message_id: 100 } });
 check('twin found → offer to add, nothing published', [/такий самий товар, як №6 \(CMK32GX4M2A2400C16\)/.test(last()[0]),
   last()[1].inline_keyboard[0][0].callback_data, gh.length], [true, 'c|додати-до|7', ghN]);
+check('twin prompt also offers a separate listing', last()[1].inline_keyboard[1][0].callback_data, 'c|окремо|7');
+const ghS = gh.length;
+ctx.officeCallback({ id: 'q', data: 'c|окремо|7', message: { chat: { id: 7 }, message_id: 103 } });
+check('separate → normal publish', [gh.length, opened().mode, opened().row], [ghS + 1, 'publish', 7]);
+store.EBAY_PUB = '{}';
 ctx.officeCallback({ id: 'q', data: 'c|додати-до|7', message: { chat: { id: 7 }, message_id: 101 } });
 check('merge dispatched', [opened().mode, opened().item_id, opened().twin, opened().price], ['merge', '336849011147', 6, 175]);
+check('specs are not part numbers', ctx.titleSpec_('Kingston Fury 32GB DDR4-3200 PC4-25600 LPDDR5-6400').parts, []);
 ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'merged', row: 7, item_id: '336849011147', price: 175, twin: 6, qty: 2 },
   '123:ABC', 'm1') }) }, parameter: { bot: 'office' } });
 check('merged → №7 listed on the same id', [deals.cells['11:11'], /\(eBay 336849011147\)/.test(deals.cells['11:' + NOTE2])], ['Виставлено', true]);

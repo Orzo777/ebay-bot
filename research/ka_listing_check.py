@@ -11,7 +11,7 @@ robots.txt їх забороняє (m-suche-verwenden, preis:, anbieter:, versan
 """
 import html
 import re
-from datetime import date, datetime
+from datetime import date
 
 UA = "Mozilla/5.0 (compatible; ka-alert-bot/1.0; personal use, one listing page per alert)"
 

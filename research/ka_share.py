@@ -20,7 +20,7 @@ from ka_listing_check import UA, parse_listing, risk_lines
 from ram_mail_check import _NO_PICKUP
 from ram_alert import (SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, card_seller_text, evaluate, format_html,
                        item_for_cost, offer_template,
-                       model_from_desc, refine_by_desc, seller_template)
+                       model_from_desc, refine_by_desc)
 
 _ID_RE = re.compile(r"kleinanzeigen\.de/s-anzeige/(?:[^/\s]+/)?(\d{8,})")
 _TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)

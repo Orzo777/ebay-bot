@@ -7,7 +7,7 @@
 import html
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 DHL_URL = "https://www.dhl.de/int-verfolgen/data/search"
 # 12.10: з серверів GitHub публічна сторінка DHL віддає захист від ботів (не JSON) — там потрібен офіційний безкоштовний ключ

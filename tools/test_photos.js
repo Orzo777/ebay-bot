@@ -83,8 +83,8 @@ check('speed mismatch on label', chk('SK Hynix32GB (2x16GB) DDR5  5600B MHz RAM 
   { part_number: 'HMCG78AEBSA095N', text: '16GB 1Rx8 PC5-4800B-SA0-1010-XT', gb_per_module: 16, ddr: 'DDR5', form: 'laptop' })[1],
   ['на наклейці 4800 МГц, а купував 5600']);
 check('speed ok on label', chk('SK Hynix32GB (2x16GB) DDR5  5600B MHz RAM Kit', { text: '16GB 1Rx8 PC5-5600B-SA0-1010-XT', ddr: 'DDR5' })[1], []);
-check('speeds parsed', [ctx.speedOf_('PC4-19200'), ctx.speedOf_('DDR4-3200 CL16'), ctx.speedOf_('PC4-2666V-R'), ctx.speedOf_('32GB DDR4')],
-  [2400, 3200, 2666, 0]);
+check('speeds parsed', [ctx.speedOf_('PC4-19200'), ctx.speedOf_('PC4-21300'), ctx.speedOf_('PC4-17000'), ctx.speedOf_('PC4-25600'),
+  ctx.speedOf_('DDR4-3200 CL16'), ctx.speedOf_('PC4-2666V-R'), ctx.speedOf_('32GB DDR4')], [2400, 2666, 2133, 3200, 3200, 2666, 0]);
 const ts = ctx.titleSpec_('OWC 32GB (16GB x 2) PC4-19200 DDR4-2400 Kit');
 check('«16GB x 2» parsed', [ts.per, ts.modules, ts.ddr], [16, 2, '4']);
 
@@ -200,11 +200,6 @@ check('uncaptioned album → only open row after 2 min', [JSON.parse(store.PH_1)
 // «перенеси фото 1 2 2» — останні два з №1 до №2
 say({ message_id: 55, text: 'перенеси фото 1 2 2' });
 check('move last 2', [JSON.parse(store.PH_1).some((x) => x.id === 'G1'), JSON.parse(store.PH_2).slice(-2).map((x) => x.id)], [false, ['G1', 'G2']]);
-// разовий перенос 10.10: не повторюється
-store.PH_1 = JSON.stringify([{ id: 'W1', t: 'photo', u: 'w1' }, { id: 'W2', t: 'photo', u: 'w2' }, { id: 'W3', t: 'photo', u: 'w3' }]);
-deals.cells['6:11'] = 'Продано';
-ctx.fixAlbum1010_(); ctx.fixAlbum1010_();
-check('one-time fix moves last 2 once', [JSON.parse(store.PH_1).map((x) => x.id), JSON.parse(store.PH_2).slice(-2).map((x) => x.id)], [['W1'], ['W2', 'W3']]);
 Object.keys(keep).forEach((r) => { deals.cells[r + ':11'] = keep[r]; });
 gemini = [];
 

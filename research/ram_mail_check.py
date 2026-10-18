@@ -39,7 +39,7 @@ from photo_check import STATS as PHOTO_STATS
 from photo_check import add_to_card
 from pc_alert import NEGOTIATE_FROM, evaluate_pc, pc_card_lines
 from ram_alert import (CONSOLE_NO_MODEL, SEND_VERDICTS, apply_pickup, broken_reason, card_seller_text, evaluate, format_html,
-                       model_from_desc, offer_template, refine_by_desc, seller_template)
+                       model_from_desc, offer_template, refine_by_desc)
 
 FROM_FILTER = os.getenv("KA_MAIL_FROM_FILTER", "kleinanzeigen.de")
 

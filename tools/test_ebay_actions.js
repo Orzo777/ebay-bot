@@ -157,11 +157,5 @@ check('feedback dispatched', [opened().action, opened().row], ['feedback', 3]);
 // повідомлення покупця після покупки — теж з кнопкою «📨»
 const mm = ctx.ebayMailButtons_({ kind: 'message', role: 'seller', reply_de: 'Hallo, das Paket geht heute raus.', message: 'Wann versenden Sie?' }, null);
 check('buyer message has send button', /^e\|\d+\|send$/.test(datas(mm)[0]), true);
-// пакування за замовчуванням 4 → 1 € (лише якщо там 4), один раз
-const setSheet = { cells: { 'B5': 4 }, getRange: (a) => ({ getValue: () => setSheet.cells[a], setValue: (v) => { setSheet.cells[a] = v; } }) };
-vm.runInContext('ledger_ = function () { return { getSheetByName: (n) => (n === "Налаштування" ? __set : __deals) }; };', Object.assign(ctx, { __set: setSheet }));
-ctx.packOne_();
-setSheet.cells.B5 = 3; ctx.packOne_();
-check('pack default 1 once', [setSheet.cells.B5, store.PACK_ONE], [3, '1']);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

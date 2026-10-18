@@ -1,5 +1,5 @@
-// 11.10 (node tools/test_salefix.js): продаж записано без ціни → разова міграція бере суму з листа «Artikel verkauft»;
-// «Підсумок»: скасовані купівлі не входять у «Витрачено».
+// 11.10 (node tools/test_salefix.js): «Підсумок» — скасовані купівлі не входять у «Витрачено».
+// (Разову міграцію цін продажу з листів прибрано 18.10 — відпрацювала.)
 const fs = require('fs');
 const vm = require('vm');
 const store = { TELEGRAM_CHAT_ID: '7', LEDGER_ID: 'L', OFFICE_BOT_TOKEN: 'O' };
@@ -49,12 +49,6 @@ vm.runInContext("ledger_ = function () { return { getSheetByName: function (n) {
   'notify_ = function (t) { __sent.push(t); };', Object.assign(ctx, { __d: deals, __s: sum, __sent: sent }));
 let bad = 0;
 const check = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) { bad++; console.log('!!', name, JSON.stringify(got)); } };
-
-ctx.fixSalePrice1011_();
-check('price filled on the sold row only', [deals.cells['5:14'], deals.cells['6:14'], deals.cells['7:14']], [149, '', '']);
-check('told the user', /Дописав ціну продажу №1: 149 €/.test(sent[0] || ''), true);
-ctx.fixSalePrice1011_();
-check('once', [searches, sent.length], [1, 1]);
 
 ctx.summaryNoCancelled1011_();
 check('summary without cancelled', [sum.formulas['6:2'], sum.formulas['15:4'], sum.formulas['23:3']],
