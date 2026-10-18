@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1507,8 +1507,7 @@ function listedCommand_(msg, itemId) {
       m[2].replace(',', '.') + ' €' : '') + ' ' + Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (itemId ? ' (eBay ' + itemId + ')' : ''));
   }
   if (!link && !msg._auto) notify_('🏷 №' + m[1] + ' «' + title + '» — виставлено' + (m[2] ? ' за ' + m[2] + ' €' : '') + '. Коли продаси — «продав ' +
-          (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '» (або лист eBay запише сам).' +
-          ' Щоб правити оголошення з бота (🔁) — додай посилання: «виставив ' + m[1] + ' ' + (m[2] || 'ціна') + ' https://www.ebay.de/itm/…».');
+          (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '».');   // 18.10: де виставлено — неважливо (eBay бот знайде сам)
   else if (link) notify_('🏷 №' + m[1] + ' — виставлено, оголошення eBay ' + itemId + ' запам\'ятав: «продати ' + m[1] + '» → ✏️ правки → 🔁 Оновити.');
   return true;
 }
