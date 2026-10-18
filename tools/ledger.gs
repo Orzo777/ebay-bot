@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -34,6 +34,56 @@ const COL = { n: 1, date: 2, title: 3, cat: 4, src: 5, link: 6, price: 7, ship: 
   sdate: 12, sto: 13, sprice: 14, sship: 15, pack: 16, comm: 17, net: 18, profit: 19, margin: 20, days: 21, note: 22, id: 23 };
 
 // ------------------------------------------------------------------ створення таблиці
+// ------------------------------------------------------------------ перехід на окрему пошту (docs/plan-transition.md)
+// Старий проєкт: transferExport — усі «Властивості скрипту» (ключі ботів, eBay, фото, стани) → тимчасовий аркуш
+// «_перенесення» у таблиці обліку. Новий проєкт (LEDGER_ID вписано вручну): transferImport — назад у властивості,
+// аркуш видаляється (у ньому ключі — довго не тримаємо). setupAll — усі тригери одним запуском.
+const TRANSFER_SHEET = '_перенесення';
+
+function transferExport() {
+  const props = PropertiesService.getScriptProperties().getProperties();
+  const ss = ledger_();
+  const old = ss.getSheetByName(TRANSFER_SHEET);
+  if (old) ss.deleteSheet(old);
+  const sh = ss.insertSheet(TRANSFER_SHEET);
+  const rows = Object.keys(props).sort().map(function (k) { return [k, props[k]]; });
+  if (rows.length) sh.getRange(1, 1, rows.length, 2).setNumberFormat('@').setValues(rows);
+  console.log('Записав ' + rows.length + ' властивостей в аркуш «' + TRANSFER_SHEET + '». Тепер — transferImport у НОВОМУ проєкті.');
+  return rows.length;
+}
+
+function transferImport() {
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperty('LEDGER_ID')) throw new Error('Спершу впиши LEDGER_ID (з адреси таблиці обліку) у «Властивості скрипту».');
+  const ss = ledger_(), sh = ss.getSheetByName(TRANSFER_SHEET);
+  if (!sh || sh.getLastRow() < 1) throw new Error('Немає аркуша «' + TRANSFER_SHEET + '» — спершу transferExport у СТАРОМУ проєкті.');
+  const vals = {};
+  sh.getRange(1, 1, sh.getLastRow(), 2).getValues().forEach(function (r) { if (r[0]) vals[String(r[0])] = String(r[1]); });
+  delete vals.LEDGER_ID;   // той самий — вже вписаний
+  ['TG_SEEN', 'TG_SEEN_OFFICE', 'TG_SEEN_ASSIST'].forEach(function (k) { delete vals[k]; });
+  p.setProperties(vals, false);
+  ss.deleteSheet(sh);
+  console.log('Перенесено ' + Object.keys(vals).length + ' властивостей, аркуш «' + TRANSFER_SHEET + '» видалено. Тепер — setupAll.');
+  return Object.keys(vals).length;
+}
+
+/** Старий проєкт у день переходу (одразу після transferExport): вимкнути всі тригери — два проєкти не працюють разом. */
+function uninstallAll() {
+  const t = ScriptApp.getProjectTriggers();
+  t.forEach(function (x) { ScriptApp.deleteTrigger(x); });
+  console.log('Вимкнено тригерів: ' + t.length + '. Старий проєкт більше нічого не робить сам.');
+  return t.length;
+}
+
+/** Новий проєкт: усі тригери (пошта щохвилини, облік, фільтр KA, сторож, щоденний звіт) одним запуском. */
+function setupAll() {
+  install();
+  installKaFilter();
+  installWatchdog();
+  setupLedger();
+  console.log('Тригери встановлено: ' + ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); }).join(', '));
+}
+
 function setupLedger() {
   const props = PropertiesService.getScriptProperties();
   let ss = null;
