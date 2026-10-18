@@ -143,8 +143,8 @@ def tip(days: int | None, views: int | None, watch: int, questions: int, price: 
     if days is None or days < 5:
         return ""
     if watch and days >= 5:   # 18.10 (крок 6): з конкретною ціною
-        offer = f" — ~{nice(price * 0.96)} €" if price else " на 5–10 € дешевше"
-        return f"💡 є спостерігачі — надішли їм пропозицію{offer} (Aktive Angebote → ⋮ → «Preisvorschlag an Beobachter»)"
+        offer = f" {nice(price * 0.95)} € — кнопка нижче" if price else " на 5–10 € дешевше"   # eBay: знижка ≥5%
+        return f"💡 є спостерігачі — надішли їм пропозицію{offer}"
     if views is not None and views < 5 * days:
         return "💡 мало переглядів — глянь ціну конкурентів; не допоможе — заверши й виставити заново (новий старт у пошуку)"
     if days >= 14:
@@ -181,6 +181,9 @@ def report(d: dict, token: str | None, post, now: datetime | None = None, lots: 
         t = tip(days, views, lot["watch"], lot["questions"], lot["price"])
         body.append(f"<b>{name}</b> · eBay\n<blockquote>{stats}" + (f"\n{t}" if t else "") + "</blockquote>")
         kb.append([{"text": f"🔗 {('№' + str(r['n']) + ' ') if r else ''}на eBay", "url": lot["url"]}])
+        if r and lot["price"] and lot["watch"] and days is not None and days >= 5:   # 18.10: пропозиція — кнопкою
+            kb.append([{"text": f"💌 №{r['n']}: спостерігачам {nice(lot['price'] * 0.95)} €",
+                        "callback_data": f"w|{r['n']}|{nice(lot['price'] * 0.95)}"}])
         if r and lot["price"] and stale(days, views, lot["watch"]):   # 18.10 (крок 6): дія — однією кнопкою
             kb.append([{"text": f"⬇️ №{r['n']} → {nice(lot['price'] * 0.95)} €", "callback_data": f"p|{r['n']}|{nice(lot['price'] * 0.95)}"},
                        {"text": f"♻️ Перевиставити №{r['n']}", "callback_data": f"c|перевиставити|{r['n']}"}])

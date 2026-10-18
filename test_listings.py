@@ -40,10 +40,11 @@ class ListingsTest(unittest.TestCase):
         self.assertTrue(text.startswith("🏷 <b>Виставлено</b> · 3"))
         self.assertIn("<b>№4 2x Corsair Vengeance LPX DDR4 RAM 32GB</b> · eBay", text)
         self.assertIn("💶 175 € · 8 дн. · 👁 41 · ⭐ 2", text)
-        self.assertIn("пропозицію — ~164 €", text)                    # спостерігачі + тиждень (18.10: з ціною)
+        self.assertIn("пропозицію 164 € — кнопка нижче", text)        # спостерігачі + тиждень (18.10: з ціною, ≥5%)
         self.assertIn("💬 є питання", text)                           # лот без обліку — теж показуємо
         self.assertIn("<b>№9 G.Skill Fortis 2x16 DDR4 2400</b> · KA / вручну", text)
-        urls = [b["url"] for row in kb["inline_keyboard"] for b in row]
+        urls = [b["url"] for row in kb["inline_keyboard"] for b in row if "url" in b]
+        self.assertIn("w|4|164", [b.get("callback_data") for row in kb["inline_keyboard"] for b in row])   # 18.10: 💌 кнопкою
         self.assertEqual(urls, ["https://www.ebay.de/itm/1234567890", "https://www.ebay.de/itm/555", listings.KA_MINE])
 
     def test_no_ebay(self):
@@ -66,7 +67,7 @@ class ActionsTest(unittest.TestCase):
         self.assertTrue(listings.stale(8, 20, 0))
         self.assertFalse(listings.stale(8, 60, 0))
         self.assertFalse(listings.stale(20, 10, 1))                    # є спостерігачі — спершу пропозиція їм
-        self.assertIn("~109 €", listings.tip(6, 50, 1, 0, 115))
+        self.assertIn("109 € — кнопка нижче", listings.tip(6, 50, 1, 0, 115))
         self.assertEqual(listings.nice(168 * 0.95), 159)
 
     def test_report_buttons(self):
@@ -80,6 +81,12 @@ class ActionsTest(unittest.TestCase):
         cb = [b.get("callback_data") for row in kb["inline_keyboard"] for b in row]
         self.assertIn("p|4|159", cb)
         self.assertIn("c|перевиставити|4", cb)
+        lots[0]["watch"] = 2
+        with mock.patch.object(listings, "hits", return_value=30):
+            text, kb = listings.report({"rows": rows}, "tok", None, now=datetime(2026, 10, 18, tzinfo=timezone.utc), lots=lots)
+        cb = [b.get("callback_data") for row in kb["inline_keyboard"] for b in row]
+        self.assertIn("w|4|159", cb)                                   # спостерігачі — пропозиція кнопкою
+        self.assertNotIn("c|перевиставити|4", cb)                      # не перевиставляти, поки є зацікавлені
 
 
 class SyncTest(unittest.TestCase):

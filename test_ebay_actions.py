@@ -1,6 +1,7 @@
 """Дії в eBay кнопками (10.10): research/ebay_actions.py через sell.ebay_mode. eBay підмінений — відповіді Trading API в XML."""
 import os
 import sys
+import json
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -175,6 +176,37 @@ class ActionsTest(unittest.TestCase):
                             Fake(fail={"ReviseFixedPriceItem": "Price too low"}))
         self.assertIn("Price too low", sent[0][0])
         self.assertEqual(back, [])
+
+
+class WatchersOfferTest(unittest.TestCase):
+    """18.10: «💌 спостерігачам X €» — Negotiation API: є зацікавлені → пропозиція; немає → пояснення; помилка — як надіслати вручну."""
+
+    class R:
+        def __init__(self, code, js=None):
+            self.status_code, self._js, self.text = code, js or {}, json.dumps(js or {})
+
+        def json(self):
+            return self._js
+
+    def test_offer_flow(self):
+        import ebay_actions as ea
+        sent, back, posted = [], [], []
+        get = lambda url, **k: self.R(200, {"eligibleItems": [{"listingId": "336844624233"}]})   # noqa: E731
+        post = lambda url, **k: posted.append((url, k["json"])) or self.R(200, {"offers": [{"offerId": "1"}, {"offerId": "2"}]})   # noqa: E731
+        d = {"action": "watchers", "row": 4, "title": "Corsair", "item_id": "336844624233", "price": 159}
+        ea.run(d, "tok", post, lambda t, m: sent.append(t) or True, lambda x, k: back.append(x), "k", get=get)
+        url, body = posted[0]
+        self.assertTrue(url.endswith("/send_offer_to_interested_buyers"))
+        self.assertEqual(body["offeredItems"], [{"listingId": "336844624233", "price": {"currency": "EUR", "value": "159.00"}, "quantity": 1}])
+        self.assertFalse(body["allowCounterOffer"])
+        self.assertIn("159 €", body["message"])
+        self.assertIn("надіслано 2 зацікавленим", sent[-1])
+        self.assertEqual(back[-1], {"kind": "offer_sent", "row": 4, "price": 159, "n": 2})
+        ea.run(d, "tok", post, lambda t, m: sent.append(t) or True, lambda x, k: back.append(x), "k", get=lambda url, **k: self.R(204))
+        self.assertIn("не має кому", sent[-1])
+        bad = lambda url, **k: self.R(400, {"errors": [{"longMessage": "Discount must be at least 5%"}]})   # noqa: E731
+        ea.run(d, "tok", bad, lambda t, m: sent.append(t) or True, lambda x, k: back.append(x), "k", get=get)
+        self.assertIn("at least 5%", sent[-1])
 
 
 if __name__ == "__main__":

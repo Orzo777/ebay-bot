@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -988,6 +988,17 @@ function ebayCommand_(msg) {
     return true;
   }
   if ((m = t.match(/^\/?так-перевист\s+(\d{1,4})$/i))) { relistCommand_(Number(m[1])); return true; }
+  if ((m = t.match(/^\/?спостерігачам\s+(\d{1,4})\s+(\d{1,5})$/i))) { watchersAsk_(Number(m[1]), Number(m[2])); return true; }
+  if ((m = t.match(/^\/?так-спостер\s+(\d{1,4})$/i))) {
+    const props = PropertiesService.getScriptProperties(), pend = JSON.parse(props.getProperty('OFFER_PENDING') || '{}');
+    const n = Number(m[1]), price = pend[n], r = rowByN_(n);
+    if (!price || !r) { notify_('Ця кнопка застаріла — натисни «🏷 Виставлено» ще раз.'); return true; }
+    delete pend[n];
+    props.setProperty('OFFER_PENDING', JSON.stringify(pend));
+    const code = ebayAct_({ action: 'watchers', row: n, title: String(r.title), item_id: itemIdOf_(n), price: price });
+    if (code) notify_(code === 204 ? '💌 Надсилаю пропозицію ' + price + ' € — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+    return true;
+  }
   if ((m = t.match(/^\/?(?:ebay|ебей|ібей)\s+тест\s+(\d{1,4})$/i))) { publishCommand_(Number(m[1]), true); return true; }
   return false;
 }
@@ -1064,6 +1075,12 @@ function feedbackToEbay_(n, title) {
 function ebayCallback_(cq, chat) {
   const data = String(cq.data || ''), from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   const ex = data.match(/^e\|(\d{1,6})\|(send|acc|cnt|dec)$/), pc = data.match(/^p\|(\d{1,4})\|(\d{1,5})$/);
+  const wc = data.match(/^w\|(\d{1,4})\|(\d{1,5})$/);
+  if (wc) {   // 18.10: «💌 спостерігачам X €» — спершу підтвердження (прийняту пропозицію скасувати не можна)
+    tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: '💌 Пропозиція' });
+    if (chat && String(from) === String(chat)) watchersAsk_(Number(wc[1]), Number(wc[2]));
+    return true;
+  }
   if (!ex && !pc) return false;
   const label = ex ? { send: '📨 Надсилаю', acc: '✅ Приймаю', cnt: '🔁 Зустрічна', dec: '✖️ Відхиляю' }[ex[2]] : '⬇️ Знижую';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: label });
@@ -1083,6 +1100,18 @@ function ebayCallback_(cq, chat) {
   const code = ebayAct_({ action: 'revise', row: n, title: r.title, price: Number(pc[2]), item_id: itemIdOf_(n) });
   if (code) notify_(code === 204 ? '⬇️ Знижую ціну №' + n + ' до ' + pc[2] + ' € на eBay — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
   return true;
+}
+
+/** 18.10: пропозиція спостерігачам — підтвердження з ціною й тим, за скільки куплено. */
+function watchersAsk_(n, price) {
+  const r = rowByN_(n);
+  if (!r || !itemIdOf_(n)) { notify_('№' + n + ' не на eBay (немає номера оголошення).'); return; }
+  const props = PropertiesService.getScriptProperties(), pend = JSON.parse(props.getProperty('OFFER_PENDING') || '{}');
+  pend[n] = price;
+  props.setProperty('OFFER_PENDING', JSON.stringify(pend));
+  notify_('💌 Надіслати всім зацікавленим у №' + n + ' пропозицію <b>' + price + ' €</b>?' + (r.spent ? ' (куплено за ' + r.spent + ' €)' : '') +
+          '\nДіє 48 год. Якщо приймуть — це продаж за ' + price + ' €, скасувати не можна.',
+          { inline_keyboard: [[{ text: '✅ Так, надіслати ' + price + ' €', callback_data: 'c|так-спостер|' + n }]] }, 'HTML');
 }
 
 /** Кнопки під листом eBay: питання → «📨 Надіслати відповідь»; пропозиція покупця → прийняти / зустрічна / відхилити. */
@@ -1441,6 +1470,11 @@ function sealedPost(s) {
       lp[d.row] = Number(d.price);
       props.setProperty('LISTED_PRICE', JSON.stringify(lp));
     }
+  } else if (d.kind === 'offer_sent' && d.row) {   // 18.10: пропозиція спостерігачам — у нотатки
+    const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
+    const note = String(sh.getRange(row, COL.note).getValue() || '');
+    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'пропозиція спостерігачам ' + d.price + ' € ' +
+      Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM'));
   } else if (d.kind === 'ended' && d.row) {   // 18.10: «♻️ Перевиставити» — старе завершено, нове виставляється
     const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
     const note = String(sh.getRange(row, COL.note).getValue() || '');
@@ -2633,7 +2667,7 @@ function sendAlbum_(list, caption) {
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
   'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю',
-  'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю' };
+  'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю', 'так-спостер': '✅ Надсилаю' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {

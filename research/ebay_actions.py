@@ -3,7 +3,8 @@
   ship    — «відправив N трек» → трек у замовлення eBay (CompleteSale): «Versendet», покупець бачить відстеження;
   revise  — «⬇️ Знизити» з тижневого звіту → нова ціна й пороги Preisvorschlag у тих самих пропорціях (ReviseFixedPriceItem);
   answer  — «📨 Надіслати» під питанням покупця → чернетка німецькою як відповідь (AddMemberMessageRTQ);
-  offer   — «Прийняти / Зустрічна / Відхилити» під пропозицією ціни (RespondToBestOffer).
+  offer   — «Прийняти / Зустрічна / Відхилити» під пропозицією ціни (RespondToBestOffer);
+  watchers — «💌 Спостерігачам X €» (18.10): пропозиція всім зацікавленим (Negotiation API, діє 48 год, знижка ≥5%).
 Кожна дія — лише після натискання користувача. Потрібне замовлення / оголошення / питання / пропозицію знаходимо
 за номером eBay, SKU «ledger-N» (автопублікація) або схожістю назви.
 """
@@ -211,7 +212,35 @@ def _errs(errs: list[str]) -> str:
     return "\n".join(f"• {html.escape(e[:250])}" for e in errs[:3])
 
 
-def run(d: dict, token: str, post, send, back, key: str) -> bool:
+NEGOTIATION = "https://api.ebay.com/sell/negotiation/v1"
+OFFER_MSG = ("Hallo! Danke für Ihr Interesse an diesem Artikel. Für kurze Zeit biete ich ihn Ihnen für {price} € an – "
+             "getestet, schneller und gut gepolsterter Versand. Viele Grüße")
+
+
+def offer_watchers(item_id: str, price: float, token: str, post, get) -> dict:
+    """Negotiation API: чи є «зацікавлені» (спостерігачі / кошик) → пропозиція всім. → {status: sent|none|error, n, errors}."""
+    h = {"Authorization": f"Bearer {token}", "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE", "Content-Type": "application/json"}
+    r = get(f"{NEGOTIATION}/find_eligible_items", headers=h, params={"limit": 200}, timeout=30)
+    if r.status_code == 204:
+        return {"status": "none", "n": 0, "errors": []}
+    if r.status_code != 200:
+        return {"status": "error", "n": 0, "errors": [f"HTTP {r.status_code}: {r.text[:200]}"]}
+    ids = {str(x.get("listingId")) for x in (r.json().get("eligibleItems") or [])}
+    if str(item_id) not in ids:
+        return {"status": "none", "n": 0, "errors": []}
+    body = {"allowCounterOffer": False, "message": OFFER_MSG.format(price=f"{price:.0f}"),
+            "offeredItems": [{"listingId": str(item_id), "price": {"currency": "EUR", "value": f"{price:.2f}"}, "quantity": 1}]}
+    r = post(f"{NEGOTIATION}/send_offer_to_interested_buyers", headers=h, json=body, timeout=30)
+    if r.status_code not in (200, 201):
+        try:
+            errs = [e.get("longMessage") or e.get("message") or "" for e in r.json().get("errors") or []]
+        except ValueError:
+            errs = []
+        return {"status": "error", "n": 0, "errors": errs or [f"HTTP {r.status_code}"]}
+    return {"status": "sent", "n": len(r.json().get("offers") or []), "errors": []}
+
+
+def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
     """d: action + дані з Apps Script. → результат повідомленням у бот (і зворотний запис в облік, де треба)."""
     a, row, title = d.get("action"), d.get("row"), d.get("title") or ""
     what = f"№{row}" if row else f"«{html.escape(title[:50])}»"
@@ -285,4 +314,21 @@ def run(d: dict, token: str, post, send, back, key: str) -> bool:
         ok, errs = respond_offer(o, action, token, post)
         return send((f"✅ Пропозицію {o['price']:.0f} € прийнято — eBay чекає оплату від {html.escape(o['buyer'])}." if action == "Accept"
                      else f"✖️ Пропозицію {o['price']:.0f} € відхилено.") if ok else f"⚠️ eBay не прийняв відповідь:\n{_errs(errs)}", None)
+    if a == "watchers":   # 18.10: пропозиція спостерігачам однією кнопкою
+        if get is None:
+            import requests
+            get = requests.get
+        item_id, price = str(d.get("item_id") or ""), float(d.get("price") or 0)
+        if not item_id or price <= 0:
+            return send(f"⚠️ Не знаю оголошення eBay або ціну для {what}.", None)
+        res = offer_watchers(item_id, price, token, post, get)
+        if res["status"] == "none":
+            return send(f"💌 {what}: eBay зараз не має кому надіслати пропозицію — спостерігачі ще не «зацікавлені» "
+                        "(з'являються через кілька днів) або пропозицію їм уже надсилали.", None)
+        if res["status"] == "error":
+            return send(f"⚠️ eBay не надіслав пропозицію {what}:\n{_errs(res['errors'])}\n"
+                        "Знижка має бути ≥5% від ціни; можна надіслати вручну: Aktive Angebote → ⋮ → «Preisvorschlag senden».", None)
+        back({"kind": "offer_sent", "row": row, "price": round(price), "n": res["n"]}, key)
+        return send(f"💌 {what}: пропозицію <b>{price:.0f} €</b> надіслано {res['n'] or ''} зацікавленим — діє 48 год. "
+                    "Приймуть — прийде лист про продаж, як звичайно.", None)
     return send(f"⚠️ Невідома дія eBay «{html.escape(str(a))}» — напиши Claude.", None)

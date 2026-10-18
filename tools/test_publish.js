@@ -241,6 +241,18 @@ ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'e
 check('ended → Перевірено, no "not active" later', [deals.cells['5:11'], /завершено 09.10 \(перевиставлення\)/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]),
   JSON.parse(store.SYNC_ASKED)['E1:' + rl.item_id]], ['Перевірено', true, 1]);
 
+// 18.10: «💌 спостерігачам X €» — підтвердження з ціною → дія watchers → нотатка
+deals.cells['5:11'] = 'Виставлено';
+ctx.officeCallback({ id: 'q', data: 'w|1|159', message: { chat: { id: 7 }, message_id: 95 } });
+check('watchers confirm', [/пропозицію <b>159 €<\/b>/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data], [true, 'c|так-спостер|1']);
+ctx.officeCallback({ id: 'q', data: 'c|так-спостер|1', message: { chat: { id: 7 }, message_id: 96 } });
+check('watchers dispatched', [opened().mode, opened().action, opened().price, opened().item_id], ['ebay', 'watchers', 159, ctx.itemIdOf_(1)]);
+ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'offer_sent', row: 1, price: 159, n: 2 }, '123:ABC', 'w1') }) },
+  parameter: { bot: 'office' } });
+check('offer noted', /пропозиція спостерігачам 159 € 09.10/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]), true);
+ctx.officeCallback({ id: 'q', data: 'c|так-спостер|1', message: { chat: { id: 7 }, message_id: 97 } });
+check('second tap — stale', /застаріла/.test(last()[0]), true);
+
 // 17.10: «отримав N» → фото з оголошення продавця (GitHub, режим got)
 deals.cells['8:11'] = 'Оплачено'; deals.cells['8:' + vm.runInContext('COL.id', ctx)] = '306123123123';
 say('отримав 4');
