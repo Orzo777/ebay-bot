@@ -21,6 +21,10 @@ import health
 import sell
 
 CLOSED = ("Продано", "Повернено", "Скасовано")
+# 18.10 (план бізнесу, етап 1): ціль до 30.11 — 15 продажів, ≥35 € на продаж, цикл купівля → продаж ≤21 дн. (продаж ≤14)
+GOAL_FROM, GOAL_BY = date(2026, 10, 1), date(2026, 11, 30)
+GOAL_SALES, GOAL_PROFIT, GOAL_CYCLE = 15, 35, 21
+STUCK_DAYS = 21
 STALE_DAYS, NOT_LISTED_DAYS, NOT_ARRIVED_DAYS = 10, 5, 10
 MAX_MARKET_CALLS = 8
 
@@ -53,6 +57,41 @@ def money(rows: list[dict], today: date) -> list[str]:
     del open_
     out += month_lines(sold, today)
     out += tax_lines(sold, today)
+    return out
+
+
+def capital(rows: list[dict], today: date) -> list[str]:
+    """18.10 (крок 3): оборот капіталу — скільки грошей у товарі, як швидко вони повертаються, що дає вкладене євро;
+    прогрес до цілі 30.11 (етап 1 плану)."""
+    open_ = [r for r in rows if r["status"] not in CLOSED]
+    sold = [r for r in rows if r["status"] == "Продано"]
+    stock = sum(r["spent"] or 0 for r in open_)
+    sold30 = [r for r in sold if (_d(r["sdate"]) or date.min) >= today - timedelta(days=29)]
+    profit30 = sum(r["profit"] or 0 for r in sold30)
+    cycle = [(_d(r["sdate"]) - _d(r["date"])).days for r in sold
+             if _d(r["sdate"]) and _d(r["date"]) and _d(r["sdate"]) >= today - timedelta(days=90)]
+    stuck = [r for r in open_ if _d(r["date"]) and (today - _d(r["date"])).days >= STUCK_DAYS]
+    out = ["🔄 <b>Оборот капіталу</b>",
+           f"• У товарі зараз: <b>{_eur(stock)}</b> ({len(open_)} шт)"]
+    if sold30 and stock:
+        out.append(f"• Прибуток за 30 днів: {_eur(profit30)} — <b>{100 * profit30 / stock:.0f}%</b> на гроші в товарі")
+    elif sold30:
+        out.append(f"• Прибуток за 30 днів: {_eur(profit30)}")
+    if cycle:
+        out.append(f"• Цикл купівля → продаж: у середньому <b>{sum(cycle) / len(cycle):.0f} дн.</b> ({len(cycle)} продажів за 90 днів)")
+    if stuck:
+        out.append(f"⚠️ Лежить довше {STUCK_DAYS} дн.: " + ", ".join(f"№{r['n']}" for r in stuck[:6])
+                   + f" — {_eur(sum(r['spent'] or 0 for r in stuck))} заморожено; знизь ціну або перевистав")
+    goal = [r for r in sold if (_d(r["sdate"]) or date.min) >= GOAL_FROM]
+    if today <= GOAL_BY + timedelta(days=7):
+        n = len(goal)
+        avg = sum(r["profit"] or 0 for r in goal) / n if n else None
+        gc = [(_d(r["sdate"]) - _d(r["date"])).days for r in goal if _d(r["sdate"]) and _d(r["date"])]
+        cyc = sum(gc) / len(gc) if gc else None
+        mark = lambda ok: "✅" if ok else "⏳"   # noqa: E731
+        out.append(f"🏁 Ціль до {GOAL_BY:%d.%m}: {mark(n >= GOAL_SALES)} продажів {n}/{GOAL_SALES} · "
+                   + (f"{mark(avg >= GOAL_PROFIT)} {avg:.0f} €/шт (ціль ≥{GOAL_PROFIT})" if avg is not None else f"≥{GOAL_PROFIT} €/шт")
+                   + " · " + (f"{mark(cyc <= GOAL_CYCLE)} цикл {cyc:.0f} дн. (ціль ≤{GOAL_CYCLE})" if cyc is not None else f"цикл ≤{GOAL_CYCLE} дн."))
     return out
 
 
@@ -187,6 +226,7 @@ def search(ebay: dict, ka: dict, rows: list[dict], today: date) -> list[str]:
            f"• eBay: карток {e.get('ebay_cards', 0)}, аукціонів {e.get('ebay_auctions', 0)}",
            f"• Куплено за тиждень: {len(bought)} (KA {sum(1 for r in bought if 'Klein' in str(r.get('src')) or 'Самовивіз' in str(r.get('src')))}, "
            f"eBay {sum(1 for r in bought if 'eBay' in str(r.get('src')))})"]
+    out += funnel(e, k, bought)
     subs = {}
     for key, v in k.items():
         if key.startswith("sub_mails|"):
@@ -206,6 +246,22 @@ def search(ebay: dict, ka: dict, rows: list[dict], today: date) -> list[str]:
         out.append("ℹ️ Лічильники пошуку ще порожні.")
     elif first > (date.today() - timedelta(days=6)).isoformat():
         out.append(f"ℹ️ Лічильники ведуться з {first[8:10]}.{first[5:7]} — повний тиждень буде пізніше.")
+    return out
+
+
+def funnel(e: dict, k: dict, bought: list[dict]) -> list[str]:
+    """18.10 (крок 2): воронка — картки «бери» / «торгуйся» → куплено; де губимо угоди."""
+    buy = e.get("ebay_v_buy", 0) + k.get("ka_v_buy", 0)
+    neg = e.get("ebay_v_neg", 0) + k.get("ka_v_neg", 0)
+    if not (buy or neg):
+        return []
+    n = len(bought)
+    out = [f"• 🔻 Воронка: «бери» {buy} + «торгуйся» {neg} → куплено <b>{n}</b>"
+           + (f" ({100 * n / (buy + neg):.0f}%)" if buy + neg else "")]
+    if buy >= 3 and n == 0:
+        out.append("  ⚠️ «Бери» були, а покупок немає — хтось купує швидше: відповідай на картку одразу, «Direkt kaufen» — першим")
+    elif neg >= 8 and buy == 0 and n == 0:
+        out.append("  ℹ️ Лише «торгуйся» — продавці тримають ціни; торгуйся сміливіше або чекай")
     return out
 
 
@@ -276,7 +332,7 @@ def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.compe
     todo = stale(rows, today, market, cuts, ns)
     # 14.10: головне й дії — розгорнуті; точність, пошук, дефіцит і сервіси — згорнуті (деталі на тап)
     parts = [(f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}", False),
-             *[(x, False) for x in (headline(rows, today, todo, bl), todo, money(rows, today))],
+             *[(x, False) for x in (headline(rows, today, todo, bl), todo, money(rows, today), capital(rows, today))],
              *([(bl, False)] if bl else []), (acc, True), (search(ebay, ka, rows, today) + auctions(ebay, today), True)]
     for extra in (shortage_fn(), services_fn()):
         if extra:

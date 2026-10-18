@@ -107,6 +107,35 @@ class StaleSheetTest(unittest.TestCase):
         self.assertIsNone(wr.stale_sheet({"rows": rows}, []))
 
 
+
+class CapitalFunnelTest(unittest.TestCase):
+    """18.10 (кроки 2–3 плану): оборот капіталу, ціль 30.11, воронка карток."""
+
+    def test_capital_and_goal(self):
+        today = date(2026, 10, 26)
+        rows = [{"n": 1, "title": "A", "status": "Продано", "date": "2026-10-01", "sdate": "2026-10-15", "spent": 150, "profit": 40},
+                {"n": 2, "title": "B", "status": "Продано", "date": "2026-10-05", "sdate": "2026-10-25", "spent": 170, "profit": 30},
+                {"n": 3, "title": "C", "status": "Виставлено", "date": "2026-10-02", "spent": 160, "profit": None},
+                {"n": 4, "title": "D", "status": "Отримано", "date": "2026-10-20", "spent": 140, "profit": None}]
+        text = "\n".join(wr.capital(rows, today))
+        self.assertIn("У товарі зараз: <b>300", text)
+        self.assertIn("23%</b> на гроші в товарі", text)            # 70 € за 30 днів / 300 € у товарі
+        self.assertIn("<b>17 дн.</b> (2 продажів", text)             # (14 + 20) / 2
+        self.assertIn("№3", text)                                     # лежить 24 дн. ≥ 21
+        self.assertNotIn("№4", text)
+        self.assertIn("продажів 2/15", text)
+        self.assertIn("✅ 35 €/шт", text)
+        self.assertIn("✅ цикл 17 дн.", text)
+        self.assertNotIn("Ціль до", "\n".join(wr.capital(rows, date(2026, 12, 20))))   # після цілі — не показуємо
+
+    def test_funnel(self):
+        bought = [{"src": "Kleinanzeigen"}]
+        lines = wr.funnel({"ebay_v_buy": 1, "ebay_v_neg": 4}, {"ka_v_buy": 2, "ka_v_neg": 3}, bought)
+        self.assertIn("«бери» 3 + «торгуйся» 7 → куплено <b>1</b> (10%)", lines[0])
+        self.assertIn("хтось купує швидше", wr.funnel({"ebay_v_buy": 3}, {}, [])[1])
+        self.assertEqual(wr.funnel({}, {}, []), [])
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -652,6 +652,8 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                 print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку не надсилаю: " + re.sub(r"<[^>]+>", "", ph[0]).replace("\n", " ")[:200])
                 continue
             send_card(add_check(card, ph[0]) if ph else card, lst["url"], r)
+            # 18.10 (воронка в тижневому звіті): скільки «бери» / «торгуйся» дійшло до тебе
+            health.bump(state, "ebay_v_" + ("buy" if str(r.get("verdict")).startswith("BUY") else "neg"), 1, now)
         sent += 1
     if state["round"] % 2 == 0:   # аукціони — через коло (~6 хв; квота API): у вікно 20 хв потрапляємо щонайменше двічі
         for q, cat, lo, hi in active(AUCTION_QUERIES):

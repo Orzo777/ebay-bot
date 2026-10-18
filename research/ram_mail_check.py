@@ -645,6 +645,8 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
             cardmap.remember(CARDS, lst["link"], mid, lst["title"])
             add_to_card(mid, card, kb, res, lst["title"], (risk or {}).get("images") or [],   # фото → рядок «📷 …» (29.09)
                         collapse_server=True)
+            vk = "ka_v_" + ("buy" if str(res.get("verdict")).startswith("BUY") else "neg")   # 18.10: воронка (тижневий звіт)
+            STATS[vk] = STATS.get(vk, 0) + 1
         sent += 1
     # Підказка лише коли в листі НЕ той товар (Series S у пошуку Xbox, 2×8 у пошуку 16 ГБ): тоді справжній
     # кандидат ймовірно схований у тій самій пачці. Правильний товар, просто дорожчий, — не привід.
