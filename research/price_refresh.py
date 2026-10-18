@@ -183,6 +183,12 @@ def _update(e: dict, base: dict, ask: float | None, sellers: int, today: str, mi
     if ask and sellers >= min_sellers:
         asks.append([today, round(ask, 2)])
     e["asks"] = asks[-7:]
+    # 18.10: довга історія найдешевших пропозицій (90 днів) — для тренду ринку в тижневому звіті; на новий знімок
+    # Terapeak НЕ скидається (asks / hist скидаються). Перший раз — із наявних 7 днів.
+    ah = [a for a in (e.get("ask_hist") if "ask_hist" in e else list(e["asks"])) if a[0] != today]
+    if ask and sellers >= min_sellers:
+        ah.append([today, round(ask, 2)])
+    e["ask_hist"] = ah[-90:]
     smooth = statistics.median([a[1] for a in e["asks"][-SMOOTH:]]) if e["asks"] else None
     if e.get("anchor_ask") is None and smooth:
         e["anchor_ask"], e["anchor_date"] = round(smooth, 2), today

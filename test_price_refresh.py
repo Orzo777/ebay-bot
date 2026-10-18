@@ -176,6 +176,21 @@ class TestAlertReadsFile(unittest.TestCase):
         self.assertEqual(ram_alert.REAL_BASE[KEY]["p25"], base_p25)   # база не змінюється
 
 
+class AskHistTest(unittest.TestCase):
+    def test_long_history_survives_terapeak_reset(self):
+        # 18.10: ask_hist (90 днів) для тренду ринку — не скидається новим знімком Terapeak, на відміну від asks / hist
+        base = {"name": "T", "p25": 100, "med": 120}
+        e = {}
+        for i, day in enumerate(["2026-10-01", "2026-10-02", "2026-10-03"]):
+            price_refresh._update(e, base, 200 + i, 20, day, 5, False, None)
+        self.assertEqual([a[1] for a in e["ask_hist"]], [200, 201, 202])
+        price_refresh._update(e, dict(base, p25=110), 190, 20, "2026-10-04", 5, False, None)   # новий Terapeak
+        self.assertEqual(len(e["asks"]), 1)
+        self.assertEqual([a[1] for a in e["ask_hist"]], [200, 201, 202, 190])
+        price_refresh._update(e, dict(base, p25=110), 191, 20, "2026-10-04", 5, False, None)   # той самий день — заміна
+        self.assertEqual(e["ask_hist"][-1], ["2026-10-04", 191])
+
+
 if __name__ == "__main__":
     unittest.main()
 

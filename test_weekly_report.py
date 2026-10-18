@@ -2,7 +2,7 @@
 import os
 import sys
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 os.environ["RAM_PRICES_OFF"] = "1"
 sys.path.insert(0, ".")
@@ -169,6 +169,35 @@ class OwnPricesTest(unittest.TestCase):
         with mock.patch.object(ram_alert, "own_factors", return_value={"ddr4|udimm|0|32|2": 0.5}),                 mock.patch.dict(os.environ, {"RAM_PRICES_OFF": "0"}):
             t = ram_alert._with_own({key: dict(p25=100, med=200)})
         self.assertEqual((t[key]["p25"], t[key]["med"], t[key]["own"]), (85, 170, 0.85))   # не нижче −15%
+
+
+class MarketTrendTest(unittest.TestCase):
+    """18.10: тренд найдешевших пропозицій за ~2 тижні; ринок дешевшає ≥8% — попередження і товар на руках цього типу."""
+
+    def prices(self, start, end):
+        days = [(date(2026, 10, 1) + timedelta(days=i)).isoformat() for i in range(18)]
+        step = (end - start) / 17
+        return {"types": {"ddr4|udimm|0|32|2": {"name": "DDR4 UDIMM 32 ГБ (2×16) кіт",
+                                                "ask_hist": [[d, round(start + i * step, 2)] for i, d in enumerate(days)]},
+                          "ddr5|udimm|0|32|2": {"name": "DDR5 UDIMM 32 ГБ (2×16) кіт",
+                                                "ask_hist": [[d, round(start * 1.5 + i * step * 1.5, 2)] for i, d in enumerate(days)]}}}
+
+    def test_falling_market_warns_and_flags_stock(self):
+        rows = [{"n": 4, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133", "status": "Виставлено"},
+                {"n": 9, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133", "status": "Продано"}]
+        lines, warn = wr.market_trend(rows, date(2026, 10, 18), self.prices(220, 190))
+        text = "\n".join(lines)
+        self.assertTrue(warn)
+        self.assertIn("Ринок пам'яті дешевшає", text)
+        self.assertIn("№4 (", text)
+        self.assertNotIn("№9", text)                                   # продане — ні
+
+    def test_stable_and_too_little_data(self):
+        lines, warn = wr.market_trend([], date(2026, 10, 18), self.prices(200, 202))
+        self.assertFalse(warn)
+        self.assertIn("стабільно", lines[0])
+        lines, warn = wr.market_trend([], date(2026, 10, 18), {"types": {"x": {"name": "X", "ask_hist": [["2026-10-17", 1]]}}})
+        self.assertIn("замало замірів", lines[0])
 
 
 if __name__ == "__main__":

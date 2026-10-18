@@ -11,6 +11,7 @@ import argparse
 import html
 import json
 import os
+import statistics
 import sys
 from datetime import date, datetime, timedelta, timezone
 
@@ -58,6 +59,63 @@ def money(rows: list[dict], today: date) -> list[str]:
     out += month_lines(sold, today)
     out += tax_lines(sold, today)
     return out
+
+
+TREND_DAYS, TREND_WARN = 14, 0.08
+
+
+def _prices_file() -> dict:
+    return _load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"))
+
+
+def _trend(points: list, today: date) -> tuple[float, float, int] | None:
+    """[[дата, ціна], …] → (тоді, зараз, днів) — медіана останніх 3 замірів проти 3 замірів ~TREND_DAYS днів тому."""
+    pts = sorted((date.fromisoformat(d), v) for d, v in points if v)
+    if len(pts) < 5:
+        return None
+    now = statistics.median(v for _, v in pts[-3:])
+    target = today - timedelta(days=TREND_DAYS)
+    old = [p for p in pts if p[0] <= target] or pts[:3]
+    then = statistics.median(v for _, v in old[-3:])
+    days = (pts[-1][0] - old[-1][0]).days
+    return (then, now, days) if days >= 6 and then else None
+
+
+def market_trend(rows: list[dict], today: date, prices: dict | None = None) -> tuple[list[str], bool]:
+    """18.10 (план, ризик №1 — кінець дефіциту DRAM): тренд найдешевших пропозицій на eBay по типах за ~2 тижні; ринок
+    дешевшає ≥8% — попередження і що з товару на руках цього типу. → (рядки, чи є попередження)."""
+    import ram_alert
+    prices = _prices_file() if prices is None else prices
+    moves = []
+    for key, t in (prices.get("types") or {}).items():
+        tr = _trend(t.get("ask_hist") or t.get("asks") or [], today)
+        if tr:
+            moves.append((key, t.get("name") or key, tr[0], tr[1], tr[1] / tr[0] - 1, tr[2]))
+    if not moves:
+        return ["📊 <b>Ринок пам'яті</b>: замало замірів для тренду — з'явиться за тиждень"], False
+    avg = statistics.median(m[4] for m in moves)
+    down = avg <= -TREND_WARN
+    head = (f"⚠️ <b>Ринок пам'яті дешевшає</b>: у середньому {100 * avg:+.0f}% за ~2 тижні" if down else
+            f"📈 <b>Ринок пам'яті дорожчає</b>: {100 * avg:+.0f}% за ~2 тижні" if avg >= TREND_WARN else
+            f"📊 <b>Ринок пам'яті</b>: стабільно ({100 * avg:+.0f}% за ~2 тижні)")
+    out = [head]
+    for key, name, then, now, ch, days in sorted(moves, key=lambda m: m[4])[:6]:
+        out.append(f"• {html.escape(name)}: {then:.0f} → {now:.0f} € ({100 * ch:+.0f}%, {days} дн.)")
+    if down:
+        out.append("💡 Не купуй про запас, продавай за ≤2 тижні, знижуй ціну раніше; стелі купівлі бот уже знижує сам")
+    falling = {k: ch for k, _, _, _, ch, _ in moves if ch <= -TREND_WARN}
+    hit = []
+    for r in rows:
+        if r["status"] in CLOSED:
+            continue
+        ident = sell.identify(r["title"])
+        key = ram_alert.key_of(ident["type"]) if ident and ident.get("kind") == "ram" else None
+        k = f"{key[0]}|{key[1]}|{int(key[2])}|{key[3]}|{key[4]}" if key else None
+        if k in falling:
+            hit.append(f"№{r['n']} ({100 * falling[k]:+.0f}%)")
+    if hit:
+        out.append("⚠️ На руках дешевшає: " + ", ".join(hit) + " — продавай першими")
+    return out, down or bool(hit)
 
 
 def capital(rows: list[dict], today: date) -> list[str]:
@@ -372,9 +430,11 @@ def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.compe
     acc = acc + own_prices(rows, today)[1]
     cuts, bl = [], bounds_fn()
     todo = stale(rows, today, market, cuts, ns)
+    mk, mk_warn = market_trend(rows, today)   # 18.10: тренд ринку пам'яті
     # 14.10: головне й дії — розгорнуті; точність, пошук, дефіцит і сервіси — згорнуті (деталі на тап)
     parts = [(f"📈 <b>Тижневий звіт</b> · {(today - timedelta(days=6)):%d.%m}–{today:%d.%m}", False),
              *[(x, False) for x in (headline(rows, today, todo, bl), todo, money(rows, today), capital(rows, today))],
+             (mk, not mk_warn),
              *([(bl, False)] if bl else []), (acc, True), (search(ebay, ka, rows, today) + auctions(ebay, today), True)]
     for extra in (shortage_fn(), services_fn()):
         if extra:
