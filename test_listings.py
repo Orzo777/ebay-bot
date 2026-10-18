@@ -87,6 +87,11 @@ class ActionsTest(unittest.TestCase):
         cb = [b.get("callback_data") for row in kb["inline_keyboard"] for b in row]
         self.assertIn("w|4|159", cb)                                   # спостерігачі — пропозиція кнопкою
         self.assertNotIn("c|перевиставити|4", cb)                      # не перевиставляти, поки є зацікавлені
+        rows.append(dict(n=6, title="Corsair 2133 №2", status="Виставлено", note="(eBay 336844624233)"))   # кількість 2
+        with mock.patch.object(listings, "hits", return_value=30):
+            text, kb = listings.report({"rows": rows}, "tok", None, now=datetime(2026, 10, 18, tzinfo=timezone.utc), lots=lots)
+        self.assertIn("<b>№4 + №6 Corsair 2133 · 2 шт</b>", text)
+        self.assertNotIn("KA / вручну", text)
 
 
 class SyncTest(unittest.TestCase):

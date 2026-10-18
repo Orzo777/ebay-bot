@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-10-17b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-10-18a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -180,6 +180,16 @@ function install() {
   uninstall();
   ScriptApp.newTrigger('check').timeBased().everyMinutes(1).create();
   console.log('тригер щохвилини встановлено');
+}
+
+/** 18.10 (перехід на окрему пошту): токен GitHub — з рядка вгорі цього файлу. Властивість GITHUB_TOKEN (переїхала зі
+ *  старого проєкту) має пріоритет і містить старий токен — прибираємо її (у редакторі властивостей понад 50 — не видно). */
+function useTokenFromCode() {
+  if (!GITHUB_TOKEN) throw new Error("Спершу встав новий токен у рядок const GITHUB_TOKEN = '…'; угорі цього файлу і збережи.");
+  const p = PropertiesService.getScriptProperties(), had = !!p.getProperty('GITHUB_TOKEN');
+  p.deleteProperty('GITHUB_TOKEN');
+  console.log(had ? 'Стару властивість GITHUB_TOKEN прибрано — бот бере токен із коду.' : 'Властивості GITHUB_TOKEN не було — бот і так бере токен із коду.');
+  return had;
 }
 
 function uninstall() {

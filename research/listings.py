@@ -171,9 +171,12 @@ def report(d: dict, token: str | None, post, now: datetime | None = None, lots: 
         r = _row_for(lot, rows)
         if r:
             used.add(r["n"])
+        # 18.10: оголошення з кількістю — кілька номерів з тим самим номером eBay (№5 + №6)
+        twins = [x["n"] for x in rows if r and x["n"] != r["n"] and lot["id"] and _last_id(x.get("note")) == lot["id"]]
+        used.update(twins)
         days = _days(lot["start"], now)
         views = hits(token, post, lot["id"]) if lot["id"] else None
-        name = (f"№{r['n']} " if r else "") + html.escape(short((r or lot)["title"]))
+        name = ("№" + " + №".join(str(n) for n in [r["n"]] + twins) + " " if r else "") + html.escape(short((r or lot)["title"]))             + (f" · {1 + len(twins)} шт" if twins else "")
         stats = " · ".join(x for x in [f"💶 {lot['price']:.0f} €" if lot["price"] else "",
                                         f"{days} дн." if days is not None else "",
                                         f"👁 {views}" if views is not None else "",

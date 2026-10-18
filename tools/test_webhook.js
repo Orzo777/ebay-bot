@@ -43,5 +43,15 @@ check('queue drained in order after own update', [office.slice(-3), Object.keys(
 busy = true; post(9, 'пізно', 'office'); busy = false;
 ctx.drainQueued_();
 check('check() trigger drains too', office[office.length - 1], 'пізно');
+// 18.10: useTokenFromCode — стара властивість GITHUB_TOKEN прибирається, бот бере токен із коду
+// у репозиторії рядок порожній → підказка, властивість не чіпаємо; із заповненим рядком — властивість прибирається
+store.GITHUB_TOKEN = 'old';
+let tokErr = '';
+try { ctx.useTokenFromCode(); } catch (e) { tokErr = e.message; }
+check('empty code token → hint, property kept', [/Спершу встав новий токен/.test(tokErr), store.GITHUB_TOKEN], [true, 'old']);
+const ctx2 = Object.assign({}, ctx);
+vm.createContext(ctx2);
+vm.runInContext(fs.readFileSync(__dirname + '/gmail_trigger.gs', 'utf8').replace("const GITHUB_TOKEN = '';", "const GITHUB_TOKEN = 'github_pat_new';"), ctx2);
+check('filled code token → property removed', [ctx2.useTokenFromCode(), store.GITHUB_TOKEN], [true, undefined]);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
