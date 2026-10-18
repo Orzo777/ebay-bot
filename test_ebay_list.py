@@ -200,6 +200,24 @@ class EbayModeTest(unittest.TestCase):
         self.assertIn("https://www.ebay.de/itm/1234567890", json.dumps(sent[0][1]))
         self.assertIn("виставлено на eBay", sent[0][0])
 
+    def test_relist(self):
+        # 18.10 (крок 6): «♻️ Перевиставити» — завершити старе, виставити нове з тими самими фото й ціною
+        d = {"mode": "relist", "row": 4, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133 CMK32GX4M2A2133C13", "cost": 96.54,
+             "rt": "RT", "item_id": "336844624233", "edits": {"price": 159}, "photos": [{"id": "P1", "t": "photo"}]}
+        ok, sent, back, fake = self.run_mode(d)
+        calls = [c[0] for c in fake.calls]
+        self.assertEqual(calls[:2], ["token", "EndFixedPriceItem"])
+        self.assertIn("AddFixedPriceItem", calls)
+        self.assertEqual(back[0], {"kind": "ended", "row": 4, "item_id": "336844624233"})
+        self.assertEqual(back[1]["kind"], "listed")
+        self.assertEqual(t(fake.item("AddFixedPriceItem"), "StartPrice"), "159.00")
+
+    def test_end_item_already_ended(self):
+        post = lambda *a, **k: xml_resp("EndFixedPriceItem", err("Der Artikel ist bereits beendet.", "1047"), "Failure")   # noqa: E731
+        self.assertTrue(el.end_item("1", "AT", post)["ok"])
+        post = lambda *a, **k: xml_resp("EndFixedPriceItem", err("Something else", "5"), "Failure")   # noqa: E731
+        self.assertFalse(el.end_item("1", "AT", post)["ok"])
+
     def test_publish_dry_and_errors(self):
         d = {"mode": "publish", "dry": True, "row": 1, "title": "Kingston 2x16GB DDR4 3200", "cost": 50, "rt": "RT",
              "photos": [{"id": "P1", "t": "photo"}]}

@@ -40,7 +40,7 @@ class ListingsTest(unittest.TestCase):
         self.assertTrue(text.startswith("🏷 <b>Виставлено</b> · 3"))
         self.assertIn("<b>№4 2x Corsair Vengeance LPX DDR4 RAM 32GB</b> · eBay", text)
         self.assertIn("💶 175 € · 8 дн. · 👁 41 · ⭐ 2", text)
-        self.assertIn("пропозицію на 5–10 € дешевше", text)          # спостерігачі + тиждень
+        self.assertIn("пропозицію — ~164 €", text)                    # спостерігачі + тиждень (18.10: з ціною)
         self.assertIn("💬 є питання", text)                           # лот без обліку — теж показуємо
         self.assertIn("<b>№9 G.Skill Fortis 2x16 DDR4 2400</b> · KA / вручну", text)
         urls = [b["url"] for row in kb["inline_keyboard"] for b in row]
@@ -56,6 +56,30 @@ class ListingsTest(unittest.TestCase):
         self.assertIn("мало переглядів", listings.tip(8, 20, 0, 0))
         self.assertIn("два тижні", listings.tip(15, 200, 0, 0))
 
+
+
+class ActionsTest(unittest.TestCase):
+    """18.10 (крок 6): застояний лот — кнопки «⬇️ знизити» і «♻️ перевиставити»; спостерігачі — пропозиція з ціною."""
+
+    def test_stale_and_tips(self):
+        self.assertTrue(listings.stale(15, 200, 0))
+        self.assertTrue(listings.stale(8, 20, 0))
+        self.assertFalse(listings.stale(8, 60, 0))
+        self.assertFalse(listings.stale(20, 10, 1))                    # є спостерігачі — спершу пропозиція їм
+        self.assertIn("~109 €", listings.tip(6, 50, 1, 0, 115))
+        self.assertEqual(listings.nice(168 * 0.95), 159)
+
+    def test_report_buttons(self):
+        from datetime import datetime, timezone
+        from unittest import mock
+        lots = [dict(id="336844624233", title="Corsair 2133", price=168.0, watch=0, questions=0, start="2026-10-01T10:00:00Z",
+                     url="https://www.ebay.de/itm/336844624233")]
+        rows = [dict(n=4, title="Corsair 2133", status="Виставлено", note="(eBay 336844624233)")]
+        with mock.patch.object(listings, "hits", return_value=30):
+            text, kb = listings.report({"rows": rows}, "tok", None, now=datetime(2026, 10, 18, tzinfo=timezone.utc), lots=lots)
+        cb = [b.get("callback_data") for row in kb["inline_keyboard"] for b in row]
+        self.assertIn("p|4|159", cb)
+        self.assertIn("c|перевиставити|4", cb)
 
 
 class SyncTest(unittest.TestCase):

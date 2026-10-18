@@ -227,6 +227,20 @@ const oh = opened();
 check('on-hand sheet dispatched', [oh.mode, oh.groups.map((g) => [g.kind, g.items.map((i) => i.n)]), oh.groups[0].items[0].item_id,
   oh.groups[0].items.filter((i) => i.n === 4)[0].photos], ['onhand', [['ebay', [1, 3, 4]]], '1234567890', ['f4']]);
 
+// 18.10: «♻️ Перевиставити» — підтвердження, ціна як на eBay, завершене → «Перевірено» без «більше не активне»
+store.LISTED_PRICE = JSON.stringify(Object.assign(JSON.parse(store.LISTED_PRICE || '{}'), { 1: 159 }));
+deals.cells['5:11'] = 'Виставлено';
+store.PH_1 = JSON.stringify([{ id: 'R1', t: 'photo', u: 'ur1' }]);
+say('перевиставити 1');
+check('relist confirm', [/Перевиставити №1\? .*за 159 €/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data], [true, 'c|так-перевист|1']);
+ctx.officeCallback({ id: 'q', data: 'c|так-перевист|1', message: { chat: { id: 7 }, message_id: 90 } });
+const rl = opened();
+check('relist dispatched', [rl.mode, rl.item_id, rl.edits.price, rl.photos.length > 0], ['relist', ctx.itemIdOf_(1), 159, true]);
+ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'ended', row: 1, item_id: rl.item_id }, '123:ABC', 'r1') }) },
+  parameter: { bot: 'office' } });
+check('ended → Перевірено, no "not active" later', [deals.cells['5:11'], /завершено 09.10 \(перевиставлення\)/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]),
+  JSON.parse(store.SYNC_ASKED)['E1:' + rl.item_id]], ['Перевірено', true, 1]);
+
 // 17.10: «отримав N» → фото з оголошення продавця (GitHub, режим got)
 deals.cells['8:11'] = 'Оплачено'; deals.cells['8:' + vm.runInContext('COL.id', ctx)] = '306123123123';
 say('отримав 4');

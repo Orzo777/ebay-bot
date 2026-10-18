@@ -76,7 +76,39 @@ def _with_refresh(base: dict) -> dict:
     return table
 
 
-REAL = _with_refresh(REAL_BASE)
+# 18.10 (крок 1 плану): ціни з НАШИХ продажів. Тижневий звіт рахує для типу з ≥5 продажами за 90 днів середнє «продали /
+# медіана бота» і пише поправку в research/own_factors.json (лише множники, без сум). Тут — множимо p25 і медіану типу:
+# і стелі купівлі, і ціни продажу («продати N») спираються на те, за скільки продаємо саме ми.
+OWN_MIN_SALES, OWN_CLAMP = 5, (0.85, 1.10)
+
+
+def own_factors() -> dict:
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "own_factors.json"), encoding="utf-8") as fh:
+            return {k: float(v) for k, v in (json.load(fh).get("factors") or {}).items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def _with_own(table: dict) -> dict:
+    if os.getenv("RAM_PRICES_OFF") == "1":
+        return table
+    f = own_factors()
+    for k, v in table.items():
+        x = f.get(f"{k[0]}|{k[1]}|{int(k[2])}|{k[3]}|{k[4]}")
+        if x:
+            x = min(OWN_CLAMP[1], max(OWN_CLAMP[0], x))
+            v["p25"], v["med"], v["own"] = round(v["p25"] * x), round(v["med"] * x), x
+    return table
+
+
+def key_of(type_name: str) -> tuple | None:
+    """Назва типу з evaluate («DDR4 UDIMM 32 ГБ (2×16) кіт · фірмовий …») → ключ REAL."""
+    return next((k for k, v in sorted(REAL_BASE.items(), key=lambda kv: -len(kv[1]["name"]))
+                 if str(type_name).startswith(v["name"])), None)
+
+
+REAL = _with_own(_with_refresh(REAL_BASE))
 NOISE_BRANDS = {"other", "HP", "Dell", "Lenovo", "Apple", "Supermicro", "Medion", "ASUS", "QNAP/Synology", "2-Power"}
 # Найбільша споживча одиночна планка. «DDR4 64GB» без розкладки — це точно набір (2×32 або 4×16),
 # а не одна планка: такі не відкидаємо, а оцінюємо як 2-планковий кіт із вимогою уточнити розкладку.

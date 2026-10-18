@@ -124,13 +124,27 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
     return {"lots": known, "ask": ask, "ended": ended}
 
 
-def tip(days: int | None, views: int | None, watch: int, questions: int) -> str:
+def stale(days: int | None, views: int | None, watch: int) -> bool:
+    """Лот застоявся: 14+ днів, або 7+ днів і мало переглядів (<5 на день), без спостерігачів."""
+    if days is None or watch:
+        return False
+    return days >= 14 or (days >= 7 and views is not None and views < 5 * days)
+
+
+def nice(p: float) -> int:
+    """159, 164, 169… — не вище за p (як ціни бота)."""
+    p = int(p)
+    return p if p < 30 or p % 5 == 4 else p - (p % 5) - 1
+
+
+def tip(days: int | None, views: int | None, watch: int, questions: int, price: float | None = None) -> str:
     if questions:
         return "💬 є питання — відповідь у Mein eBay → Nachrichten"
     if days is None or days < 5:
         return ""
-    if watch and days >= 7:
-        return "💡 є спостерігачі — надішли їм пропозицію на 5–10 € дешевше (Verkaufen → «Angebot an Beobachter»)"
+    if watch and days >= 5:   # 18.10 (крок 6): з конкретною ціною
+        offer = f" — ~{nice(price * 0.96)} €" if price else " на 5–10 € дешевше"
+        return f"💡 є спостерігачі — надішли їм пропозицію{offer} (Aktive Angebote → ⋮ → «Preisvorschlag an Beobachter»)"
     if views is not None and views < 5 * days:
         return "💡 мало переглядів — глянь ціну конкурентів; не допоможе — заверши й виставити заново (новий старт у пошуку)"
     if days >= 14:
@@ -164,9 +178,12 @@ def report(d: dict, token: str | None, post, now: datetime | None = None, lots: 
                                         f"{days} дн." if days is not None else "",
                                         f"👁 {views}" if views is not None else "",
                                         f"⭐ {lot['watch']}", f"💬 {lot['questions']}" if lot["questions"] else ""] if x)
-        t = tip(days, views, lot["watch"], lot["questions"])
+        t = tip(days, views, lot["watch"], lot["questions"], lot["price"])
         body.append(f"<b>{name}</b> · eBay\n<blockquote>{stats}" + (f"\n{t}" if t else "") + "</blockquote>")
         kb.append([{"text": f"🔗 {('№' + str(r['n']) + ' ') if r else ''}на eBay", "url": lot["url"]}])
+        if r and lot["price"] and stale(days, views, lot["watch"]):   # 18.10 (крок 6): дія — однією кнопкою
+            kb.append([{"text": f"⬇️ №{r['n']} → {nice(lot['price'] * 0.95)} €", "callback_data": f"p|{r['n']}|{nice(lot['price'] * 0.95)}"},
+                       {"text": f"♻️ Перевиставити №{r['n']}", "callback_data": f"c|перевиставити|{r['n']}"}])
     other = [r for r in rows if r["n"] not in used]
     for r in other:
         body.append(f"<b>№{r['n']} {html.escape(short(r['title']))}</b> · KA / вручну\n"

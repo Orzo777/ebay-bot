@@ -186,6 +186,14 @@ def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, durat
             "</Item>")
 
 
+def end_item(item_id: str, token: str, post) -> dict:
+    """18.10 (крок 6 плану): завершити оголошення (для «♻️ Перевиставити» — новий старт у пошуку). Уже завершене — теж ок."""
+    root = trading("EndFixedPriceItem", f"<ItemID>{_x(item_id)}</ItemID><EndingReason>NotAvailable</EndingReason>", token, post)
+    errs, warns = problems(root)
+    already = [e for e in errs if re.search(r"bereits beendet|already (?:been )?(?:ended|closed)|\b1047\b", e, re.I)]
+    return {"ok": not errs or len(already) == len(errs), "errors": [e for e in errs if e not in already], "warnings": warns}
+
+
 def revise_listing(item_id: str, tx: dict, prices: dict, pics: list[str], token: str, post, parts=None) -> dict:
     """16.10 (користувач: «🔁 правки в живе оголошення замість перевиставлення»): назва, опис, ціна, пороги Preisvorschlag,
     стан, характеристики й фото (якщо є) — ReviseFixedPriceItem; оголошення лишається тим самим (перегляди, спостерігачі).

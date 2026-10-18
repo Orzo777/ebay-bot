@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -980,6 +980,14 @@ function ebayCommand_(msg) {
     return true;
   }
   if ((m = t.match(/^\/?так-оновити\s+(\d{1,4})$/i))) { reviseCommand_(Number(m[1])); return true; }
+  if ((m = t.match(/^\/?перевиставити\s+(\d{1,4})$/i))) {   // 18.10: новий старт у пошуку — з підтвердженням
+    const lp = JSON.parse(PropertiesService.getScriptProperties().getProperty('LISTED_PRICE') || '{}')[m[1]];
+    notify_('♻️ Перевиставити №' + m[1] + '? Старе оголошення завершу, нове виставлю з тими самими фото' + (lp ? ' за ' + lp + ' €' : '') +
+            ' (інша ціна — спершу «ціна ' + m[1] + ' X»). Перегляди й спостерігачі обнуляться, зате лот знову «новий» у пошуку.',
+            { inline_keyboard: [[{ text: '✅ Так, перевиставити №' + m[1], callback_data: 'c|так-перевист|' + m[1] }]] });
+    return true;
+  }
+  if ((m = t.match(/^\/?так-перевист\s+(\d{1,4})$/i))) { relistCommand_(Number(m[1])); return true; }
   if ((m = t.match(/^\/?(?:ebay|ебей|ібей)\s+тест\s+(\d{1,4})$/i))) { publishCommand_(Number(m[1]), true); return true; }
   return false;
 }
@@ -1003,9 +1011,23 @@ function ebayAct_(data) {
   return sellDispatch_(Object.assign({ mode: 'ebay', rt: rt }, data));
 }
 
-function itemIdOf_(n) {
-  const note = String(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.note).getValue() || '');
-  return ((note.match(/eBay (\d{9,15})/) || [])[1]) || '';
+function itemIdOf_(n) {   // 18.10: останній номер (після перевиставлення / синхронізації в нотатках їх кілька)
+  return listingId_(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.note).getValue());
+}
+
+/** 18.10 (крок 6 плану): «♻️ Перевиставити» — завершити й виставити заново з тими самими фото й поточною ціною. */
+function relistCommand_(n) {
+  const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
+  if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
+  const r = rowByN_(n), itemId = r ? itemIdOf_(n) : '';
+  if (!r || r.status !== 'Виставлено' || !itemId) { notify_('№' + n + ' не виставлено на eBay (немає номера оголошення) — перевиставляти нічого.'); return; }
+  const photos = cleanPhotos_(n);
+  if (!photos.length) { notify_('📸 Для №' + n + ' немає фото в боті — надішли з підписом «' + n + '», потім ще раз.'); return; }
+  const ed = Object.assign({}, sellEdits_()[n] || {}), lp = JSON.parse(props.getProperty('LISTED_PRICE') || '{}')[n];
+  if (!ed.price && lp) ed.price = lp;   // ціна — як зараз на eBay (а не знову розрахована)
+  const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
+  const code = sellDispatch_({ mode: 'relist', row: n, title: String(title), cost: r.spent, photos: photos, rt: rt, edits: ed, item_id: itemId });
+  notify_(code === 204 ? '♻️ Перевиставляю №' + n + ' — 1–2 хвилини.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
 }
 
 /** Трек проданого на eBay → у замовлення eBay (якщо eBay підключено) + подяка покупцю (10.10, один раз). → рядок для повідомлення. */
@@ -1419,6 +1441,14 @@ function sealedPost(s) {
       lp[d.row] = Number(d.price);
       props.setProperty('LISTED_PRICE', JSON.stringify(lp));
     }
+  } else if (d.kind === 'ended' && d.row) {   // 18.10: «♻️ Перевиставити» — старе завершено, нове виставляється
+    const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
+    const note = String(sh.getRange(row, COL.note).getValue() || '');
+    sh.getRange(row, COL.status).setValue('Перевірено');
+    sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'завершено ' + Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + ' (перевиставлення)');
+    const asked = JSON.parse(props.getProperty('SYNC_ASKED') || '{}');
+    asked['E' + d.row + ':' + d.item_id] = 1;   // «оголошення більше не активне» — не писати, ми самі завершили
+    props.setProperty('SYNC_ASKED', JSON.stringify(asked));
   } else if (d.kind === 'sync') {   // 17.10: зміни на eBay → облік
     syncApply_(d);
   } else if (d.kind === 'parcels' && Array.isArray(d.events)) {
@@ -2602,7 +2632,8 @@ function sendAlbum_(list, caption) {
 // Кнопки виконують ті самі команди, що й текст («перевірив 3» тощо); після натискання кнопки з повідомлення зникають.
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
-  'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю' };
+  'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю',
+  'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {
@@ -2623,7 +2654,7 @@ function officeCallback(cq) {
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + (m[1] === 'посилки' ? '' : ' №' + m[2]) : '' });
   if (!m || !chat || String(from) !== String(chat) || !BTN[m[1]]) return;
-  if (['продати', 'фото', 'авто', 'кроки', 'посилки', 'змінити', 'оновити'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
+  if (['продати', 'фото', 'авто', 'кроки', 'посилки', 'змінити', 'оновити', 'перевиставити'].indexOf(m[1]) < 0) {   // дія виконана — кнопки більше не потрібні
     tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
   }
   officeMessage({ text: m[1] + ' ' + m[2], chat: { id: from }, message_id: 0 });

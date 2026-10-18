@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write   # 18.10: research/own_factors.json — поправки цін з наших продажів (лише множники)
 
 jobs:
   report:
@@ -67,3 +67,15 @@ jobs:
           NONCE: ${{ inputs.nonce }}
           PYTHONIOENCODING: utf-8
         run: python research/weekly_report.py --blob "$BLOB" --mac "$MAC" --nonce "$NONCE" --ebay ebay_watch_state.json --ka ram_mail_state.json
+
+      - name: Save own-sales price factors
+        run: |
+          git config user.name "ebay-bot"
+          git config user.email "bot@local"
+          git add research/own_factors.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "поправки цін без змін"
+          else
+            git commit -m "own-sales price factors $(date -u +%F)"
+            git pull --rebase -q origin main && git push
+          fi

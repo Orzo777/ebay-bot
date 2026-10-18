@@ -699,6 +699,22 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         if pics:   # 16.10: головні фото посилок до тебе — альбомом, з підписом «№N назва»
             print(f"фото посилок: {office_send_url_album(pics, requests.get)} з {len(pics)}")
         return ok
+    if mode == "relist":   # 18.10 (крок 6): «♻️ Перевиставити» — завершити й виставити заново (новий старт у пошуку)
+        row, item_id = d.get("row"), str(d.get("item_id") or "")
+        what = f"№{row}" if row else "товару"
+        if not d.get("rt") or not item_id:
+            return send(f"⚠️ Не знаю оголошення eBay для {what} — перевиставити не можу.", None)
+        try:
+            res = el.end_item(item_id, el.access_token(d["rt"], app, cert, post), post)
+        except el.AuthError as e:
+            back({"kind": "ebay_bad"}, key)
+            return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід».", None)
+        except el.EbayError as e:
+            return send(f"⚠️ Не вийшло завершити {what}: {html.escape(str(e)[:300])}\nНічого не змінено.", None)
+        if not res["ok"]:
+            return send(f"⚠️ eBay не завершив {what}:\n{_short(res['errors'])}\nНічого не змінено.", None)
+        back({"kind": "ended", "row": row, "item_id": item_id}, key)
+        return ebay_mode(dict(d, mode="publish", item_id=""), key, post, file_fn, send, back, comp_fn)
     if mode == "revise":   # 16.10: «🔁 Оновити на eBay» — правки в живе оголошення
         return revise_mode(d, key, app, cert, post, file_fn, send, back, comp_fn)
     if mode == "listings":   # 16.10: «🏷 Виставлено» — активні лоти eBay (перегляди, спостерігачі) + KA з обліку

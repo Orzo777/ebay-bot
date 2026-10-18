@@ -162,6 +162,47 @@ def accuracy(rows: list[dict], today: date) -> tuple[list[str], float | None]:
     return out, mean
 
 
+def own_prices(rows: list[dict], today: date) -> tuple[dict, list[str]]:
+    """18.10 (крок 1): за скільки продаємо МИ — по типах. Тип з ≥5 продажами за 90 днів → поправка до цін бота
+    (research/own_factors.json; ram_alert множить на неї p25 і медіану). Відношення — до медіани БЕЗ нашої поправки,
+    щоб вона не «з'їдала» сама себе."""
+    import ram_alert
+    groups: dict = {}
+    for r in rows:
+        if r["status"] != "Продано" or not r.get("sprice") or (_d(r["sdate"]) or date.min) < today - timedelta(days=90):
+            continue
+        ident = sell.identify(r["title"])
+        key = ram_alert.key_of(ident["type"]) if ident and ident.get("kind") == "ram" else None
+        if not key:
+            continue
+        base_med = ident["median_sale"] / (ram_alert.REAL.get(key, {}).get("own") or 1.0)
+        groups.setdefault(key, []).append(r["sprice"] / base_med)
+    factors, lines = {}, []
+    for key, ratios in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        name = ram_alert.REAL_BASE[key]["name"]
+        mean = sum(ratios) / len(ratios)
+        if len(ratios) >= ram_alert.OWN_MIN_SALES:
+            f = round(min(ram_alert.OWN_CLAMP[1], max(ram_alert.OWN_CLAMP[0], mean)), 3)
+            factors[f"{key[0]}|{key[1]}|{int(key[2])}|{key[3]}|{key[4]}"] = f
+            lines.append(f"• {html.escape(name)}: продаємо за {100 * mean:.0f}% від ринку ({len(ratios)} продажів) → "
+                         f"бот рахує ×{f:.2f}")
+        else:
+            lines.append(f"• {html.escape(name)}: {len(ratios)}/{ram_alert.OWN_MIN_SALES} продажів — поки ринкові ціни")
+    return factors, (["📐 <b>Ціни з наших продажів</b>"] + lines) if lines else []
+
+
+def save_own_factors(factors: dict, path: str | None = None) -> bool:
+    """→ True, якщо файл змінився (workflow тоді комітить)."""
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "own_factors.json")
+    old = _load(path).get("factors") or {}
+    if old == factors:
+        return False
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump({"factors": factors}, fh, ensure_ascii=False, indent=1, sort_keys=True)
+        fh.write("\n")
+    return True
+
+
 def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | None = None, ns: list | None = None) -> list[str]:
     """cuts — сюди (№, нова ціна товару) для кнопок «⬇️ Знизити» (10.10, якщо eBay підключено); ns — номери з порадою
     (17.10: для аркуша з фото)."""
@@ -328,6 +369,7 @@ def build(rows: list[dict], today: date, ebay: dict, ka: dict, market=sell.compe
           ebay_on: bool = False, bounds_fn=bounds, shortage_fn=shortage, services_fn=services, ns: list | None = None) -> str:
     """kb — сюди ряди кнопок: «⬇️ Знизити» (eBay підключено) і «✅ Межі оновив»; ns — (№, днів) з порадою для аркуша з фото."""
     acc, _ = accuracy(rows, today)
+    acc = acc + own_prices(rows, today)[1]
     cuts, bl = [], bounds_fn()
     todo = stale(rows, today, market, cuts, ns)
     # 14.10: головне й дії — розгорнуті; точність, пошук, дефіцит і сервіси — згорнуті (деталі на тап)
@@ -404,6 +446,11 @@ def main():
     parts = chunks(text)
     ok = all(sell.office_send_html(part, {"inline_keyboard": kb} if kb and i == len(parts) - 1 else None) for i, part in enumerate(parts))
     print(f"звіт надіслано: {ok}, рядків обліку: {len(d.get('rows') or [])}")
+    try:   # 18.10 (крок 1): поправки з наших продажів → research/own_factors.json (workflow комітить, якщо змінився)
+        factors, _ = own_prices(d.get("rows") or [], today)
+        print(f"поправки цін: {'оновлено' if save_own_factors(factors) else 'без змін'}")
+    except Exception as e:
+        print(f"поправки цін: {e.__class__.__name__}")
     try:
         sheet = stale_sheet(d, ns)
         if sheet:

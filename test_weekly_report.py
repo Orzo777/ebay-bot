@@ -136,6 +136,41 @@ class CapitalFunnelTest(unittest.TestCase):
         self.assertEqual(wr.funnel({}, {}, []), [])
 
 
+
+class OwnPricesTest(unittest.TestCase):
+    """18.10 (крок 1): ціни з наших продажів — поправка для типу з ≥5 продажами, менше — лише лічильник."""
+
+    def test_factor_after_five_sales(self):
+        import tempfile
+        import ram_alert
+        import sell
+        title = "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"
+        med = sell.identify(title)["median_sale"]
+        rows = [{"n": i, "title": title, "status": "Продано", "date": "2026-10-01", "sdate": "2026-10-15", "sprice": round(med * 0.9, 2),
+                 "spent": 120, "profit": 30} for i in range(5)]
+        factors, lines = wr.own_prices(rows, date(2026, 10, 20))
+        self.assertEqual(list(factors.values()), [0.9])
+        self.assertEqual(ram_alert.key_of(sell.identify(title)["type"]), ("ddr4", "udimm", False, 32, 2))
+        self.assertIn("бот рахує ×0.90", "\n".join(lines))
+        few, lines = wr.own_prices(rows[:3], date(2026, 10, 20))
+        self.assertEqual(few, {})
+        self.assertIn("3/5 продажів", "\n".join(lines))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "own.json")
+            self.assertTrue(wr.save_own_factors(factors, path))
+            self.assertFalse(wr.save_own_factors(factors, path))        # без змін — не комітимо
+
+    def test_factor_applied_to_prices(self):
+        import ram_alert
+        key = ("ddr4", "udimm", False, 32, 2)
+        t = ram_alert._with_own({key: dict(p25=100, med=200)})
+        self.assertEqual(t[key]["med"], 200)                            # файл порожній — без змін
+        from unittest import mock
+        with mock.patch.object(ram_alert, "own_factors", return_value={"ddr4|udimm|0|32|2": 0.5}),                 mock.patch.dict(os.environ, {"RAM_PRICES_OFF": "0"}):
+            t = ram_alert._with_own({key: dict(p25=100, med=200)})
+        self.assertEqual((t[key]["p25"], t[key]["med"], t[key]["own"]), (85, 170, 0.85))   # не нижче −15%
+
+
 if __name__ == "__main__":
     unittest.main()
 
