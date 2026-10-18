@@ -258,6 +258,29 @@ deals.cells['8:11'] = 'Оплачено'; deals.cells['8:' + vm.runInContext('CO
 say('отримав 4');
 check('got → seller photo dispatched', [opened().mode, opened().row, opened().id], ['got', 4, '306123123123']);
 
+// 18.10: 🚀 для такого самого товару (той самий номер моделі), що вже на eBay → «➕ Додати до оголошення» замість дубля
+const NOTE2 = vm.runInContext('COL.note', ctx);
+[['Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16', 'Виставлено', 'виставлено за 175 € 09.10 (eBay 336849011147)'],
+ ['Corsair Vengeance 32GB 2x16GB DDR4 2400 CMK32GX4M2A2400C16 OVP', 'Перевірено', '']].forEach((v, i) => {
+  const r = 10 + i;
+  deals.cells[r + ':2'] = new Date('2026-10-10T10:00:00Z'); deals.cells[r + ':3'] = v[0]; deals.cells[r + ':4'] = 'RAM';
+  deals.cells[r + ':11'] = v[1]; deals.cells[r + ':10'] = 120; deals.cells[r + ':' + NOTE2] = v[2]; deals.last = r;
+});
+store.LISTED_PRICE = JSON.stringify(Object.assign(JSON.parse(store.LISTED_PRICE || '{}'), { 6: 175 }));
+store.PH_7 = JSON.stringify([{ id: 'T7', t: 'photo', u: 'ut7' }]);
+const ghN = gh.length;
+ctx.officeCallback({ id: 'q', data: 'c|так-авто|7', message: { chat: { id: 7 }, message_id: 100 } });
+check('twin found → offer to add, nothing published', [/такий самий товар, як №6 \(CMK32GX4M2A2400C16\)/.test(last()[0]),
+  last()[1].inline_keyboard[0][0].callback_data, gh.length], [true, 'c|додати-до|7', ghN]);
+ctx.officeCallback({ id: 'q', data: 'c|додати-до|7', message: { chat: { id: 7 }, message_id: 101 } });
+check('merge dispatched', [opened().mode, opened().item_id, opened().twin, opened().price], ['merge', '336849011147', 6, 175]);
+ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'merged', row: 7, item_id: '336849011147', price: 175, twin: 6, qty: 2 },
+  '123:ABC', 'm1') }) }, parameter: { bot: 'office' } });
+check('merged → №7 listed on the same id', [deals.cells['11:11'], /\(eBay 336849011147\)/.test(deals.cells['11:' + NOTE2])], ['Виставлено', true]);
+say('перевиставити 6');
+ctx.officeCallback({ id: 'q', data: 'c|так-перевист|6', message: { chat: { id: 7 }, message_id: 102 } });
+check('shared listing — no auto relist', /спільне з №7/.test(last()[0]), true);
+
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));
 check('rt removed', store.EBAY_RT, undefined);

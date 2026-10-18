@@ -212,6 +212,28 @@ class EbayModeTest(unittest.TestCase):
         self.assertEqual(back[1]["kind"], "listed")
         self.assertEqual(t(fake.item("AddFixedPriceItem"), "StartPrice"), "159.00")
 
+    def test_add_quantity(self):
+        # 18.10: +1 шт до живого оголошення: доступно = Quantity − QuantitySold, + 1
+        calls = []
+
+        def post(url, headers=None, data=None, **k):
+            call = headers["X-EBAY-API-CALL-NAME"]
+            calls.append((call, data.decode()))
+            if call == "GetItem":
+                return xml_resp(call, "<Item><Quantity>3</Quantity><SellingStatus><QuantitySold>2</QuantitySold></SellingStatus></Item>")
+            return xml_resp(call, "")
+        res = el.add_quantity("336849011147", "AT", post)
+        self.assertEqual((res["ok"], res["qty"]), (True, 2))
+        self.assertEqual(calls[1][0], "ReviseInventoryStatus")
+        self.assertIn("<ItemID>336849011147</ItemID><Quantity>2</Quantity>", calls[1][1])
+
+    def test_merge_mode(self):
+        from unittest import mock
+        with mock.patch.object(el, "add_quantity", return_value={"ok": True, "qty": 2, "errors": []}):
+            ok, sent, back, fake = self.run_mode({"mode": "merge", "row": 7, "item_id": "336849011147", "twin": 6, "price": 175, "rt": "RT"})
+        self.assertEqual(back[0], {"kind": "merged", "row": 7, "item_id": "336849011147", "price": 175, "twin": 6, "qty": 2})
+        self.assertIn("тепер <b>2 шт</b> за 175 €", sent[0][0])
+
     def test_end_item_already_ended(self):
         post = lambda *a, **k: xml_resp("EndFixedPriceItem", err("Der Artikel ist bereits beendet.", "1047"), "Failure")   # noqa: E731
         self.assertTrue(el.end_item("1", "AT", post)["ok"])

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-18e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -989,6 +989,7 @@ function ebayCommand_(msg) {
   }
   if ((m = t.match(/^\/?так-перевист\s+(\d{1,4})$/i))) { relistCommand_(Number(m[1])); return true; }
   if ((m = t.match(/^\/?спостерігачам\s+(\d{1,4})\s+(\d{1,5})$/i))) { watchersAsk_(Number(m[1]), Number(m[2])); return true; }
+  if ((m = t.match(/^\/?додати-до\s+(\d{1,4})$/i))) { mergeCommand_(Number(m[1])); return true; }
   if ((m = t.match(/^\/?так-спостер\s+(\d{1,4})$/i))) {
     const props = PropertiesService.getScriptProperties(), pend = JSON.parse(props.getProperty('OFFER_PENDING') || '{}');
     const n = Number(m[1]), price = pend[n], r = rowByN_(n);
@@ -1026,12 +1027,50 @@ function itemIdOf_(n) {   // 18.10: останній номер (після пе
   return listingId_(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.note).getValue());
 }
 
+/** Номери моделі товару: з назви (CMK32GX4M2A2400C16 …) і з наклейки (Gemini). */
+function partsOf_(n, title) {
+  const st = JSON.parse(PropertiesService.getScriptProperties().getProperty('PHS_' + n) || '{}');
+  return titleSpec_(title).parts.concat(st.pn ? [String(st.pn).toUpperCase().replace(/[^A-Z0-9]/g, '')] : [])
+    .filter(function (p) { return p.length >= 8; });
+}
+
+/** 18.10: виставлений на eBay рядок з тим самим номером моделі → {n, id, pn, price} або null. */
+function twinListing_(n) {
+  const rows = openRowsNotes_(), me = rows.filter(function (r) { return r.n === n; })[0];
+  if (!me) return null;
+  const mine = partsOf_(n, me.title);
+  if (!mine.length) return null;
+  const lp = JSON.parse(PropertiesService.getScriptProperties().getProperty('LISTED_PRICE') || '{}');
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], id = listingId_(r.note);
+    if (r.n === n || r.status !== 'Виставлено' || !id) continue;
+    const pn = partsOf_(r.n, r.title).filter(function (p) { return mine.indexOf(p) >= 0; })[0];
+    if (pn) return { n: r.n, id: id, pn: pn, price: lp[r.n] || null };
+  }
+  return null;
+}
+
+/** «➕ Додати до оголошення» — +1 шт до живого оголошення близнюка (GitHub, режим merge). */
+function mergeCommand_(n) {
+  const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
+  if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
+  const twin = twinListing_(n);
+  if (!twin) { notify_('Такого самого товару на eBay вже немає — виставляй №' + n + ' звичайно (🚀).'); return; }
+  const code = sellDispatch_({ mode: 'merge', row: n, item_id: twin.id, twin: twin.n, price: twin.price, rt: rt });
+  notify_(code === 204 ? '➕ Додаю №' + n + ' до оголошення №' + twin.n + ' — до хвилини.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+}
+
 /** 18.10 (крок 6 плану): «♻️ Перевиставити» — завершити й виставити заново з тими самими фото й поточною ціною. */
 function relistCommand_(n) {
   const props = PropertiesService.getScriptProperties(), rt = props.getProperty('EBAY_RT');
   if (!rt) { notify_('🔑 eBay ще не підключено — напиши «ebay вхід».'); return; }
   const r = rowByN_(n), itemId = r ? itemIdOf_(n) : '';
   if (!r || r.status !== 'Виставлено' || !itemId) { notify_('№' + n + ' не виставлено на eBay (немає номера оголошення) — перевиставляти нічого.'); return; }
+  const shared = openRowsNotes_().filter(function (x) { return x.n !== n && x.status === 'Виставлено' && listingId_(x.note) === itemId; });
+  if (shared.length) {   // 18.10: оголошення з кількістю — спільне з іншими номерами
+    notify_('♻️ Оголошення №' + n + ' спільне з №' + shared.map(function (x) { return x.n; }).join(', ') +
+            ' (кількість > 1) — перевиставляю лише вручну в eBay, щоб не загубити інші номери.'); return;
+  }
   const photos = cleanPhotos_(n);
   if (!photos.length) { notify_('📸 Для №' + n + ' немає фото в боті — надішли з підписом «' + n + '», потім ще раз.'); return; }
   const ed = Object.assign({}, sellEdits_()[n] || {}), lp = JSON.parse(props.getProperty('LISTED_PRICE') || '{}')[n];
@@ -1426,6 +1465,13 @@ function publishCommand_(n, dry) {
   const pub = JSON.parse(props.getProperty('EBAY_PUB') || '{}'), now = Date.now();
   if (!dry && pub[n] && now - pub[n] < 15 * 60 * 1000) { notify_('⏳ №' + n + ' уже виставляється — дочекайся відповіді.'); return; }
   const title = JSON.parse(props.getProperty('SELL_TITLES') || '{}')[n] || r.title;
+  const twin = dry ? null : twinListing_(n);
+  if (twin) {   // 18.10: окреме оголошення на той самий товар — дубль (eBay ховає / попереджає); додаємо кількість
+    notify_('🧩 №' + n + ' — такий самий товар, як №' + twin.n + ' (' + twin.pn + '), що вже на eBay' + (twin.price ? ' за ' + twin.price + ' €' : '') +
+            '.\nОкреме оголошення eBay вважає дублем — краще додати №' + n + ' до того самого (стане на 1 шт більше).',
+            { inline_keyboard: [[{ text: '➕ Додати до оголошення №' + twin.n, callback_data: 'c|додати-до|' + n }]] });
+    return;
+  }
   const code = sellDispatch_({ mode: 'publish', dry: !!dry, row: n, title: title, cost: r.spent, photos: photos, rt: rt,
     edits: sellEdits_()[n] || null });
   if (code === 204 && !dry) { pub[n] = now; props.setProperty('EBAY_PUB', JSON.stringify(pub)); }
@@ -1470,6 +1516,9 @@ function sealedPost(s) {
       lp[d.row] = Number(d.price);
       props.setProperty('LISTED_PRICE', JSON.stringify(lp));
     }
+  } else if (d.kind === 'merged' && d.row && d.item_id) {   // 18.10: +1 шт до оголошення близнюка — рядок «Виставлено»
+    const chat = props.getProperty('TELEGRAM_CHAT_ID');
+    listedCommand_({ text: 'виставив ' + d.row + (d.price ? ' ' + d.price : ''), chat: { id: chat }, _auto: true }, String(d.item_id));
   } else if (d.kind === 'offer_sent' && d.row) {   // 18.10: пропозиція спостерігачам — у нотатки
     const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
     const note = String(sh.getRange(row, COL.note).getValue() || '');
@@ -2667,7 +2716,7 @@ function sendAlbum_(list, caption) {
 const BTN = { 'отримав': '📦 Отримав', 'перевірив': '✅ Перевірив', 'проблема': '🚩 Проблема', 'відправив': '📮 Відправив',
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
   'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю',
-  'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю', 'так-спостер': '✅ Надсилаю' };
+  'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю', 'так-спостер': '✅ Надсилаю', 'додати-до': '➕ Додаю' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {

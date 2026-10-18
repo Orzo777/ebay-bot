@@ -699,6 +699,23 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         if pics:   # 16.10: головні фото посилок до тебе — альбомом, з підписом «№N назва»
             print(f"фото посилок: {office_send_url_album(pics, requests.get)} з {len(pics)}")
         return ok
+    if mode == "merge":   # 18.10: такий самий товар уже на eBay — +1 шт до того оголошення замість дубля
+        row, item_id = d.get("row"), str(d.get("item_id") or "")
+        if not d.get("rt") or not item_id:
+            return send(f"⚠️ Не знаю оголошення eBay для №{row}.", None)
+        try:
+            res = el.add_quantity(item_id, el.access_token(d["rt"], app, cert, post), post)
+        except el.AuthError as e:
+            back({"kind": "ebay_bad"}, key)
+            return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід».", None)
+        except el.EbayError as e:
+            return send(f"⚠️ Не вийшло додати №{row}: {html.escape(str(e)[:300])}\nНічого не змінено.", None)
+        if not res["ok"]:
+            return send(f"⚠️ eBay не змінив кількість:\n{_short(res['errors'])}\nНічого не змінено.", None)
+        back({"kind": "merged", "row": row, "item_id": item_id, "price": d.get("price"), "twin": d.get("twin"), "qty": res["qty"]}, key)
+        return send(f"➕ №{row} додано до оголошення №{d.get('twin')}: тепер <b>{res['qty']} шт</b>"
+                    + (f" за {d['price']} €" if d.get("price") else "") + ". Продаж запишеться на кожен номер по черзі.",
+                    {"inline_keyboard": [[{"text": "🔗 Оголошення", "url": f"https://www.ebay.de/itm/{item_id}"}]]})
     if mode == "relist":   # 18.10 (крок 6): «♻️ Перевиставити» — завершити й виставити заново (новий старт у пошуку)
         row, item_id = d.get("row"), str(d.get("item_id") or "")
         what = f"№{row}" if row else "товару"

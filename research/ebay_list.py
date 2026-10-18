@@ -186,6 +186,23 @@ def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, durat
             "</Item>")
 
 
+def add_quantity(item_id: str, token: str, post, n: int = 1) -> dict:
+    """18.10 (користувач: однакові товари — одним оголошенням з кількістю): +n шт до живого оголошення.
+    GetItem → доступно = Quantity − QuantitySold → ReviseInventoryStatus. → {ok, qty (доступно після), errors}."""
+    root = trading("GetItem", f"<ItemID>{_x(item_id)}</ItemID><DetailLevel>ReturnAll</DetailLevel>", token, post)
+    errs, _ = problems(root)
+    it = root.find(NS + "Item")
+    if errs or it is None:
+        return {"ok": False, "qty": 0, "errors": errs or ["оголошення не знайдено"]}
+    total = int(it.findtext(NS + "Quantity") or 1)
+    sold = int(it.findtext(f"{NS}SellingStatus/{NS}QuantitySold") or 0)
+    qty = max(total - sold, 0) + n
+    root = trading("ReviseInventoryStatus", f"<InventoryStatus><ItemID>{_x(item_id)}</ItemID><Quantity>{qty}</Quantity></InventoryStatus>",
+                   token, post)
+    errs, _ = problems(root)
+    return {"ok": not errs, "qty": qty, "errors": errs}
+
+
 def end_item(item_id: str, token: str, post) -> dict:
     """18.10 (крок 6 плану): завершити оголошення (для «♻️ Перевиставити» — новий старт у пошуку). Уже завершене — теж ок."""
     root = trading("EndFixedPriceItem", f"<ItemID>{_x(item_id)}</ItemID><EndingReason>NotAvailable</EndingReason>", token, post)
