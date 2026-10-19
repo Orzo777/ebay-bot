@@ -49,12 +49,32 @@ def ebay_case(item: str):
         return lst["title"], r.get("verdict"), None
     r["desc"] = ew.fetch_desc(client, lst["id"])
     r["ai_seller"] = ew.seller_line(lst)
+    risk = ew.risk_of(lst, r["desc"], r.get("quick_sale", 0))   # повне рішення: правила проти шахраїв + ШІ
+    if risk["hard"]:
+        return lst["title"], r["verdict"], ("правила: " + "; ".join(risk["hard"]), True)
     return lst["title"], r["verdict"], pc.photo_line(r, lst["title"], lst.get("images") or [])
+
+
+def market_cases(n: int = 8) -> list[tuple[str, str]]:
+    """Свіжі звичайні оголошення з eBay (вживані кіти) — перевірка, що ШІ не відсіює чесні лоти."""
+    import config
+    import ebay_watch as ew
+    from main import _request_with_backoff
+    client, out = ew._client(), []
+    for q in ("ddr4 32gb 2x16gb", "ddr5 32gb 2x16gb", "ddr4 so-dimm 32gb 2x16gb"):
+        d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=client._headers(), params={
+            "q": q, "category_ids": "170083", "limit": 10, "filter": "buyingOptions:{FIXED_PRICE},itemLocationCountry:DE,conditionIds:{3000}"})
+        for it in d.get("itemSummaries") or []:
+            m = re.search(r"v1\|(\d+)\|", it.get("itemId", ""))
+            if m and len(out) < n:
+                out.append(("ebay", m.group(1)))
+    return out
 
 
 def main():
     bad_ok = good_ok = 0
-    for group, cases in (("ПОГАНІ", BAD), ("НОРМАЛЬНІ", GOOD)):
+    good = GOOD + market_cases()
+    for group, cases in (("ПОГАНІ", BAD), ("НОРМАЛЬНІ", good)):
         print(f"\n===== {group} =====")
         for kind, cid in cases:
             try:
