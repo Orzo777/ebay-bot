@@ -184,10 +184,16 @@ class MakeTest(unittest.TestCase):
                  {"title": "G.Skill 32GB (2x16GB) DDR4 3600", "price": {"value": "140"},
                   "shippingOptions": [{"shippingCost": {"value": "4.99"}}], "seller": {"feedbackScore": 300}}]
         old = main._request_with_backoff
-        main._request_with_backoff = lambda *a, **k: {"itemSummaries": items}
+        calls = []
+        # 19.10: усі сторінки — друга сторінка (offset 200) теж читається, поки не дійшли до total
+        main._request_with_backoff = lambda *a, **k: calls.append(k["params"]["offset"]) or (
+            {"itemSummaries": items * 40, "total": 210} if k["params"]["offset"] == 0 else {"itemSummaries": items[:1], "total": 210})
         try:
             r = sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200MHz")
-            self.assertEqual(sell.competitors(r, client=type("C", (), {"_headers": lambda self: {}})()), [129.0, 144.99])
+            got = sell.competitors(r, client=type("C", (), {"_headers": lambda self: {}})())
+            self.assertEqual(calls, [0, 200])
+            self.assertEqual(sorted(set(got)), [129.0, 144.99])
+            self.assertEqual(len(got), 81)
         finally:
             main._request_with_backoff = old
 
@@ -335,6 +341,7 @@ class ReviseModeTest(unittest.TestCase):
         self.assertEqual([(m["n"], m["comp"], m["floor"]) for m in got], [(5, [139, 140, 145], False), (8, [139, 140, 145], True)])
         self.assertLess(got[0]["item"] + got[0]["ship"], 145)
         self.assertEqual(got[1]["ship"], 0.0)   # безкоштовна доставка — ціна товару = повна
+        self.assertEqual((got[0]["place"], got[0]["total"]), (5, 4))
         self.assertGreater(got[0]["profit"], 0)
         cheap = listings.market_check([dict(lots[0], price=129.0)], rows, now, comp_fn=lambda r: [139.0, 140.0, 145.0])
         self.assertEqual(cheap, [])

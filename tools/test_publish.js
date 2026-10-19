@@ -212,9 +212,9 @@ check('manual sync dispatched', [opened().mode, opened().manual, /Звіряю e
 sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], manual: 1, count: 4 }, 's2m');
 check('manual sync: all matches', /✅ Звірив з eBay: активних лотів 4 — таблиця збігається/.test(last()[0]), true);
 // 19.10: щоденна перевірка цін — порада з кнопкою «⬇️» (підтвердження); та сама порада — один раз
-const mk = [{ n: 3, id: '306123456789', price: 169, ship: 6.49, comp: [139, 140, 145], item: 132, profit: 30, floor: false }];
+const mk = [{ n: 3, id: '306123456789', price: 169, ship: 6.49, comp: [139, 140, 145], item: 132, profit: 30, floor: false, total: 36, place: 9 }];
 sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], market: mk }, 's2k');
-check('market tip', [/📉 <b>Ціни конкурентів[\s\S]*№3.*= <b>175,49 €<\/b>.*139, 140, 145 € → постав <b>132 €<\/b> \+ доставка/.test(last()[0]),
+check('market tip', [/📉 <b>Ціни конкурентів[\s\S]*№3.*= <b>175,49 €<\/b> \(9-й за ціною з 36 схожих\).*139, 140, 145 € → постав <b>132 €<\/b> \+ доставка/.test(last()[0]),
   last()[1].inline_keyboard[0][0].callback_data], [true, 'p|3|132']);
 const before3 = sent.length;
 sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], market: mk }, 's2l');

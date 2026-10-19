@@ -162,6 +162,7 @@ def market_check(lots: list[dict], rows: list[dict], now: datetime | None = None
         if item >= lot["price"] - 1:   # мінімум прибутку не дає знизити
             continue
         out.append(dict(n=r["n"], id=lot["id"], price=lot["price"], ship=ship, comp=[round(c) for c in comp[:3]], item=item,
+                        total=len(comp), place=1 + sum(c < mine for c in comp),   # «ти 6-й з 36»
                         floor=item + ship > comp[2],   # нижче не можна: прибуток < мінімуму — серед найдешевших не станемо
                         profit=round(pr["profit_list"]) if pr.get("profit_list") is not None else None))
     return out

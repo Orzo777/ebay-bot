@@ -38,6 +38,7 @@ MIN_PROFIT_ABS, MIN_PROFIT_PCT = 5.0, 0.10      # нижче цього приб
 ACCEPT_SHARE, DECLINE_SHARE = 0.96, 0.90        # від ціни оголошення / від «швидкої» ціни
 SHIP_CHARGE_RAM = 6.49   # 09.10: доставку платить покупець окремим рядком (DHL Paket), як купує й сам користувач
 LOW_SHARE = 0.92                                # нижче 92% «швидкої» ціни не ставимо
+COMP_PAGES = 3                                  # конкуренти: до 3 сторінок по 200 (3 виклики Browse API)
 
 
 # ----------------------------------------------------------------------------- шифрування (пара до ledger.gs)
@@ -128,13 +129,21 @@ def competitors(r: dict, client=None) -> list[float]:
     from main import EbayClient, _request_with_backoff
     client = client or EbayClient()
     q, cat = competitor_query(r)
-    d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=client._headers(), params={
-        "q": q, "category_ids": cat, "limit": 100, "sort": "price",
-        "filter": f"buyingOptions:{{FIXED_PRICE}},itemLocationCountry:DE,conditionIds:{{3000}},"
-                  # нижче 80% «швидкої» ціни — здебільшого шахраї, дефекти й інші товари, а не конкуренти
-                  f"price:[{int(r['quick_sale'] * 0.8)}..{int(r['median_sale'] * 1.6)}],priceCurrency:EUR"})
+    # 19.10: було лише 100 найдешевших результатів «ddr4 32gb» — серед них переважно SO-DIMM і серверні, і з 36 живих
+    # конкурентів DDR4 UDIMM 2×16 фірмових бот бачив 3. Тепер — усі сторінки (до 3 × 200).
+    items = []
+    for off in range(0, COMP_PAGES * 200, 200):
+        d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=client._headers(), params={
+            "q": q, "category_ids": cat, "limit": 200, "offset": off, "sort": "price",
+            "filter": f"buyingOptions:{{FIXED_PRICE}},itemLocationCountry:DE,conditionIds:{{3000}},"
+                      # нижче 80% «швидкої» ціни — здебільшого шахраї, дефекти й інші товари, а не конкуренти
+                      f"price:[{int(r['quick_sale'] * 0.8)}..{int(r['median_sale'] * 1.6)}],priceCurrency:EUR"})
+        page = d.get("itemSummaries") or []
+        items += page
+        if len(page) < 200 or off + 200 >= int(d.get("total") or 0):
+            break
     out = []
-    for it in d.get("itemSummaries") or []:
+    for it in items:
         try:
             price = float(it["price"]["value"])
             ship = float(((it.get("shippingOptions") or [{}])[0].get("shippingCost") or {}).get("value") or 0)

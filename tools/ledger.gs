@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-19d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-19e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1378,7 +1378,8 @@ function marketTips_(list, rows) {
     seen[m.n] = m.item;
     const r = rows.filter(function (y) { return y.n === Number(m.n); })[0];
     return '• №' + m.n + (r ? ' ' + h_(String(r.title).slice(0, 34).trim()) : '') + ': твоя ' + eur(m.price) + ' € + доставка ' + eur(m.ship) +
-      ' € = <b>' + eur(m.price + m.ship) + ' €</b>, три найдешевші схожі — ' + m.comp.join(', ') + ' € → постав <b>' + m.item + ' €</b>' +
+      ' € = <b>' + eur(m.price + m.ship) + ' €</b>' + (m.total ? ' (' + m.place + '-й за ціною з ' + m.total + ' схожих)' : '') +
+      ', три найдешевші — ' + m.comp.join(', ') + ' € → постав <b>' + m.item + ' €</b>' +
       (m.ship ? ' + доставка' : '') + (m.profit != null ? ' (прибуток ще ≈ ' + m.profit + ' €)' : '') +
       (m.floor ? ' — це мінімум, нижче замало прибутку; дешевших конкурентів так не обженеш' : '');
   });
