@@ -98,6 +98,9 @@ class TestRisk(unittest.TestCase):
 
     def test_new_account_cheap_blocked_soft_warning_otherwise(self):
         self.assertTrue(risk_of(item("Xbox Series X", 250, fb=0), "", 545)["hard"])
+        # 19.10: рейтинг −1 — не «мало відгуків», а шахрайський акаунт (G.Skill 2×32 DDR5 за 210 € при ринку ~600 €)
+        self.assertIn("негативний рейтинг продавця (-1)", risk_of(item("G.Skill Ripjaws S5 64GB DDR5-5600", 210, fb=-1), "", 530)["hard"])
+        self.assertTrue(risk_of(item("G.Skill Ripjaws S5 64GB DDR5-5600", 600, fb=-1), "", 530)["hard"])   # і за ринковою ціною
         r = risk_of(item("Xbox Series X", 340, fb=3), "", 545)
         self.assertFalse(r["hard"])
         self.assertTrue(r["soft"])

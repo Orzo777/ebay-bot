@@ -189,7 +189,9 @@ def risk_of(lst: dict, desc: str | None, quick_sale: float) -> dict:
         hard.append("в описі кличе писати поза eBay (WhatsApp / телефон / e-mail)")
     if desc and _PAYMENT.search(desc):
         hard.append("в описі просить переказ / PayPal Freunde")
-    if lst["fb"] == 0 and quick_sale and lst["price"] < 0.75 * quick_sale:
+    if lst["fb"] < 0:   # 19.10: рейтинг −1 (G.Skill 64 ГБ DDR5 за 210 € — третина ринку) проходив як «мало відгуків»
+        hard.append(f"негативний рейтинг продавця ({lst['fb']})")
+    elif lst["fb"] == 0 and quick_sale and lst["price"] < 0.75 * quick_sale:
         hard.append("новий акаунт без відгуків і ціна нижче 75% ринку")   # 28.09: Switch 2 за €236 від 0 відгуків
     if lst["fb"] < 10:
         soft.append(f"мало відгуків ({lst['fb']})")
