@@ -206,6 +206,19 @@ check('sync: price change + new listing', [/ціна на eBay → 55 € 09.10/
 const before = sent.length;
 sync({ lots: [{ n: 3, id: '306123456789', price: 55 }, { n: 4, id: '306999888777', price: 120 }], ask: [], ended: [] }, 's2');
 check('sync: nothing new — silent', sent.length, before);
+// 19.10: «звірити» — на вимогу; відповідь і коли все збігається
+say('звірити');
+check('manual sync dispatched', [opened().mode, opened().manual, /Звіряю eBay/.test(last()[0])], ['sync', 1, true]);
+sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], manual: 1, count: 4 }, 's2m');
+check('manual sync: all matches', /✅ Звірив з eBay: активних лотів 4 — таблиця збігається/.test(last()[0]), true);
+// 19.10: щоденна перевірка цін — порада з кнопкою «⬇️» (підтвердження); та сама порада — один раз
+const mk = [{ n: 3, id: '306123456789', price: 169, ship: 6.49, comp: [139, 140, 145], item: 132, profit: 30, floor: false }];
+sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], market: mk }, 's2k');
+check('market tip', [/📉 <b>Ціни конкурентів[\s\S]*№3.*= <b>175,49 €<\/b>.*139, 140, 145 € → постав <b>132 €<\/b> \+ доставка/.test(last()[0]),
+  last()[1].inline_keyboard[0][0].callback_data], [true, 'p|3|132']);
+const before3 = sent.length;
+sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], market: mk }, 's2l');
+check('market tip once', sent.length, before3);
 sync({ lots: [], ask: [{ id: '306555444333', title: 'Corsair LPX 32GB', price: 99, cands: [1, 4] }], ended: [{ n: 1, id: '1234567890' }] }, 's3');
 check('sync: ended + ask with buttons', [/№1: оголошення на eBay більше не активне/.test(sent[sent.length - 2][0]), /Це який номер/.test(last()[0]),
   last()[1].inline_keyboard.map((r) => r[0].callback_data)], [true, true, ['L|306555444333|1', 'L|306555444333|4', 'L|306555444333|0']]);

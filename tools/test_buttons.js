@@ -67,7 +67,7 @@ check('status set', deals.cells['6:11'], 'Перевірено');
 check('callback answered + buttons removed', [tg.some((c) => c[0] === 'answerCallbackQuery'),
       tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 55)], [true, true]);
 check('reply has «продати №2» and feedback hint', [/✅ №2 .*перевірено[\s\S]*Bewertung/.test(sent[sent.length - 1][0]), datas(sent[sent.length - 1][1])],
-      [true, ['c|продати|2']]);
+      [true, ['c|продати|2', 'c|назад|2']]);
 
 // чужий чат і сміття в callback_data — нічого не робить
 const n0 = sent.length;
@@ -125,7 +125,7 @@ tg.length = 0;
 realOfficeCb(cb('m|sell'));
 const ed = tg.find((c) => c[0] === 'editMessageText');
 check('section shown in place', [ed && /^💶 Продаж\n\n• продати/.test(ed[1].text), ed && datas(JSON.parse(ed[1].reply_markup))],
-      [true, ['k|продати', 'k|виставлено', 'm|menu']]);
+      [true, ['k|продати', 'k|виставлено', 'k|звірити', 'm|menu']]);
 tg.length = 0;
 realOfficeCb(cb('m|menu'));
 check('back to menu', datas(JSON.parse(tg.find((c) => c[0] === 'editMessageText')[1].reply_markup)).length, 5);

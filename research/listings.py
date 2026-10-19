@@ -33,7 +33,9 @@ def active(token: str, post) -> list[dict]:
     lst = root.find(ns + "ActiveList")
     for it in (lst.iter(ns + "Item") if lst is not None else []):
         price = _num(_t(it, "SellingStatus/CurrentPrice", ns)) or _num(_t(it, "BuyItNowPrice", ns))
-        out.append(dict(id=_t(it, "ItemID", ns), title=_t(it, "Title", ns), price=price,
+        free = _t(it, "ShippingDetails/ShippingServiceOptions/FreeShipping", ns).lower() == "true"
+        ship = 0.0 if free else _num(_t(it, "ShippingDetails/ShippingServiceOptions/ShippingServiceCost", ns))
+        out.append(dict(id=_t(it, "ItemID", ns), title=_t(it, "Title", ns), price=price, ship=ship,
                         watch=int(_num(_t(it, "WatchCount", ns)) or 0), questions=int(_num(_t(it, "QuestionCount", ns)) or 0),
                         start=_t(it, "ListingDetails/StartTime", ns), url=_t(it, "ListingDetails/ViewItemURL", ns)
                         or f"https://www.ebay.de/itm/{_t(it, 'ItemID', ns)}"))
@@ -122,6 +124,47 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
     ended = [dict(n=r["n"], id=_last_id(r.get("note"))) for r in rows
              if r.get("status") == "Виставлено" and _last_id(r.get("note")) and _last_id(r.get("note")) not in active_ids]
     return {"lots": known, "ask": ask, "ended": ended}
+
+
+MARKET_MIN_DAYS, MARKET_GAP = 3, 3.0
+
+
+def market_check(lots: list[dict], rows: list[dict], now: datetime | None = None, comp_fn=None) -> list[dict]:
+    """19.10 (користувач: «на 2 оголошеннях мало переглядів — частіше заміряй ціни»): раз на добу — наші лоти проти
+    живих конкурентів (повна ціна з доставкою). Дорожчі за третього найдешевшого більш ніж на MARKET_GAP € і виставлені
+    ≥ MARKET_MIN_DAYS дн. → [{n, id, price, ship, comp, item, profit}] — ціна товару, з якою стаємо серед трьох найдешевших
+    (не нижче мінімуму прибутку від ціни купівлі `spent`). Один виклик Browse API на лот."""
+    import sell
+    now, out = now or datetime.now(timezone.utc), []
+    comp_fn = comp_fn or sell.competitors
+    for lot in lots:
+        r = _row_for(lot, rows)
+        days = _days(lot.get("start") or "", now)
+        if not r or not lot.get("price") or days is None or days < MARKET_MIN_DAYS:
+            continue
+        ident = sell.identify(r.get("title") or lot["title"])
+        if not ident:
+            continue
+        try:
+            comp = comp_fn(ident)
+        except Exception as e:
+            print(f"ринок №{r['n']}: {e.__class__.__name__}")
+            continue
+        ship = lot.get("ship")
+        if ship is None:
+            ship = sell.SHIP_CHARGE_RAM if ident["kind"] == "ram" else (ident.get("ship_out") or sell.console_alert.SHIP)
+        mine = lot["price"] + ship
+        if len(comp) < 3 or mine <= comp[2] + MARKET_GAP:
+            continue
+        spent = r.get("spent")
+        pr = sell.plan_price(ident, float(spent) if spent else None, comp, undercut=True)
+        item = max(1, round(pr["list"] - ship))
+        if item >= lot["price"] - 1:   # мінімум прибутку не дає знизити
+            continue
+        out.append(dict(n=r["n"], id=lot["id"], price=lot["price"], ship=ship, comp=[round(c) for c in comp[:3]], item=item,
+                        floor=item + ship > comp[2],   # нижче не можна: прибуток < мінімуму — серед найдешевших не станемо
+                        profit=round(pr["profit_list"]) if pr.get("profit_list") is not None else None))
+    return out
 
 
 def stale(days: int | None, views: int | None, watch: int) -> bool:

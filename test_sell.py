@@ -316,8 +316,28 @@ class ReviseModeTest(unittest.TestCase):
         with mock.patch.object(el, "access_token", return_value="tok"),                 mock.patch.object(listings, "active", return_value=[dict(id="306000000004", title="x", price=159.0)]):
             sell.ebay_mode({"mode": "sync", "rt": "rt", "rows": rows}, "k", post=lambda *a, **k: None,
                            send=lambda t, m: sent.append(t) or True, back=lambda x, k: back.append(x))
-        self.assertEqual(back, [{"kind": "sync", "lots": [dict(n=4, id="306000000004", price=159.0)], "ask": [], "ended": []}])
+        self.assertEqual(back, [{"kind": "sync", "manual": 0, "count": 1, "lots": [dict(n=4, id="306000000004", price=159.0)], "ask": [], "ended": []}])
         self.assertEqual(sent, [])
+
+    def test_market_check(self):
+        # 19.10: №5 Corsair 2×16 DDR4-2400 — 169 € + 6,49 доставка, а три найдешевші 139 / 140 / 145 → порада серед них;
+        # свіжий лот (< 3 дн.), дешевший за конкурентів, або мінімум прибутку не дає знизити — без поради
+        from datetime import datetime, timezone
+        import listings
+        now = datetime(2026, 10, 19, tzinfo=timezone.utc)
+        rows = [dict(n=5, title="Corsair Vengeance 32GB (2x16GB) DDR4-2400 DIMM", status="Виставлено", note="(eBay 1)", spent=95),
+                dict(n=8, title="G.SKILL FORTIS 32GB (2x16GB) DDR4-2400 DIMM", status="Виставлено", note="(eBay 2)", spent=140),
+                dict(n=4, title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133", status="Виставлено", note="(eBay 3)", spent=90)]
+        lots = [dict(id="1", title="x", price=169.0, ship=None, start="2026-10-11T10:00:00Z"),
+                dict(id="2", title="y", price=169.0, ship=0.0, start="2026-10-11T10:00:00Z"),
+                dict(id="3", title="z", price=169.0, ship=None, start="2026-10-18T10:00:00Z")]
+        got = listings.market_check(lots, rows, now, comp_fn=lambda r: [139.0, 140.0, 145.0, 160.0])
+        self.assertEqual([(m["n"], m["comp"], m["floor"]) for m in got], [(5, [139, 140, 145], False), (8, [139, 140, 145], True)])
+        self.assertLess(got[0]["item"] + got[0]["ship"], 145)
+        self.assertEqual(got[1]["ship"], 0.0)   # безкоштовна доставка — ціна товару = повна
+        self.assertGreater(got[0]["profit"], 0)
+        cheap = listings.market_check([dict(lots[0], price=129.0)], rows, now, comp_fn=lambda r: [139.0, 140.0, 145.0])
+        self.assertEqual(cheap, [])
 
     def test_listed_card_has_revise_button(self):
         kb = sell.keyboard({}, sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"), 4, True, listed=True)

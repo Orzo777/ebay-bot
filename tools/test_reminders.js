@@ -116,6 +116,18 @@ say('відправив 1');
 has('відправив not sold', sent[4], /для проданого/);
 say('отримав 8');
 has('cancelled row untouched', sent[5], /Скасовано/);
+// 19.10: «випадково натиснув „отримав“» — «назад N» повертає статус і події; «статус N …» — будь-який
+say('назад 3');
+check('undo problem', [cells['7:11'], /повернув статус «Оплачено»/.test(sent[sent.length - 1])], ['Оплачено', true]);
+say('назад 1');   // останнім було «перевірила 1» (з «Отримано»): статус і дата тесту — назад, отримання лишається
+check('undo tested', [cells['5:11'], JSON.parse(store.LEDGER_EVENTS)[1].tested, JSON.parse(store.LEDGER_EVENTS)[1].got], ['Оплачено', undefined, '2026-10-06']);   // підмінна таблиця: статус рядка — з __data (Оплачено)
+say('назад 2');
+has('nothing to undo', sent[sent.length - 1], /немає що скасовувати.*статус 2 Оплачено/);
+say('статус 5 оплач');
+check('set any status', [cells['9:11'], /«Отримано» → «Оплачено»/.test(sent[sent.length - 1])], ['Оплачено', true]);
+say('статус 5 щось');
+has('unknown status', sent[sent.length - 1], /Такого статусу немає/);
+check('undo button in notices', /\['назад', n\]/.test(fs.readFileSync(__dirname + '/ledger.gs', 'utf8')), true);
 say('нагадай 20.10 забрати посилку з DHL');
 check('нагадай stored', JSON.parse(store.USER_TODO), [['2026-10-20', 'забрати посилку з DHL']]);
 say('нагадай 01.02 перевірити податки');

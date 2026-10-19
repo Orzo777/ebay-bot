@@ -105,6 +105,17 @@ mails = [msg('r1', 'Der Käufer möchte einen Artikel zurückgeben', 'Grund: Art
 gemini = [{ kind: 'return', role: 'seller', item: 'OWC 32GB', uk: 'Покупець каже, що несправна.', deadline: '3 робочі дні' }];
 ctx.processEbayMail_(log, done);
 check('return card', /↩️ <b>Повернення<\/b>[\s\S]*⏰ Строк: 3 робочі дні[\s\S]*3 робочих днів/.test(sent[sent.length - 1][0]), true);
+// 19.10: ми покупець (повертаємо DDR5 №7) — без поради продавцю; Gemini помилився з роллю → за товаром з обліку (не продаємо)
+mails = [msg('r2', 'Ihre Rücksendung ist unterwegs', 'Der Verkäufer erhält den Artikel bald.')];
+gemini = [{ kind: 'return', role: 'buyer', item: 'SK Hynix 32GB DDR5', who: 'ong-werner', uk: 'Повернення їде до продавця.' }];
+ctx.processEbayMail_(log, done);
+t = sent[sent.length - 1][0];
+check('buyer return card', [/Твоє повернення \(ти покупець\)/.test(t), /Продавець: ong-werner/.test(t), /Товар справний/.test(t), /eBay einschalten/.test(t)],
+  [true, true, false, true]);
+mails = [msg('r3', 'Rückgabe: Artikel unterwegs', 'Artikel unterwegs zum Verkäufer.')];
+gemini = [{ kind: 'return', role: 'seller', item: 'SK Hynix 2x16GB ECC UDIMM', who: 'x' }];
+ctx.processEbayMail_(log, done);
+check('role fixed by ledger (our purchase, not for sale)', /Твоє повернення/.test(sent[sent.length - 1][0]), true);
 
 // виплата → до останнього проданого без виплати; комісія ≈ 0% → підказка
 mails = [msg('p1', 'Ihre Auszahlung wurde gesendet', 'Wir haben Ihre Auszahlung in Höhe von EUR 164,49 gesendet.')];
