@@ -136,5 +136,37 @@ class TestPhotoCheck(unittest.TestCase):
         self.assertEqual(len(ka_images(page + similar_ld)), 2)
 
 
+class DescReviewTest(unittest.TestCase):
+    """19.10: ШІ читає й опис: проблема з опису — ⛔ «НЕ БЕРИ» з цитатою; «не тестовано» — лише попередження; низька
+    впевненість щодо опису — нічого."""
+
+    EXP = {"kind": "ram", "gen": "DDR4", "laptop": False, "total": 64, "modules": 2, "per": 32}
+
+    def test_problem_quote_and_untested(self):
+        import photo_check as pc
+        bad, warn = pc.compare(self.EXP, {"desc_problem": "defect", "desc_quote": "Selten kam es zu Abstürzen",
+                                          "desc_note_uk": "ПК падав", "desc_confidence": "high", "confidence": "high"})
+        self.assertEqual(bad, ["в описі: ПК падав — «Selten kam es zu Abstürzen»"])
+        bad, warn = pc.compare(self.EXP, {"desc_problem": "", "desc_untested": True, "confidence": "high"})
+        self.assertEqual((bad, warn), ([], ["продавець не тестував — бери лише з поправкою на ризик"]))
+        bad, warn = pc.compare(self.EXP, {"desc_problem": "scam", "desc_confidence": "low", "confidence": "high"})
+        self.assertEqual(bad, [])
+
+    def test_text_only_and_headline(self):
+        from unittest import mock
+        import photo_check as pc
+        res = {"type": "DDR4 UDIMM 64 ГБ (2×32) кіт", "total": 64, "price": 200, "median_sale": 357, "desc": "Lief super. Keine Probleme."}
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "k"}),                 mock.patch.object(pc, "ask_gemini", return_value={"desc_problem": "", "confidence": "high"}) as ask:
+            line, bad = pc.photo_line(res, "Corsair 64GB DDR4", [])
+        self.assertEqual((line, bad), ("📝 Опис прочитано ✓", False))
+        self.assertIn("Keine Probleme", ask.call_args[0][1])               # опис і ринкова ціна — у запиті
+        self.assertIn("about 357 EUR", ask.call_args[0][1])
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "k"}),                 mock.patch.object(pc, "ask_gemini", return_value={"desc_problem": "price_per_unit", "desc_quote": "Preis pro Riegel",
+                                                                  "desc_confidence": "high", "confidence": "high"}):
+            line, bad = pc.photo_line(res, "Corsair 64GB DDR4", [])
+        self.assertTrue(bad)
+        self.assertIn("⛔ НЕ БЕРИ:", line)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -197,6 +197,14 @@ def ebay_message(r: dict, offer: int | None = None) -> str:
     return seller_msg.humanize(r, offer, " ".join(parts), "ebay", goal, terms_en, _questions(r, du=False), False)
 
 
+def seller_line(lst: dict) -> str:
+    """19.10: про продавця — для ШІ-читання оголошення (photo_check: опис + фото)."""
+    det = dict(_DETAILS.get(str(lst.get("id")), {}), **{k: lst[k] for k in ("private", "sold", "units") if k in lst})
+    return (f"eBay seller {lst.get('seller')}: {lst.get('fb')} ratings" + (f", {lst['pct']:.0f}% positive" if lst.get("pct") is not None else "")
+            + (", private" if det.get("private") else ", business" if det.get("private") is False else "")
+            + (f", {det['sold']} sold of {det['units']}" if det.get("units") else ""))
+
+
 SCAM_RATIO = 0.45                  # дешевше за 45% «швидкої» ціни на eBay не продають — лише шахраї
 NEW_CONDS = {"1000", "1500"}        # Neu / Neu: Sonstige
 
@@ -682,6 +690,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             print("   [DRY RUN] надіслав би картку")
         else:
             card = format_card(r, lst, risk, why, now)
+            r["ai_seller"] = seller_line(lst)   # 19.10: ШІ читає й опис — з даними продавця (у картку не йде)
             ph = photo_line(r, lst["title"], lst.get("images") or [])
             if ph and ph[1]:
                 print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку не надсилаю: " + re.sub(r"<[^>]+>", "", ph[0]).replace("\n", " ")[:200])
@@ -725,6 +734,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                     print("   [DRY RUN] надіслав би картку аукціону")
                 else:
                     # фото — ДО надсилання, як для «Sofort-Kaufen» (01.10: гра «EA Sports FC 26 - Switch 2» пішла з ⛔ у картці)
+                    r["ai_seller"] = seller_line(lst)
                     ph = photo_line(r, lst["title"], lst.get("images") or [])
                     if ph and ph[1]:
                         print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку аукціону не надсилаю")

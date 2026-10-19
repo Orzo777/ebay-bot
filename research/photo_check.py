@@ -79,7 +79,34 @@ Look ONLY at the photos (not the title) and answer with JSON:
   "only_box_or_accessory": true if the photos show only packaging, a video game, a controller, a headset, a camera or another
       accessory but no console itself / no RAM stick (a console's own box next to the console does not count),
   "visible_damage": true if cracks, burn marks, missing parts or bent pins are clearly visible,
-  "confidence": "high" | "medium" | "low"}}"""
+  "confidence": "high" | "medium" | "low"{desc_fields}}}"""
+
+# 19.10 (користувач: «бот пропустив зламане / шахрая як вигідно — сам прочитав в описі»): той самий запит читає ще й
+# назву, ціну, ринкову ціну й опис — як людина, а не регулярними виразами. Суворо: лише те, що прямо написано.
+DESC_BLOCK = """
+
+Also read the listing TEXT below (German). Price asked: {price} EUR. Typical used selling price of this item on eBay: about {market} EUR.
+Title: "{title}"
+Seller info: {seller}
+Description (may be cut): <<<{desc}>>>
+"""
+DESC_FIELDS = """,
+  "desc_problem": "" or one of:
+      "defect" — the seller states the item itself is broken, faulty or unstable (crashes, bluescreens, memory errors, one stick
+          not working, freezes, no picture, overheating, "für Bastler", "defekt"). NOT a defect: negations ("keine Probleme",
+          "nie Abstürze", "0 Fehler"), legal boilerplate ("Privatverkauf, keine Garantie / Gewährleistung / Rücknahme",
+          "ohne Gewähr"), cosmetic scratches, a broken accessory that is not the item;
+      "not_the_item" — sold is something else than the title suggests (only box, only one stick when the title implies a kit,
+          an accessory, a wanted/search ad, a swap request, a different capacity or generation);
+      "price_per_unit" — the price is per stick / per piece, the full set costs more;
+      "scam" — clear fraud signals: asks to pay or chat outside the platform (WhatsApp, e-mail, PayPal Freunde, Vorkasse,
+          bank transfer), copy-paste stock text with "new" items at far below the typical price, or similar,
+  "desc_quote": the exact short German phrase (max 120 chars) from the description or title that proves desc_problem, else "",
+  "desc_untested": true only if the seller says it is untested / cannot test / does not know if it works,
+  "desc_note_uk": one short sentence in Ukrainian (max 100 chars) with what a buyer must know, else "",
+  "desc_confidence": "high" | "medium" | "low" for desc_problem"""
+DESC_PROBLEM_UK = {"defect": "продавець пише про несправність", "not_the_item": "продається не те, що в назві",
+                   "price_per_unit": "ціна за одну планку / штуку", "scam": "ознаки шахрайства"}
 
 
 def _download(url: str) -> bytes | None:
@@ -160,7 +187,16 @@ def ask_gemini(images: list[bytes], prompt: str, key: str | None = None, allow_t
 def compare(exp: dict, ph: dict) -> tuple[list[str], list[str]]:
     """→ (розбіжності, попередження)."""
     bad, warn = [], []
-    if not ph or ph.get("confidence") == "low":
+    if not ph:
+        return bad, warn
+    prob = ph.get("desc_problem") or ""
+    if prob in DESC_PROBLEM_UK and ph.get("desc_confidence") != "low":   # 19.10: опис — окремо від упевненості щодо фото
+        q = (ph.get("desc_quote") or "").strip()
+        bad.append("в описі: " + (ph.get("desc_note_uk") or DESC_PROBLEM_UK[prob]).strip().rstrip(".")
+                   + (f" — «{q[:120]}»" if q else ""))
+    elif ph.get("desc_untested"):
+        warn.append("продавець не тестував — бери лише з поправкою на ризик")
+    if ph.get("confidence") == "low" or ph.get("_text_only"):
         return bad, warn
     if ph.get("only_box_or_accessory"):
         bad.append("на фото лише коробка / аксесуар, самого товару не видно")
@@ -202,14 +238,22 @@ SERVER_MSG = "на фото серверна пам'ять (Registered ECC)"
 def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool] | None:
     """→ (рядок для картки, чи є розбіжність) або None (немає ключа / фото / відповіді)."""
     from html import escape
-    if not os.getenv("GEMINI_API_KEY") or not image_urls:
+    desc = (res.get("desc") or "").strip()
+    if not os.getenv("GEMINI_API_KEY") or not (image_urls or desc):
         return None
     exp = expectation(res)
     if exp["kind"] == "other":
         return None
     t0 = time.time()
     imgs = [b for b in (_download(u) for u in image_urls[:MAX_IMAGES]) if b]
-    ph = ask_gemini(imgs, PROMPT.format(title=title.replace('"', "'")[:120]))
+    prompt = PROMPT.format(title=title.replace('"', "'")[:120], desc_fields=DESC_FIELDS if desc else "")
+    if desc:
+        market = res.get("median_sale") or res.get("quick_sale") or 0
+        prompt += DESC_BLOCK.format(price=f"{res.get('price') or 0:.0f}", market=f"{market:.0f}", title=title.replace('"', "'")[:150],
+                                    seller=res.get("ai_seller") or " · ".join(res.get("risk_lines") or []) or "—", desc=desc[:2500].replace(">>>", ">"))
+    ph = ask_gemini(imgs, prompt, allow_text=bool(desc))
+    if ph is not None and not imgs:
+        ph["_text_only"] = True   # без фото — висновки лише з тексту
     if imgs:   # для сторожа: чи відповідає Gemini (research/health.py)
         STATS["ok" if ph else "fail"] += 1
     print(f"   [фото] {len(imgs)} фото, {time.time() - t0:.1f} с: {json.dumps(ph, ensure_ascii=False)[:300] if ph else '—'}")
@@ -219,8 +263,11 @@ def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool]
     label = (ph.get("label_text") or "").strip()
     lbl = f" · наклейка «{escape(label[:60])}»" if label else ""
     if bad:
-        return ("📷 <b>⛔ ФОТО НЕ ЗБІГАЄТЬСЯ З НАЗВОЮ:</b> " + escape("; ".join(bad)) + lbl
+        head = "⛔ НЕ БЕРИ:" if any(b.startswith("в описі") for b in bad) else "⛔ ФОТО НЕ ЗБІГАЄТЬСЯ З НАЗВОЮ:"
+        return ("📷 <b>" + head + "</b> " + escape("; ".join(bad)) + lbl
                 + ("\n📷 ⚠️ " + escape("; ".join(warn)) if warn else "") + "\nНе купуй, поки продавець не пояснить.", True)
+    if ph.get("_text_only"):
+        return ("📝 Опис прочитано ✓" + ("\n📝 ⚠️ " + escape("; ".join(warn)) if warn else ""), False)
     if ph.get("confidence") == "low":
         return "📷 Фото нечіткі — модель не впевнена, глянь сам" + lbl, False
     return "📷 Фото збігається з назвою ✓" + lbl + ("\n📷 ⚠️ " + escape("; ".join(warn)) if warn else ""), False
