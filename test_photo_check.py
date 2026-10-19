@@ -167,6 +167,24 @@ class DescReviewTest(unittest.TestCase):
         self.assertTrue(bad)
         self.assertIn("⛔ НЕ БЕРИ:", line)
 
+    def test_desc_problem_rewrites_card(self):
+        # 19.10: KA 3543763957 — картка «дуже вигідно», ШІ знайшов дефект в описі: увесь текст картки → ⛔, кнопки лишаються
+        import requests
+
+        import photo_check
+        sent = []
+        saved = (photo_check.photo_line, requests.post)
+        photo_check.photo_line = lambda *a: ("📷 <b>⛔ НЕ БЕРИ:</b> в описі: ПК падав — «Selten kam es zu Abstürzen»", True)
+        requests.post = lambda url, data=None, **k: (sent.append(data), type("R", (), {"status_code": 200})())[1]
+        try:
+            add_to_card(9, "ДУЖЕ ВИГІДНО", '{"inline_keyboard": []}', {"price": 200}, "Corsair 2x32GB DDR4", ["u"], collapse_server=True)
+        finally:
+            photo_check.photo_line, requests.post = saved
+        self.assertTrue(sent[0]["text"].startswith("<b>⛔ НЕ БЕРИ:</b> в описі: ПК падав"))
+        self.assertNotIn("ВИГІДНО", sent[0]["text"])
+        self.assertIn("Corsair 2x32GB DDR4</i> · 200 €", sent[0]["text"])
+        self.assertIn("reply_markup", sent[0])
+
 
 if __name__ == "__main__":
     unittest.main()

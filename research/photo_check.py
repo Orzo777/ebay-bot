@@ -293,6 +293,8 @@ def add_to_card(message_id: int | None, html_text: str, reply_markup: str | None
     if folded:   # 03.10: користувач хоче, щоб такі картки відсіювались, а не висіли з ⛔
         text = (f"🗑 <b>Відсіяно: {escape(SERVER_MSG)}</b> — у звичайний ПК не піде\n"
                 f"<i>{escape(title[:90])}</i> · {res.get('price', 0):.0f} €")
+    elif bad and "НЕ БЕРИ" in line:   # 19.10: дефект / не той товар з опису — «вигідно» з картки геть, кнопки лишаються
+        text = line.replace("📷 ", "", 1) + f"\n\n<i>{escape(title[:90])}</i> · {res.get('price', 0):.0f} €"
     data = {"chat_id": config.TELEGRAM_CHAT_ID, "message_id": message_id, "text": text[:4096], "parse_mode": "HTML",
             "disable_web_page_preview": "true"}
     if reply_markup and not folded:   # без reply_markup Telegram прибирає кнопки
