@@ -126,7 +126,7 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
     return {"lots": known, "ask": ask, "ended": ended}
 
 
-MARKET_MIN_DAYS, MARKET_GAP = 3, 3.0
+MARKET_MIN_DAYS, MARKET_GAP = 5, 3.0   # 19.10: користувач — порада з 5-го дня
 
 
 def market_check(lots: list[dict], rows: list[dict], now: datetime | None = None, comp_fn=None) -> list[dict]:

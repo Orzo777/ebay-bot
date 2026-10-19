@@ -327,7 +327,7 @@ class ReviseModeTest(unittest.TestCase):
 
     def test_market_check(self):
         # 19.10: №5 Corsair 2×16 DDR4-2400 — 169 € + 6,49 доставка, а три найдешевші 139 / 140 / 145 → порада серед них;
-        # свіжий лот (< 3 дн.), дешевший за конкурентів, або мінімум прибутку не дає знизити — без поради
+        # свіжий лот (< 5 дн.), дешевший за конкурентів, або мінімум прибутку не дає знизити — без поради
         from datetime import datetime, timezone
         import listings
         now = datetime(2026, 10, 19, tzinfo=timezone.utc)
