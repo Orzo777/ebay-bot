@@ -105,6 +105,27 @@ class TestRisk(unittest.TestCase):
         self.assertFalse(r["hard"])
         self.assertTrue(r["soft"])
 
+    def test_scam_patterns_19_10(self):
+        # 19.10 (G.Skill 2×32 DDR5 «Neu» 210 €, приватний, продано 4 / ще 2, рейтинг −1 — брав оплату й скасовував)
+        from ebay_watch import _details
+        full = {"itemId": "v1|336845197747|0", "title": "G.SKILL Ripjaws S5 64GB DDR5-5600", "price": {"value": "210.00"},
+                "conditionId": "1000", "buyingOptions": ["FIXED_PRICE"],
+                "seller": {"username": "fra-407507", "feedbackScore": 5, "feedbackPercentage": "100.0", "sellerAccountType": "INDIVIDUAL"},
+                "estimatedAvailabilities": [{"estimatedSoldQuantity": 4, "estimatedAvailableQuantity": 2}],
+                "shippingOptions": [{"shippingCost": {"value": "0.00"}}]}
+        self.assertEqual(_details(full), {"private": True, "sold": 4, "units": 6})
+        lst = listing_of(full)
+        self.assertTrue(any("кілька «нових»" in h for h in risk_of(lst, "", 330)["hard"]))      # 64% ринку, «нові», 6 шт, приватний
+        self.assertTrue(any("нереально низька" in h for h in risk_of(lst, "", 600)["hard"]))    # 35% ринку
+        used = listing_of(dict(full, conditionId="3000", seller=dict(full["seller"], feedbackScore=1)))
+        self.assertTrue(any("одноденка" in h for h in risk_of(used, "", 330)["hard"]))         # продано 4, відгуків 1
+        ok = listing_of(dict(full, conditionId="3000", seller=dict(full["seller"], feedbackScore=250),
+                             estimatedAvailabilities=[{"estimatedSoldQuantity": 0, "estimatedAvailableQuantity": 1}]))
+        r = risk_of(ok, "", 330)
+        self.assertEqual(r["hard"], [])
+        self.assertTrue(any("підозріло низька" in x for x in r["soft"]))                         # 64% ринку — лише попередження
+        self.assertEqual(risk_of(ok, "", 1500, auction=True)["hard"], [])                        # аукціон: ціна — ставка
+
     def test_card_renders(self):
         lst = item("Microsoft Xbox Series X 1TB Konsole", 300, offer=True)
         r = evaluate_ebay(lst)

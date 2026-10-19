@@ -76,6 +76,21 @@ def clean_url(url: str | None) -> str | None:
     return f"https://www.ebay.de/itm/{m.group(1)}" if m else url
 
 
+_DETAILS: dict = {}   # 19.10: з повного оголошення (get_item у fetch_desc) — приватний, скільки продано / в наявності
+
+
+def _details(it: dict) -> dict:
+    """Поля, яких немає в результатах пошуку, лише в get_item: тип продавця, продано / в наявності."""
+    sl, av = it.get("seller") or {}, (it.get("estimatedAvailabilities") or [{}])[0]
+    out = {}
+    if sl.get("sellerAccountType"):
+        out["private"] = sl["sellerAccountType"] == "INDIVIDUAL"
+    if av.get("estimatedSoldQuantity") is not None or av.get("estimatedAvailableQuantity") is not None:
+        out["sold"] = int(av.get("estimatedSoldQuantity") or 0)
+        out["units"] = out["sold"] + int(av.get("estimatedAvailableQuantity") or 0)
+    return out
+
+
 def listing_of(it: dict) -> dict:
     so = it.get("shippingOptions") or []
     ship = _num(((so[0] if so else {}).get("shippingCost") or {}).get("value"))
@@ -93,7 +108,7 @@ def listing_of(it: dict) -> dict:
                 images=ebay_images(it),
                 # оголошення з варіантами (колір/модель/ємність): ціна — найдешевшого варіанта, не того, що в назві
                 group=bool(it.get("itemGroupHref") or it.get("itemGroupType") or it.get("itemGroupId")),
-                dist=_num((it.get("distanceFromPickupLocation") or {}).get("value")))
+                dist=_num((it.get("distanceFromPickupLocation") or {}).get("value")), **_details(it))
 
 
 def evaluate_ebay(lst: dict) -> dict:
@@ -182,7 +197,11 @@ def ebay_message(r: dict, offer: int | None = None) -> str:
     return seller_msg.humanize(r, offer, " ".join(parts), "ebay", goal, terms_en, _questions(r, du=False), False)
 
 
-def risk_of(lst: dict, desc: str | None, quick_sale: float) -> dict:
+SCAM_RATIO = 0.45                  # дешевше за 45% «швидкої» ціни на eBay не продають — лише шахраї
+NEW_CONDS = {"1000", "1500"}        # Neu / Neu: Sonstige
+
+
+def risk_of(lst: dict, desc: str | None, quick_sale: float, auction: bool = False) -> dict:
     """Жорсткі ознаки (картки не буде) і м'які (попередження на картці)."""
     hard, soft = [], []
     if desc and _CONTACT.search(desc):
@@ -193,6 +212,19 @@ def risk_of(lst: dict, desc: str | None, quick_sale: float) -> dict:
         hard.append(f"негативний рейтинг продавця ({lst['fb']})")
     elif lst["fb"] == 0 and quick_sale and lst["price"] < 0.75 * quick_sale:
         hard.append("новий акаунт без відгуків і ціна нижче 75% ринку")   # 28.09: Switch 2 за €236 від 0 відгуків
+    # 19.10 (G.Skill 2×32 DDR5 «Neu» за 210 € при ринку ~600 €, приватний, «продано 4», рейтинг −1: брав оплату й скасовував)
+    det = dict(_DETAILS.get(str(lst.get("id")), {}), **{k: lst[k] for k in ("private", "sold", "units") if k in lst})
+    total = (lst["price"] or 0) + (lst.get("ship") or 0)
+    ratio = total / quick_sale if quick_sale and total and not auction else None   # аукціон: ціна — поточна ставка
+    if ratio is not None and ratio < SCAM_RATIO:
+        hard.append(f"ціна нереально низька — {100 * ratio:.0f}% ринку")
+    elif ratio is not None and ratio < 0.8:
+        if lst.get("cond") in NEW_CONDS and det.get("private") and det.get("units", 0) >= 3 and lst["fb"] < 20:
+            hard.append(f"приватний продавець продає кілька «нових» ({det['units']} шт) нижче ринку, відгуків {lst['fb']}")
+        elif det.get("sold", 0) >= 3 and lst["fb"] <= 2:
+            hard.append(f"продано вже {det['sold']}, а відгуків {lst['fb']} — типовий акаунт-одноденка")
+        elif ratio < 0.65:
+            soft.append(f"ціна підозріло низька — {100 * ratio:.0f}% ринку: перевір відгуки продавця")
     if lst["fb"] < 10:
         soft.append(f"мало відгуків ({lst['fb']})")
     if lst["pct"] is not None and lst["fb"] >= 10 and lst["pct"] < 97:
@@ -292,6 +324,7 @@ def fetch_desc(client, item_id: str) -> str | None:
         d = _request_with_backoff("GET", ITEM_URL + item_id, headers=client._headers(), params={})
     except Exception:
         return None
+    _DETAILS[str(item_id)] = _details(d)
     raw = d.get("description") or d.get("shortDescription") or ""
     raw = re.sub(r"(?is)<(style|script)\b.*?</\1\s*>", " ", raw)   # шаблони продавців: десятки КБ CSS перед текстом
     text = html.unescape(re.sub(r"<[^>]+>", " ", raw))
@@ -504,7 +537,7 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
     desc = fetch_desc(client, lst["id"])
     r["desc"] = desc
     broken = broken_reason(desc)
-    risk = risk_of(lst, desc, r.get("quick_sale", 0))
+    risk = risk_of(lst, desc, r.get("quick_sale", 0), auction=auction)
     # аукціон: уточнення за описом (4×8 замість 2×16 тощо) — за умовною ціною; відкидаємо лише інший тип товару
     new = refine_ebay(r, dict(lst, price=999.0), desc) if auction else refine_ebay(r, lst, desc)
     if auction and new is not r and not new.get("wrong_type"):
@@ -678,7 +711,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                     print(f" - [аукціон] {lst['title'][:70]} — за описом не те: {r2.get('refined', '')}")
                     continue
                 r = r2
-                risk = risk_of(lst, desc, r.get("quick_sale", 0))
+                risk = risk_of(lst, desc, r.get("quick_sale", 0), auction=True)
                 print(f" - [аукціон] {lst['title'][:70]} | ставка {lst['price']:.0f}€ -> макс. {r['cap'] - r['ship_in']:.0f}€")
                 if broken_reason(desc) or risk["hard"] or (desc and _DESC_UNTESTED.search(desc)):
                     print("   дефект / шахрай / не тестовано — пропускаю")
