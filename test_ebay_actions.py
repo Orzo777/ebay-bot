@@ -166,6 +166,17 @@ class ActionsTest(unittest.TestCase):
         sent, _, f = run({"action": "offer", "op": "dec", "amount": 140, "title": "Corsair Vengeance LPX 32GB"})
         self.assertEqual(t(f.body("RespondToBestOffer"), "Action"), "Decline")
 
+    def test_counter_shown_first_and_custom_price(self):
+        # 19.10 (користувач: «знизило до якоїсь ціни без мене»): cntq — лише показ ціни, нічого в eBay не надсилає
+        sent, _, f = run({"action": "offer", "op": "cntq", "act": "7", "amount": 140, "title": "Corsair Vengeance LPX 32GB"})
+        self.assertNotIn("RespondToBestOffer", [c for c, _ in f.calls])
+        self.assertIn("бот пропонує <b>149 €</b>", sent[0][0])
+        self.assertEqual(sent[0][1]["inline_keyboard"][0][0]["callback_data"], "e|7|c149")
+        sent, _, f = run({"action": "offer", "op": "cnt", "counter": 155, "amount": 140, "title": "Corsair Vengeance LPX 32GB"})
+        self.assertEqual(float(t(f.body("RespondToBestOffer"), "CounterOfferPrice")), 155.0)
+        sent, _, f = run({"action": "offer", "op": "cnt", "counter": 130, "amount": 140, "title": "Corsair Vengeance LPX 32GB"})
+        self.assertIn("не підходить", sent[0][0])                     # нижче за пропозицію покупця — не шлемо
+
     def test_offer_gone(self):
         sent, _, f = run({"action": "offer", "op": "acc", "amount": 99, "title": "Xbox Series X"})
         self.assertNotIn("RespondToBestOffer", [c[0] for c in f.calls])

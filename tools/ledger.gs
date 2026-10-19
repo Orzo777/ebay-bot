@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-18m';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-19a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1030,6 +1030,7 @@ function ebayCommand_(msg) {
   if ((m = t.match(/^\/?спостерігачам\s+(\d{1,4})\s+(\d{1,5})$/i))) { watchersAsk_(Number(m[1]), Number(m[2])); return true; }
   if ((m = t.match(/^\/?додати-до\s+(\d{1,4})$/i))) { mergeCommand_(Number(m[1])); return true; }
   if ((m = t.match(/^\/?окремо\s+(\d{1,4})$/i))) { publishCommand_(Number(m[1]), false, true); return true; }
+  if (counterCommand_(msg)) return true;
   if ((m = t.match(/^\/?так-спостер\s+(\d{1,4})$/i))) {
     const props = PropertiesService.getScriptProperties(), pend = JSON.parse(props.getProperty('OFFER_PENDING') || '{}');
     const n = Number(m[1]), price = pend[n], r = rowByN_(n);
@@ -1153,7 +1154,7 @@ function feedbackToEbay_(n, title) {
 /** e|id|send/acc/cnt/dec — питання і пропозиції з листів eBay; p|N|ціна — «⬇️ Знизити» з тижневого звіту. */
 function ebayCallback_(cq, chat) {
   const data = String(cq.data || ''), from = cq.message && cq.message.chat ? cq.message.chat.id : '';
-  const ex = data.match(/^e\|(\d{1,6})\|(send|acc|cnt|dec)$/), pc = data.match(/^p\|(\d{1,4})\|(\d{1,5})$/);
+  const ex = data.match(/^e\|(\d{1,6})\|(send|acc|cnt|dec|c\d{1,5})$/), pc = data.match(/^p(p?)\|(\d{1,4})\|(\d{1,5})$/);
   const wc = data.match(/^w\|(\d{1,4})\|(\d{1,5})$/);
   if (wc) {   // 18.10: «💌 спостерігачам X €» — спершу підтвердження (прийняту пропозицію скасувати не можна)
     tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: '💌 Пропозиція' });
@@ -1161,23 +1162,51 @@ function ebayCallback_(cq, chat) {
     return true;
   }
   if (!ex && !pc) return false;
-  const label = ex ? { send: '📨 Надсилаю', acc: '✅ Приймаю', cnt: '🔁 Зустрічна', dec: '✖️ Відхиляю' }[ex[2]] : '⬇️ Знижую';
+  const label = ex ? ({ send: '📨 Надсилаю', acc: '✅ Приймаю', cnt: '🔁 Рахую зустрічну', dec: '✖️ Відхиляю' }[ex[2]] || '🔁 Надсилаю зустрічну')
+    : pc[1] ? '⬇️ Знижую' : '⬇️ Ціна';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: label });
   if (!chat || String(from) !== String(chat)) return true;
+  if (ex && ex[2] === 'cnt') {   // 19.10: «🔁 Зустрічна» — спершу ціна (показує бот), надсилає лише «✅ Надіслати X €» / «зустрічна X»
+    const a = JSON.parse(PropertiesService.getScriptProperties().getProperty('EBAY_ACT') || '{}')[ex[1]];
+    if (!a) { notify_('Ця кнопка застаріла — відповідай в eBay.'); return true; }
+    PropertiesService.getScriptProperties().setProperty('OFFER_LAST', ex[1]);
+    const code = ebayAct_(Object.assign({}, a, { op: 'cntq', act: ex[1] }));
+    if (code && code !== 204) notify_('⚠️ Не зміг запустити (GitHub ' + code + ').');
+    return true;
+  }
   if (ex) {   // відповідь — одна: кнопки з картки прибираємо (посилання лишаємо)
     const kb = ((cq.message.reply_markup || {}).inline_keyboard || [])
       .map(function (row) { return row.filter(function (b) { return !b.callback_data; }); }).filter(function (row) { return row.length; });
     tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: kb }) });
     const a = JSON.parse(PropertiesService.getScriptProperties().getProperty('EBAY_ACT') || '{}')[ex[1]];
     if (!a) { notify_('Ця кнопка застаріла — відповідай в eBay.'); return true; }
-    const code = ebayAct_(Object.assign({}, a, { op: ex[2] }));
+    const cm = ex[2].match(/^c(\d{1,5})$/);
+    const code = ebayAct_(Object.assign({}, a, cm ? { op: 'cnt', counter: Number(cm[1]) } : { op: ex[2] }));
     if (code) notify_(code === 204 ? label + ' в eBay — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
     return true;
   }
-  const n = Number(pc[1]), r = rowByN_(n);
+  const n = Number(pc[2]), r = rowByN_(n);
   if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
-  const code = ebayAct_({ action: 'revise', row: n, title: r.title, price: Number(pc[2]), item_id: itemIdOf_(n) });
-  if (code) notify_(code === 204 ? '⬇️ Знижую ціну №' + n + ' до ' + pc[2] + ' € на eBay — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+  if (!pc[1]) {   // 19.10: «⬇️ №N → X €» — спершу підтвердження з ціною; інша ціна — «ціна N X» → 🔁
+    notify_('⬇️ Знизити ціну №' + n + ' на eBay до <b>' + pc[3] + ' €</b>? Пороги пропозицій перерахуються.\n' +
+            'Інша ціна — напиши <code>ціна ' + n + ' ' + pc[3] + '</code> (зміни число) → «🔁 Оновити».',
+            { inline_keyboard: [[{ text: '✅ Так, ' + pc[3] + ' €', callback_data: 'pp|' + n + '|' + pc[3] }]] }, 'HTML');
+    return true;
+  }
+  const code = ebayAct_({ action: 'revise', row: n, title: r.title, price: Number(pc[3]), item_id: itemIdOf_(n) });
+  if (code) notify_(code === 204 ? '⬇️ Знижую ціну №' + n + ' до ' + pc[3] + ' € на eBay — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
+  return true;
+}
+
+/** 19.10: «зустрічна 170» — своя ціна зустрічної на останню пропозицію, для якої натиснуто «🔁 Зустрічна». */
+function counterCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?зустрічна\s+(\d{1,5})(?:\s*€)?$/i);
+  if (!m) return false;
+  const props = PropertiesService.getScriptProperties(), id = props.getProperty('OFFER_LAST');
+  const a = id ? JSON.parse(props.getProperty('EBAY_ACT') || '{}')[id] : null;
+  if (!a) { notify_('Спершу натисни «🔁 Зустрічна» під пропозицією покупця — тоді «зустрічна 170».'); return true; }
+  const code = ebayAct_(Object.assign({}, a, { op: 'cnt', counter: Number(m[1]) }));
+  if (code) notify_(code === 204 ? '🔁 Надсилаю зустрічну ' + m[1] + ' € — до 2 хвилин.' : '⚠️ Не зміг запустити (GitHub ' + code + ').');
   return true;
 }
 

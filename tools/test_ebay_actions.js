@@ -98,7 +98,12 @@ const om = ctx.ebayMailButtons_({ kind: 'offer', role: 'seller', amount: 140, it
 check('offer buttons', datas(om).map((d) => d.split('|')[2]), ['acc', 'cnt', 'dec']);
 cb(datas(om)[1], 72, om);
 p = opened();
-check('offer counter dispatched', [p.action, p.op, p.amount], ['offer', 'cnt', 140]);
+// 19.10: «🔁» — спершу лише розрахунок (cntq) з номером дії; надсилає «✅ Надіслати X €» (e|id|cX) або «зустрічна X»
+check('offer counter: query first', [p.action, p.op, p.amount, !!p.act], ['offer', 'cntq', 140, true]);
+cb('e|' + p.act + '|c165', 190);
+check('counter confirmed with price', [opened().op, opened().counter], ['cnt', 165]);
+say('зустрічна 170');
+check('own counter price', [opened().op, opened().counter, /Надсилаю зустрічну 170/.test(last()[0])], ['cnt', 170, true]);
 // пропозиція, де користувач — покупець: кнопок немає
 check('buyer side: no buttons', ctx.ebayMailButtons_({ kind: 'offer', role: 'buyer', amount: 50 }, null), null);
 // чужий чат і застарілий номер
@@ -108,13 +113,17 @@ cb('e|99999|acc', 74);
 check('foreign chat / stale: nothing dispatched', [gh.length, /застаріла/.test(last()[0])], [g1, true]);
 
 // «⬇️ Знизити» з тижневого звіту → revise з ціною; назад «repriced» → нотатка
+const gCut = gh.length;
 cb('p|1|140', 75);
+check('price cut asks first', [gh.length, /Знизити ціну №1 на eBay до <b>140 €/.test(last()[0]), last()[1].inline_keyboard[0][0].callback_data],
+  [gCut, true, 'pp|1|140']);
+cb('pp|1|140', 191);
 p = opened();
 check('revise dispatched', [p.action, p.row, p.price, p.title], ['revise', 1, 140, 'Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200']);
 ctx.sealedPost(ctx.seal_({ kind: 'repriced', row: 1, price: 140, item_id: '1234567890' }, '123:ABC', 'n5'));
 check('repriced note', /ціна знижена до 140 € 09.10 \(eBay 1234567890\)/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]), true);
 // номер eBay з нотаток іде в наступні дії
-cb('p|1|130', 76);
+cb('pp|1|130', 76);
 check('item id from note', opened().item_id, '1234567890');
 
 // «✅ Межі оновив» → ka_bounds.yml

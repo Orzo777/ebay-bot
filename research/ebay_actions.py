@@ -303,8 +303,22 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
             return send(f"🤝 Не знайшов активної пропозиції {d.get('amount') or ''} € (активних: {len(offers)}) — "
                         "мабуть, вона вже прийнята, відхилена або прострочена.", None)
         op = d.get("op")
+        if op == "cntq":   # 19.10 (користувач: «знизило до якоїсь ціни без мене»): спершу показати ціну — надсилає лише «✅»
+            lp = listing_prices(o["item_id"], token, post)
+            c = counter_price(o["price"], lp)
+            info = " · ".join(x for x in [f"ціна на eBay {lp['price']:.0f} €" if lp.get("price") else "",
+                                          f"автоприйняття від {lp['accept']:.0f} €" if lp.get("accept") else ""] if x)
+            return send(f"🔁 <b>Зустрічна</b> на {o['price']:.0f} € від {html.escape(o['buyer'])}: бот пропонує <b>{c} €</b>"
+                        + (f" ({info})" if info else "") + ".\nСвоя ціна — напиши <code>зустрічна 170</code> (вище за його "
+                        f"{o['price']:.0f} € і нижче за ціну на eBay).",
+                        {"inline_keyboard": [[{"text": f"✅ Надіслати {c} €", "callback_data": f"e|{d.get('act')}|c{c}"}]]}
+                        if d.get("act") else None)
         if op == "cnt":
-            c = counter_price(o["price"], listing_prices(o["item_id"], token, post))
+            lp = listing_prices(o["item_id"], token, post)
+            c = int(d.get("counter") or counter_price(o["price"], lp))
+            if c <= o["price"] or (lp.get("price") and c >= lp["price"]):
+                return send(f"🔁 Зустрічна має бути вище за пропозицію покупця ({o['price']:.0f} €)"
+                            + (f" і нижче за ціну на eBay ({lp['price']:.0f} €)" if lp.get("price") else "") + f" — {c} € не підходить.", None)
             ok, errs = respond_offer(o, "Counter", token, post, c)
             return send(f"🔁 Зустрічна пропозиція <b>{c} €</b> надіслана {html.escape(o['buyer'])} (він пропонував {o['price']:.0f} €)." if ok
                         else f"⚠️ eBay не прийняв зустрічну:\n{_errs(errs)}", None)
