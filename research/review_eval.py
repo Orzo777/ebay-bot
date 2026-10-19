@@ -92,7 +92,7 @@ def main():
                 bad_ok += flagged
             else:
                 good_ok += not flagged
-    print(f"\nПІДСУМОК: погані зловлено {bad_ok}/{len(BAD)}, нормальні пропущено {good_ok}/{len(GOOD)}")
+    print(f"\nПІДСУМОК: погані зловлено {bad_ok}/{len(BAD)}, нормальні пропущено {good_ok}/{len(good)}")
 
 
 if __name__ == "__main__":
