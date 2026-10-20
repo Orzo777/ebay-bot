@@ -104,7 +104,7 @@ class ItemXmlTest(unittest.TestCase):
         self.assertEqual(t(it, "PrimaryCategory/CategoryID"), "170083")
         self.assertEqual(t(it, "ConditionID"), "3000")
         self.assertEqual(float(t(it, "StartPrice")), ip["item"])
-        self.assertEqual(float(t(it, "ShippingDetails/ShippingServiceOptions/ShippingServiceCost")), 6.49)
+        self.assertEqual(float(t(it, "ShippingDetails/ShippingServiceOptions/ShippingServiceCost")), 6.19)
         self.assertEqual(t(it, "ShippingDetails/ShippingServiceOptions/ShippingService"), "DE_DHLPaket")
         self.assertEqual(t(it, "ReturnPolicy/ReturnsAcceptedOption"), "ReturnsNotAccepted")
         self.assertEqual(float(t(it, "ListingDetails/BestOfferAutoAcceptPrice")), ip["accept"])
@@ -206,11 +206,29 @@ class EbayModeTest(unittest.TestCase):
              "rt": "RT", "item_id": "336844624233", "edits": {"price": 159}, "photos": [{"id": "P1", "t": "photo"}]}
         ok, sent, back, fake = self.run_mode(d)
         calls = [c[0] for c in fake.calls]
-        self.assertEqual(calls[:2], ["token", "EndFixedPriceItem"])
+        self.assertEqual(calls[:3], ["token", "GetItem", "EndFixedPriceItem"])   # 20.10: спершу — яка доставка
         self.assertIn("AddFixedPriceItem", calls)
         self.assertEqual(back[0], {"kind": "ended", "row": 4, "item_id": "336844624233"})
         self.assertEqual(back[1]["kind"], "listed")
         self.assertEqual(t(fake.item("AddFixedPriceItem"), "StartPrice"), "159.00")
+        self.assertEqual(t(fake.item("AddFixedPriceItem"), "ShippingDetails/ShippingServiceOptions/ShippingServiceCost"), "6.19")   # не знайшли доставку — як завжди
+
+    def test_relist_keeps_free_shipping(self):
+        # 20.10: користувач увімкнув безкоштовну доставку (Hermes) — нове оголошення має лишити її, ціна товару та сама
+        class Free(FakeEbay):
+            def __call__(self, url, headers=None, data=None, files=None, timeout=None):
+                if headers and headers.get("X-EBAY-API-CALL-NAME") == "GetItem":
+                    self.calls.append(("GetItem", data))
+                    return xml_resp("GetItem", "<Item><ShippingDetails><ShippingServiceOptions><ShippingService>DE_HermesPaket"
+                                               "</ShippingService><ShippingServiceCost currencyID=\"EUR\">0.0</ShippingServiceCost>"
+                                               "<FreeShipping>true</FreeShipping></ShippingServiceOptions></ShippingDetails></Item>")
+                return super().__call__(url, headers, data, files, timeout)
+        d = {"mode": "relist", "row": 8, "title": "G.SKILL FORTIS 32GB (2x16GB) DDR4-2400 F4-2400C16D DIMM", "cost": 120,
+             "rt": "RT", "item_id": "336849477931", "edits": {"price": 169}, "photos": [{"id": "P1", "t": "photo"}]}
+        ok, sent, back, fake = self.run_mode(d, Free())
+        item = fake.item("AddFixedPriceItem")
+        self.assertEqual([t(item, "StartPrice"), t(item, "ShippingDetails/ShippingServiceOptions/ShippingService"), t(item, "ShippingDetails/ShippingServiceOptions/ShippingServiceCost"), t(item, "ShippingDetails/ShippingServiceOptions/FreeShipping")],
+                         ["169.00", "DE_HermesPaket", "0.00", "true"])
 
     def test_add_quantity(self):
         # 18.10: +1 шт до живого оголошення: доступно = Quantity − QuantitySold, + 1

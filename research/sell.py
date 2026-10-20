@@ -36,7 +36,7 @@ RAM_CAT, CONSOLE_CAT = "170083", "139971"
 MIN_PROFIT_ABS, MIN_PROFIT_PCT = 5.0, 0.10      # нижче цього прибутку автоматично НЕ погоджуємось
 # 10.10: фірмовий DDR4 2×16 пішов за хвилини через автоприйняття 147 € (93%) — поріг ближче до ціни
 ACCEPT_SHARE, DECLINE_SHARE = 0.96, 0.90        # від ціни оголошення / від «швидкої» ціни
-SHIP_CHARGE_RAM = 6.49   # 09.10: доставку платить покупець окремим рядком (DHL Paket), як купує й сам користувач
+SHIP_CHARGE_RAM = 6.19   # 09.10: доставку платить покупець окремим рядком (DHL Paket); 20.10: 6,19 — як у конкурентів (= наша вартість DHL)
 LOW_SHARE = 0.92                                # нижче 92% «швидкої» ціни не ставимо
 COMP_PAGES = 3                                  # конкуренти: до 3 сторінок по 200 (3 виклики Browse API)
 
@@ -456,7 +456,8 @@ def apply_edits(r: dict, pr: dict, tx: dict, cost: float | None, ed: dict | None
     return done
 
 
-def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, edits: dict | None = None) -> dict | None:
+def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, edits: dict | None = None,
+            ship: dict | None = None) -> dict | None:
     """Товар → ринок, ціна, німецькі тексти (спільне для картки й автопублікації). None — не впізнали."""
     r = identify(title)
     if not r:
@@ -471,6 +472,8 @@ def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=comp
         pr["warn"].insert(0, f"з назви не видно, скільки планок — порахував як ОДНУ на {r['spec']['total']} ГБ. "
                              f"Якщо це кіт, напиши: продати {row or 'N'} <назва з 2x…GB>")
     tx = ram_texts(title, r) if r["kind"] == "ram" else console_texts(title, r)
+    if ship:   # 20.10: перевиставлення — доставка як у старому оголошенні (безкоштовна лишається безкоштовною)
+        tx.update(ship=float(ship["cost"]), ship_service=ship.get("service"), ship_free=bool(ship.get("free")))
     edited = apply_edits(r, pr, tx, cost, edits)
     return dict(r=r, pr=pr, comp=comp, tx=tx, edited=edited)
 
@@ -747,7 +750,12 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         if not d.get("rt") or not item_id:
             return send(f"⚠️ Не знаю оголошення eBay для {what} — перевиставити не можу.", None)
         try:
-            res = el.end_item(item_id, el.access_token(d["rt"], app, cert, post), post)
+            token = el.access_token(d["rt"], app, cert, post)
+            try:
+                ship = el.shipping_of(item_id, token, post)
+            except el.EbayError:
+                ship = None
+            res = el.end_item(item_id, token, post)
         except el.AuthError as e:
             back({"kind": "ebay_bad"}, key)
             return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід».", None)
@@ -756,7 +764,7 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         if not res["ok"]:
             return send(f"⚠️ eBay не завершив {what}:\n{_short(res['errors'])}\nНічого не змінено.", None)
         back({"kind": "ended", "row": row, "item_id": item_id}, key)
-        return ebay_mode(dict(d, mode="publish", item_id=""), key, post, file_fn, send, back, comp_fn)
+        return ebay_mode(dict(d, mode="publish", item_id="", ship=ship), key, post, file_fn, send, back, comp_fn)
     if mode == "revise":   # 16.10: «🔁 Оновити на eBay» — правки в живе оголошення
         return revise_mode(d, key, app, cert, post, file_fn, send, back, comp_fn)
     if mode == "listings":   # 16.10: «🏷 Виставлено» — активні лоти eBay (перегляди, спостерігачі) + KA з обліку
@@ -835,7 +843,7 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
     if not d.get("rt"):
         return send("🔑 eBay ще не підключено — напиши «ebay вхід».", None)
     p = prepare(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, row, comp_fn,
-                d.get("edits"))
+                d.get("edits"), d.get("ship"))
     if not p:
         return send(f"🤔 Не впізнав товар {what} — виставляти автоматично не буду. Напиши «продати {row} &lt;назва повніше&gt;».", None)
     tx, pr = p["tx"], p["pr"]

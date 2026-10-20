@@ -181,7 +181,8 @@ def item_xml(kind: str, tx: dict, prices: dict, pics: list[str], sku: str, durat
             "<PictureDetails>" + "".join(f"<PictureURL>{_x(u)}</PictureURL>" for u in pics[:MAX_PHOTOS]) + "</PictureDetails>"
             f"<ItemSpecifics>{spec}</ItemSpecifics>{best}"
             "<ShippingDetails><ShippingType>Flat</ShippingType><ShippingServiceOptions><ShippingServicePriority>1</ShippingServicePriority>"
-            f"<ShippingService>{SHIP_SERVICE}</ShippingService>{eur('ShippingServiceCost', tx['ship'])}</ShippingServiceOptions></ShippingDetails>"
+            f"<ShippingService>{_x(tx.get('ship_service') or SHIP_SERVICE)}</ShippingService>{eur('ShippingServiceCost', tx['ship'])}"
+            + ("<FreeShipping>true</FreeShipping>" if tx.get("ship_free") else "") + "</ShippingServiceOptions></ShippingDetails>"
             "<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>"
             "</Item>")
 
@@ -201,6 +202,21 @@ def add_quantity(item_id: str, token: str, post, n: int = 1) -> dict:
                    token, post)
     errs, _ = problems(root)
     return {"ok": not errs, "qty": qty, "errors": errs}
+
+
+def shipping_of(item_id: str, token: str, post) -> dict | None:
+    """20.10 (користувач увімкнув безкоштовну доставку на лотах): доставка живого оголошення — щоб «♻️ Перевиставити»
+    її зберіг. → {service, cost, free} або None."""
+    root = trading("GetItem", f"<ItemID>{_x(item_id)}</ItemID><DetailLevel>ReturnAll</DetailLevel>", token, post)
+    opt = root.find(f"{NS}Item/{NS}ShippingDetails/{NS}ShippingServiceOptions")
+    if opt is None or not opt.findtext(NS + "ShippingService"):
+        return None
+    free = (opt.findtext(NS + "FreeShipping") or "").lower() == "true"
+    try:
+        cost = 0.0 if free else float(opt.findtext(NS + "ShippingServiceCost") or 0)
+    except ValueError:
+        return None
+    return {"service": opt.findtext(NS + "ShippingService"), "cost": cost, "free": free or cost == 0}
 
 
 def end_item(item_id: str, token: str, post) -> dict:

@@ -131,16 +131,16 @@ class StepsTest(unittest.TestCase):
                  "DETAILS ZUR LIEFERUNG", "ANGEBOT BEWERBEN", "Angebot einstellen"]
         self.assertEqual([steps.index(x) for x in order], sorted(steps.index(x) for x in order))   # порядок як у формі
         for f in ("Produktart: <code>DDR4 SDRAM</code>", "Herstellernummer: <code>CMK32GX4M2B3200C16</code>",
-                  "Anzahl der Pins: <code>288</code>", "Käufer zahlt: <code>6,49</code>", "DHL Paket", "виставив 2 "):
+                  "Anzahl der Pins: <code>288</code>", "Käufer zahlt: <code>6,19</code>", "DHL Paket", "виставив 2 "):
             self.assertIn(f, steps)
         self.assertIn("ECC-Speicher", steps)   # попередження не тиснути «Alle übernehmen»
-        # платна доставка: ціна товару = «разом» мінус 6,49, пороги теж
+        # платна доставка: ціна товару = «разом» мінус 6,19, пороги теж
         pr = sell.plan_price(r, 70.63, [])
         ip = sell.item_prices(pr, sell.SHIP_CHARGE_RAM)
-        self.assertEqual(ip["item"], round(pr["list"] - 6.49))
+        self.assertEqual(ip["item"], round(pr["list"] - 6.19))
         self.assertIn(f"Artikelpreis: <code>{ip['item']},00</code>", steps)
         self.assertIn(f"Automatisch akzeptieren: <code>{ip['accept']},00</code>", steps)
-        self.assertIn(f"<b>{ip['item']} €</b> + доставка 6,49 €", text)
+        self.assertIn(f"<b>{ip['item']} €</b> + доставка 6,19 €", text)
         self.assertNotIn("kostenlos", tx["desc"].lower())
         self.assertNotRegex(tx["desc"], r"[а-яіїє]")
 

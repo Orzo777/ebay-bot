@@ -55,7 +55,9 @@ class WeeklyTest(unittest.TestCase):
         t = "\n".join(wr.stale(ROWS, TODAY, lambda r: calls.append(r) or [520, 530, 540]))
         self.assertIn("№4 Sony PS5 Slim Disc 1TB — 7 дн. на руках і ще не виставлено → «продати 4»", t)
         # третій найдешевший 540 → 539 разом; 10.10: ціна товару без доставки 10,49 → 529
-        self.assertIn("№5 Xbox Series X 1TB — 15 дн. і не продано → постав <b>529 €</b> + доставка 10,49 €", t)
+        # 20.10: доставка лотів різна — ціна «разом» і обидва варіанти; кнопка «⬇️» — у щоденній перевірці цін
+        self.assertIn("№5 Xbox Series X 1TB — 15 дн. і не продано → постав <b>539 €</b> разом з доставкою "
+                      "(з безкоштовною — ціна 539 €, з платною — 529 € + 10,49 €)", t)
         self.assertIn("№6 Nintendo Switch OLED — куплено 13 дн. тому, досі «В дорозі»", t)
         self.assertNotIn("№7", t)
         self.assertEqual(len(calls), 1)
@@ -267,11 +269,7 @@ class ButtonsTest(unittest.TestCase):
         datas = [b["callback_data"] for row in kb for b in row]
         self.assertIn("c|межі|1", datas)
         self.assertIn("Межі підписок KA", text)
-        cuts = [d for d in datas if d.startswith("p|")]
-        self.assertTrue(cuts)
-        for d in cuts:
-            n = int(d.split("|")[1])
-            self.assertEqual(next(r for r in ROWS if r["n"] == n)["status"], "Виставлено")
+        self.assertEqual([d for d in datas if d.startswith("p|")], [])   # 20.10: «⬇️» — у щоденній перевірці (там видно доставку)
         kb2 = []
         wr.build(ROWS, TODAY, {}, {}, lambda r: [520, 530, 540], kb=kb2, ebay_on=False, bounds_fn=lambda: [])
         self.assertEqual(kb2, [])

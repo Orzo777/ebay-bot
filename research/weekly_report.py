@@ -301,9 +301,10 @@ def stale(rows: list[dict], today: date, market=sell.competitors, cuts: list | N
             # 10.10: ціна товару + доставка окремо (як в оголошенні з 09.10), а не «разом»
             ship = sell.SHIP_CHARGE_RAM if ident["kind"] == "ram" else (ident.get("ship_out") or sell.console_alert.SHIP)
             item = sell.item_prices(pr, ship)["item"]
-            if cuts is not None and r["status"] == "Виставлено":
-                cuts.append((r["n"], item))
-            out.append(f"• {name} — {age} дн. і не продано → постав <b>{item} €</b> + доставка {sell.money_de(ship)} €"
+            # 20.10: доставка лотів різна (безкоштовна / платна) — тут її не видно, тож ціна «разом» і без кнопки;
+            # точна ціна з кнопкою «⬇️» — у щоденній перевірці цін (listings.market_check бере доставку з eBay)
+            out.append(f"• {name} — {age} дн. і не продано → постав <b>{pr['list']:.0f} €</b> разом з доставкою "
+                       f"(з безкоштовною — ціна {pr['list']:.0f} €, з платною — {item} € + {sell.money_de(ship)} €)"
                        + (f" · ще +{pr['profit_list']:.0f} €" if pr.get("profit_list") is not None else "")
                        + (f" (найдешевші {', '.join(f'{c:.0f}' for c in comp[:3])} €)" if comp else ""))
         if ns is not None and len(out) > before:
