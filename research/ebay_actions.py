@@ -272,6 +272,12 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
         ok, errs = leave_feedback(line, token, post)
         return send(f"⭐ Відгук покупцю {html.escape(line['buyer'])} за {what} залишено." if ok
                     else f"⚠️ eBay не прийняв відгук {what}:\n{_errs(errs)}", None)
+    if a == "delist":   # 22.10: продано на KA → з eBay: кількість −1 або завершити
+        res = el.reduce_or_end(d.get("item_id") or "", token, post)
+        if not res["ok"]:
+            return send(f"⚠️ Не зміг зняти {what} з eBay:\n{_errs(res['errors'])}\nЗніми вручну: Mein eBay → Verkaufen → Aktiv → «Beenden».",
+                        None)
+        return send(f"⏹ {what}: на eBay лишилось {res['left']} шт." if res["left"] else f"⏹ {what} знято з eBay.", None)
     if a == "revise":
         lst = active_listings(token, post)
         it = pick(lst, d.get("item_id") or "", row, title)

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-19e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-22a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -460,6 +460,7 @@ function processLedger() {
       } else if (p.kind === 'sale') {
         row = (p.id && rowByListing_(p.id)) || findRow_(null, p.title, true);   // 17.10: спершу номер оголошення eBay
         if (row) {
+          const was = deals.getRange(row, COL.status).getValue();
           deals.getRange(row, COL.sdate).setValue(p.date);
           deals.getRange(row, COL.sto).setValue(p.src);
           if (p.total != null || p.price != null) deals.getRange(row, COL.sprice).setValue(p.total != null ? p.total : p.price);
@@ -468,8 +469,10 @@ function processLedger() {
           what = 'продаж записано';
           notify_('💰 Продано №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
                   '\n📮 Відправ за 1–3 робочі дні, потім «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» або фото квитанції з підписом «' +
-                  (row - LEDGER_FIRST + 1) + '» — трек піде в eBay, покупцю — подяка.', btns_([['відправив', row - LEDGER_FIRST + 1]]));
+                  (row - LEDGER_FIRST + 1) + '»' + (/ebay/i.test(String(p.src || '')) ? ' — трек піде в eBay, покупцю — подяка.' : '.'),
+                  btns_([['відправив', row - LEDGER_FIRST + 1]]));
           try { packCheck_(row - LEDGER_FIRST + 1); } catch (e) { console.log('запакуй: ' + e); }
+          try { soldElsewhere_(row - LEDGER_FIRST + 1, p.src, true, was === 'Виставлено'); } catch (e) { console.log('зняти: ' + e); }
           if (/ebay/i.test(String(p.src || ''))) feedbackToEbay_(row - LEDGER_FIRST + 1, p.title);
         } else { what = 'продаж: не знайшов, що це за товар — впиши вручну'; }
       }
@@ -531,7 +534,8 @@ const MENU = {
   sell: ['💶 Продаж', '• продати — що вже можна продавати; продати 3 — готове оголошення (ціна, назва, опис німецькою) ' +
     'і кнопка «🚀 Виставити на eBay»; ✏️ — змінити ціну, назву, опис чи фото («ціна 3 145»); уже виставлене — 🔁 Оновити на eBay\n' +
     '• відправив 3 трек — трек піде в eBay сам, покупцю — подяка\n' +
-    '• виставив 3 124 — якщо виставив сам\n' +
+    '• виставив 3 124 — якщо виставив сам; виставив 3 ka 129 — лот ще й на Kleinanzeigen (продасться там — з eBay зніму сам)\n' +
+    '• зняти 3 — зняти лот з eBay (кількість −1 або завершити)\n' +
     '• виставлено — що зараз на продажу: ціна, дні, перегляди, спостерігачі, посилання (eBay; KA — «Мої оголошення»)\n' +
     '• звірити — звірити eBay з таблицею зараз (саме — раз на 3 години): нові оголошення, ціни, завершені\n' +
     '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати', 'виставлено', 'звірити']],
@@ -680,7 +684,7 @@ function officeMessage(msg) {
       memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       photoDeleteCommand_(msg) ||
       onHandCommand_(msg)) return;
-  if (parcelsCommand_(msg) || listingsCommand_(msg) || editCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || undoCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
+  if (parcelsCommand_(msg) || listingsCommand_(msg) || editCommand_(msg) || ebayCommand_(msg) || boundsCommand_(msg) || stepsCommand_(msg) || sellCommand_(msg) || listedCommand_(msg) || delistCommand_(msg) || undoCommand_(msg) || statusCommand_(msg) || todoCommand_(msg) || ledgerCommand(msg)) return;
   if (/^\/?(звіт|report)(?=\s|$)/i.test(String(msg.text || '').trim())) {
     notify_(weeklyReport() ? '⏳ Готую звіт — приблизно хвилина.' : '⚠️ Не зміг запустити звіт (GitHub).');
     return;
@@ -766,6 +770,7 @@ function ledgerCommand(msg) {
     const row = findRow_(null, title, true);
     if (!row) { notify_('Не знайшов у обліку непроданий товар зі словами «' + title + '». Уточни назву або впиши вручну.'); return true; }
     const sh = ledger_().getSheetByName('Угоди');
+    const was = sh.getRange(row, COL.status).getValue();
     sh.getRange(row, COL.sdate).setValue(new Date());
     sh.getRange(row, COL.sto).setValue(src);
     sh.getRange(row, COL.sprice).setValue(amount);
@@ -776,6 +781,7 @@ function ledgerCommand(msg) {
     notify_('💰 Записав продаж: ' + sh.getRange(row, COL.title).getValue() + ' — ' + amount + ' €' +
             (profit !== '' ? '\nПрибуток ≈ ' + Number(profit).toFixed(2) + ' €' : ''));
     try { packCheck_(row - LEDGER_FIRST + 1); } catch (e) { console.log('запакуй: ' + e); }
+    try { soldElsewhere_(row - LEDGER_FIRST + 1, src, false, was === 'Виставлено'); } catch (e) { console.log('зняти: ' + e); }
   }
   return true;
 }
@@ -1715,6 +1721,7 @@ function listedCommand_(msg, itemId) {
   const props = PropertiesService.getScriptProperties();
   if (String(msg.chat.id) !== String(props.getProperty('TELEGRAM_CHAT_ID')) || !props.getProperty('LEDGER_ID')) return true;
   if (!m[1]) { notify_('Напиши так: «виставив 3 124» — номер у таблиці і ціна (ціну можна не писати).'); return true; }
+  if (/(?:^|\s)(?:ka|ка|kleinanzeigen)(?=\s|$)|kleinanzeigen\.de\/s-anzeige/i.test(String(msg.text || ''))) return listedKa_(Number(m[1]), String(msg.text));
   // 16.10: виставив вручну — номер оголошення з посилання («виставив 4 168 https://www.ebay.de/itm/123…») → працює «🔁 Оновити»
   const link = String(msg.text || '').match(/ebay\.[a-z.]+\/itm\/(?:[^\s\/]+\/)?(\d{9,15})|(?:^|\s)(\d{12})(?:\s|$)/i);
   if (!itemId && link) itemId = link[1] || link[2];
@@ -1739,6 +1746,62 @@ function listedCommand_(msg, itemId) {
           (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '».');   // 18.10: де виставлено — неважливо (eBay бот знайде сам)
   else if (link) notify_('🏷 №' + m[1] + ' — виставлено, оголошення eBay ' + itemId + ' запам\'ятав: «продати ' + m[1] + '» → ✏️ правки → 🔁 Оновити.');
   return true;
+}
+
+
+/** 22.10 (користувач: «продаватимемо й на KA; продалось там — з eBay знімається само, і навпаки»): «виставив 5 ka 179
+ *  [посилання KA]» — лот висить і на Kleinanzeigen. Ціну eBay (LISTED_PRICE) не чіпаємо. */
+function listedKa_(n, text) {
+  const r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
+  if (['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) >= 0) { notify_('№' + n + ' — статус «' + r.status + '», не змінюю.'); return true; }
+  const ad = (text.match(/kleinanzeigen\.de\/s-anzeige\/(?:[^\/\s]+\/)?(\d{8,12})/i) || [])[1] || '';
+  const price = ((text.replace(/https?:\/\/\S+/g, ' ').match(/(?:^|\s)(?:ka|ка|kleinanzeigen)\s+(\d+(?:[.,]\d{1,2})?)(?=\s|$)/i) || [])[1] || '').replace(',', '.');
+  const sh = ledger_().getSheetByName('Угоди'), row = n + LEDGER_FIRST - 1;
+  if (r.status !== 'Виставлено') sh.getRange(row, COL.status).setValue('Виставлено');
+  setEvents_(n, { ka: ad || 1 });
+  const note = String(sh.getRange(row, COL.note).getValue() || '');
+  sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'на KA' + (price ? ' за ' + price + ' €' : '') + ' ' +
+    Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (ad ? ' (KA ' + ad + ')' : ''));
+  notify_('🏷 №' + n + ' «' + r.title + '» — на Kleinanzeigen' + (price ? ' за ' + price + ' €' : '') + '.\n' +
+    (itemIdOf_(n) ? 'Продасться на KA (Direkt kaufen) — з eBay зніму сам; продасться на eBay — нагадаю зняти з KA.'
+      : 'Продав без листа KA (готівкою, самовивіз) — «продав ціна назва».'));
+  return true;
+}
+
+/** «зняти 5» / кнопка «⏹ Зняти з eBay» — оголошення eBay: кількість −1, остання штука — завершити. */
+function delistCommand_(msg) {
+  const m = String(msg.text || '').trim().match(/^\/?зняти\s+(\d{1,4})$/i);
+  if (!m) return false;
+  const n = Number(m[1]), r = rowByN_(n);
+  if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
+  const id = itemIdOf_(n);
+  if (!id) { notify_('Для №' + n + ' не знаю оголошення eBay — зніми вручну (Mein eBay → Verkaufen → Aktiv → «Beenden»).'); return true; }
+  delist_(n, id, r.title);
+  return true;
+}
+
+function delist_(n, id, title) {
+  const props = PropertiesService.getScriptProperties(), asked = JSON.parse(props.getProperty('SYNC_ASKED') || '{}');
+  asked['E' + n + ':' + id] = 1;   // «оголошення більше не активне» — не писати, ми самі зняли
+  props.setProperty('SYNC_ASKED', JSON.stringify(capKeys_(asked, 200)));
+  const code = ebayAct_({ action: 'delist', row: n, item_id: id, title: String(title || '') });
+  if (code && code !== 204) notify_('⚠️ Не зміг зняти №' + n + ' з eBay (GitHub ' + code + ') — зніми вручну: Mein eBay → Verkaufen → Aktiv → «Beenden».');
+}
+
+/** Продаж записано: продано не на eBay, а лот висить на eBay — зняти (з листа KA — одразу; вручну «продав» — кнопкою, бо
+ *  там могли записати й продаж з eBay); продано на eBay, а лот є на KA — нагадати зняти з KA. */
+function soldElsewhere_(n, src, auto, wasListed) {
+  const ev = events_()[n] || {};
+  if (/ebay/i.test(String(src || ''))) {
+    if (ev.ka) notify_('🟢 №' + n + ' продано на eBay — зніми оголошення на Kleinanzeigen, щоб не продати двічі.',
+      { inline_keyboard: [[{ text: '📋 Мої оголошення KA', url: 'https://www.kleinanzeigen.de/m-meine-anzeigen.html' }]] });
+    return;
+  }
+  const id = wasListed ? itemIdOf_(n) : '';
+  if (!id) return;
+  if (auto) { notify_('⏹ №' + n + ' продано на ' + (src || 'KA') + ' — знімаю з eBay.'); delist_(n, id, (rowByN_(n) || {}).title); }
+  else notify_('№' + n + ' ще висить на eBay — продав не там? Зняти:', btns_([['зняти', n]]));
 }
 
 
@@ -2955,7 +3018,7 @@ const BTN = { 'отримав': '📦 Отримав', 'перевірив': '�
   'продати': '💰 Продати', 'фото': '📸 Фото', 'авто': '🚀 Виставити', 'так-авто': '✅ Виставляю', 'межі': '✅ Межі записую',
   'кроки': '📋 Покроково', 'посилки': '📦 Посилки', 'змінити': '✏️ Змінити', 'оновити': '🔁 Оновити', 'так-оновити': '✅ Оновлюю',
   'перевиставити': '♻️ Перевиставити', 'так-перевист': '✅ Перевиставляю', 'так-спостер': '✅ Надсилаю', 'додати-до': '➕ Додаю', 'окремо': '🚀 Виставляю',
-  'назад': '↩️ Скасувати' };
+  'назад': '↩️ Скасувати', 'зняти': '⏹ Зняти з eBay' };
 
 /** [[команда, №], …] → inline-клавіатура (по 2 в ряд); extra — ще один ряд (наприклад, «відстежити»). */
 function btns_(list, extra) {

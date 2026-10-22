@@ -204,6 +204,23 @@ def add_quantity(item_id: str, token: str, post, n: int = 1) -> dict:
     return {"ok": not errs, "qty": qty, "errors": errs}
 
 
+def reduce_or_end(item_id: str, token: str, post) -> dict:
+    """22.10 (продано на KA): кількість −1 на eBay; остання штука — завершити оголошення. → {ok, left, errors}."""
+    root = trading("GetItem", f"<ItemID>{_x(item_id)}</ItemID><DetailLevel>ReturnAll</DetailLevel>", token, post)
+    errs, _ = problems(root)
+    it = root.find(NS + "Item")
+    if errs or it is None:
+        return {"ok": False, "left": 0, "errors": errs or ["оголошення не знайдено"]}
+    avail = max(int(it.findtext(NS + "Quantity") or 1) - int(it.findtext(f"{NS}SellingStatus/{NS}QuantitySold") or 0), 0)
+    if avail > 1:
+        root = trading("ReviseInventoryStatus", f"<InventoryStatus><ItemID>{_x(item_id)}</ItemID><Quantity>{avail - 1}</Quantity>"
+                       "</InventoryStatus>", token, post)
+        errs, _ = problems(root)
+        return {"ok": not errs, "left": avail - 1, "errors": errs}
+    res = end_item(item_id, token, post)
+    return {"ok": res["ok"], "left": 0, "errors": res["errors"]}
+
+
 def shipping_of(item_id: str, token: str, post) -> dict | None:
     """20.10 (користувач увімкнув безкоштовну доставку на лотах): доставка живого оголошення — щоб «♻️ Перевиставити»
     її зберіг. → {service, cost, free} або None."""

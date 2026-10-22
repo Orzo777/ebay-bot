@@ -103,6 +103,20 @@ class ActionsTest(unittest.TestCase):
         self.assertEqual(t(b, "Shipment/ShipmentTrackingDetails/ShippingCarrierUsed"), "DHL")
         self.assertIn("Versendet", sent[0][0])
 
+    def test_delist(self):
+        # 22.10: продано на KA → «⏹ знято з eBay» / «лишилось N шт.»
+        from unittest import mock
+        with mock.patch.object(el, "reduce_or_end", return_value={"ok": True, "left": 0, "errors": []}) as m:
+            sent, _, _ = run({"action": "delist", "row": 5, "item_id": "336849011147", "title": "Corsair"})
+        self.assertEqual(m.call_args[0][0], "336849011147")
+        self.assertIn("№5 знято з eBay", sent[0][0])
+        with mock.patch.object(el, "reduce_or_end", return_value={"ok": True, "left": 1, "errors": []}):
+            sent, _, _ = run({"action": "delist", "row": 6, "item_id": "336849011147", "title": "Corsair"})
+        self.assertIn("лишилось 1 шт", sent[0][0])
+        with mock.patch.object(el, "reduce_or_end", return_value={"ok": False, "left": 0, "errors": ["x"]}):
+            sent, _, _ = run({"action": "delist", "row": 6, "item_id": "1", "title": "Corsair"})
+        self.assertIn("Зніми вручну", sent[0][0])
+
     def test_ship_with_thanks(self):
         sent, _, f = run({"action": "ship", "row": 2, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", "track": "00340434161234567890",
                           "carrier": "DHL", "thanks": True})

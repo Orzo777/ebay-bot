@@ -300,6 +300,26 @@ say('перевиставити 6');
 ctx.officeCallback({ id: 'q', data: 'c|так-перевист|6', message: { chat: { id: 7 }, message_id: 102 } });
 check('shared listing — no auto relist', /спільне з №7/.test(last()[0]), true);
 
+// 22.10: лот і на KA — продано на KA → з eBay знімається; продано на eBay → нагадати зняти з KA
+const lp7 = JSON.parse(store.LISTED_PRICE || '{}')[7];
+say('виставив 7 ka 179 https://www.kleinanzeigen.de/s-anzeige/corsair-32gb/3545123456-225-1234');
+check('listed on KA', [/на KA за 179 € .*\(KA 3545123456\)/.test(deals.cells['11:' + NOTE2]), ctx.events_()[7].ka,
+  JSON.parse(store.LISTED_PRICE || '{}')[7] === lp7, /на Kleinanzeigen за 179 €[\s\S]*з eBay зніму сам/.test(last()[0])],
+  [true, '3545123456', true, true]);
+ctx.soldElsewhere_(7, 'Kleinanzeigen', true, true);
+check('KA sale mail → delist on eBay', [opened().mode, opened().action, opened().item_id, /знімаю з eBay/.test(last()[0])],
+  ['ebay', 'delist', '336849011147', true]);
+ctx.soldElsewhere_(7, 'Kleinanzeigen', false, true);
+check('manual sale → button, nothing dispatched', last()[1].inline_keyboard[0][0].callback_data, 'c|зняти|7');
+ctx.soldElsewhere_(7, 'eBay', true, true);
+check('eBay sale → remove from KA', [/зніми оголошення на Kleinanzeigen/.test(last()[0]), last()[1].inline_keyboard[0][0].url],
+  [true, 'https://www.kleinanzeigen.de/m-meine-anzeigen.html']);
+const ghD = gh.length;
+ctx.soldElsewhere_(7, 'Kleinanzeigen', true, false);
+check('was not listed → nothing', gh.length, ghD);
+say('зняти 7');
+check('«зняти N»', [opened().action, opened().row], ['delist', 7]);
+
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));
 check('rt removed', store.EBAY_RT, undefined);

@@ -245,6 +245,23 @@ class EbayModeTest(unittest.TestCase):
         self.assertEqual(calls[1][0], "ReviseInventoryStatus")
         self.assertIn("<ItemID>336849011147</ItemID><Quantity>2</Quantity>", calls[1][1])
 
+    def test_reduce_or_end(self):
+        # 22.10: продано на KA — на eBay кількість −1 (№5 + №6, 2 шт), остання штука — завершити
+        for qty, sold, want_call, left in ((2, 0, "ReviseInventoryStatus", 1), (2, 1, "EndFixedPriceItem", 0)):
+            calls = []
+
+            def post(url, headers=None, data=None, **k):
+                call = headers["X-EBAY-API-CALL-NAME"]
+                calls.append((call, data.decode()))
+                if call == "GetItem":
+                    return xml_resp(call, f"<Item><Quantity>{qty}</Quantity><SellingStatus><QuantitySold>{sold}</QuantitySold>"
+                                          "</SellingStatus></Item>")
+                return xml_resp(call, "")
+            res = el.reduce_or_end("336849011147", "AT", post)
+            self.assertEqual((res["ok"], res["left"], calls[1][0]), (True, left, want_call))
+            if left:
+                self.assertIn("<Quantity>1</Quantity>", calls[1][1])
+
     def test_merge_mode(self):
         from unittest import mock
         with mock.patch.object(el, "add_quantity", return_value={"ok": True, "qty": 2, "errors": []}):
