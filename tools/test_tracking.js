@@ -97,7 +97,7 @@ const done = {};
 check('carrier mails matched', vm.runInContext('processCarriers_(__log, __done)', Object.assign(ctx, { __done: done })), 3);
 check('purchase delivered → Отримано + test tip', [deals.cells['5:11'], ev()[1].got, sent.slice(n0).some((s) => /№1 .*отримано.*Протестуй/.test(s[0]))],
       ['Отримано', '2026-10-06', true]);
-check('sale delivered to buyer', [ev()[2].outDelivered, sent.slice(n0).some((s) => /✅ №2 .*доставлено покупцю/.test(s[0]))], ['2026-10-06', true]);
+check('sale delivered to buyer', [ev()[2].outDelivered, sent.slice(n0).some((s) => /✅ №2 .*доставлено покупцю. (Відгук покупцю бот поставив|Гроші KA)/.test(s[0]))], ['2026-10-06', true]);
 check('ready in Filiale', [deals.cells['7:11'], sent.slice(n0).some((s) => /№3 .*чекає у відділенні/.test(s[0]))], ['В дорозі', true]);
 check('personal parcel ignored and not logged', [log.rows.length, log.rows.some((r) => /c3/.test(r[0]))], [3, false]);
 const n1 = sent.length;

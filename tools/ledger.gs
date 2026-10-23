@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-22a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-23a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1742,7 +1742,7 @@ function listedCommand_(msg, itemId) {
     sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'виставлено' + (m[2] && !(itemId && m[2] === itemId) ? ' за ' +
       m[2].replace(',', '.') + ' €' : '') + ' ' + Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (itemId ? ' (eBay ' + itemId + ')' : ''));
   }
-  if (!link && !msg._auto) notify_('🏷 №' + m[1] + ' «' + title + '» — виставлено' + (m[2] ? ' за ' + m[2] + ' €' : '') + '. Коли продаси — «продав ' +
+  if (!link && !msg._auto) notify_('🏷 №' + m[1] + ' «' + title + '» — виставлено' + (m[2] ? ' за ' + m[2] + ' €' : '') + '. Продаж на eBay чи через «Direkt kaufen» на KA запишу сам; продаси інакше (готівкою) — «продав ' +
           (m[2] || 'ціна') + ' ' + String(title).split(' ').slice(0, 2).join(' ') + '».');   // 18.10: де виставлено — неважливо (eBay бот знайде сам)
   else if (link) notify_('🏷 №' + m[1] + ' — виставлено, оголошення eBay ' + itemId + ' запам\'ятав: «продати ' + m[1] + '» → ✏️ правки → 🔁 Оновити.');
   return true;
@@ -1801,7 +1801,7 @@ function soldElsewhere_(n, src, auto, wasListed) {
   const id = wasListed ? itemIdOf_(n) : '';
   if (!id) return;
   if (auto) { notify_('⏹ №' + n + ' продано на ' + (src || 'KA') + ' — знімаю з eBay.'); delist_(n, id, (rowByN_(n) || {}).title); }
-  else notify_('№' + n + ' ще висить на eBay — продав не там? Зняти:', btns_([['зняти', n]]));
+  else notify_('№' + n + ' ще висить на eBay. Продав деінде — зніми, щоб не продати двічі:', btns_([['зняти', n]]));
 }
 
 
@@ -2404,7 +2404,12 @@ function outParcel_(n, kind, date) {
   if (kind === 'delivered') {
     if (e.outDelivered) return 'покупцю: уже доставлено';
     setEvents_(n, { outDelivered: iso_(date) });
-    notify_('✅ ' + name + ' доставлено покупцю. Залиш покупцю відгук; гроші — за графіком виплат eBay.');
+    // 23.10 (огляд очима власника): відгук на eBay бот уже поставив після оплати; на KA гроші — після підтвердження покупця
+    const sto = r ? String(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.sto).getValue() || '') : '';
+    notify_('✅ ' + name + ' доставлено покупцю. ' + (/kleinanzeigen|ka\b/i.test(sto)
+      ? 'Гроші KA перерахує, коли покупець підтвердить отримання (або сам через 14 днів).'
+      : /ebay/i.test(sto) || !sto ? 'Відгук покупцю бот поставив після оплати; гроші — за графіком виплат eBay. Строк повернення — 30 днів.'
+      : ''));
     return 'покупцю: доставлено';
   }
   if (kind === 'ready' && !(e.rem || {}).outReady) {
