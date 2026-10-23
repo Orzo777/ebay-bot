@@ -160,6 +160,22 @@ class TestProcess(unittest.TestCase):
         self.assertIn("i7", rmc.pc_text(pcs[0]))
         self.assertEqual((len(self.cards), len(self.hints)), (0, 0))   # у головний бот — нічого
 
+    def test_ram_in_pc_search_goes_to_ram_bot(self):
+        # 23.10: «Acer Predator Pallas II DDR5 RAM 32 6000 MT/S» за 300 € VB у підписці «PCs» — це планки, а не ПК:
+        # ПК-бот рахував «на запчастини», тепер — звичайна картка RAM в основний бот
+        pcs, old = [], (rmc.send_pc_card, rmc.PC_BOT_TOKEN)
+        rmc.send_pc_card, rmc.PC_BOT_TOKEN = pcs.append, "x"
+        try:
+            m = ka_mail("Acer Predator Pallas II DDR5 RAM 32 6000 MT/S", 300)
+            m.replace_header("Subject", "Neue Treffer zu deiner Suche „PCs in Hamburg (+20 km)“")
+            rmc._process(m, 6, False, set(), {})
+        finally:
+            rmc.send_pc_card, rmc.PC_BOT_TOKEN = old
+        self.assertEqual(pcs, [])
+        self.assertEqual(len(self.cards), 1)
+        self.assertIn("DDR5", self.cards[0][0])
+        self.assertTrue(rmc.ram_only("Corsair 32GB DDR4 3200 RAM") and not rmc.ram_only("Gaming PC Ryzen 5 16GB DDR4 RTX 3060"))
+
     def test_pc_gaming_search_and_value_in_description(self):
         # 03.10: «HP Gaming PC» за 549 € — i7-11700F / RTX 3060 Ti / 64 ГБ DDR4 лише в описі; підписка з ключовим словом
         self.assertTrue(rmc.IGNORE_SEARCH_RE.search("Neue Treffer zu deiner Suche „PCs - gaming in Hamburg (+20 km)“"))

@@ -735,6 +735,8 @@ def verdict_head(r: dict) -> str:
     """10.10: перший рядок — рішення і заробіток; 14.10: коротко, торг — окремим рядком у блоці грошей."""
     if r["verdict"] == "NEGOTIATE":
         return f"💬 <b>ТОРГУЙСЯ</b> · зараз {gain(r['profit_est'], r.get('buy_cost'))}"
+    if r.get("unverified"):   # 23.10: дешево, а фото не підтвердили товар — спершу перевір
+        return f"🟠 <b>СПЕРШУ ПЕРЕВІР</b> · якщо справжнє — {gain(r['profit_est'], r.get('buy_cost'))}"
     tag = {"BUY-EXCELLENT": "🟢🟢 <b>ДУЖЕ ВИГІДНО</b>", "BUY-GOOD": "🟢 <b>ВИГІДНО</b>", "BUY": "🟡 <b>БЕРИ</b>"}[r["verdict"]]
     return f"{tag} · <b>{gain(r['profit_est'], r.get('buy_cost'))}</b>"
 

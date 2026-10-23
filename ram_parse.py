@@ -262,6 +262,10 @@ def parse_capacity(t: str):
         return v, 1, None
     if len(singles) > 1:
         return None, None, "кілька ємностей у назві (варіації)"
+    # 23.10: «Acer Predator Pallas II DDR5 RAM 32 6000 MT/S» — ємність без «GB» одразу після «DDR5 / RAM»
+    bare = re.search(r"\b(?:ddr[345]\s+(?:ram\s+)?|ram\s+)(8|16|24|32|48|64|96|128)\b(?!\d|[.,]\d|\s*(?:mhz|mt|x\b|x\d|×|gb|tb|riegel|st(?:ü|ue)ck|stk|module?|sticks?|pcs|teile))", t)
+    if bare and int(bare.group(1)) in SANE_GB:
+        return int(bare.group(1)), 1, None
     return None, None, "ємність не вказана"
 
 

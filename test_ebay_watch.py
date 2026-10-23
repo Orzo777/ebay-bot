@@ -90,6 +90,19 @@ class TestFreshness(unittest.TestCase):
 
 
 class TestRisk(unittest.TestCase):
+    def test_cheap_and_photos_unconfirmed_is_check_first(self):
+        # 23.10: G.Skill Aegis 2×16 3200 за 100 € (65% ринку), «фото нечіткі» — не «БЕРИ», а «СПЕРШУ ПЕРЕВІР»
+        import ebay_watch as ew
+        from ram_alert import verdict_head
+        cheap = {"hard": [], "soft": ["ціна підозріло низька — 65% ринку: перевір відгуки продавця"]}
+        self.assertTrue(ew.unverified(("📷 Фото нечіткі — модель не впевнена, глянь сам", False), cheap))
+        self.assertTrue(ew.unverified(None, cheap))   # фото немає / не перевірено
+        self.assertFalse(ew.unverified(("📷 Фото збігається з назвою ✓", False), cheap))
+        self.assertFalse(ew.unverified(("📷 Фото нечіткі — модель не впевнена, глянь сам", False), {"hard": [], "soft": []}))
+        r = {"verdict": "BUY", "profit_est": 61, "buy_cost": 106, "unverified": True}
+        self.assertIn("СПЕРШУ ПЕРЕВІР", verdict_head(r))
+        self.assertNotIn("БЕРИ", verdict_head(r))
+
     def test_contact_and_payment_block(self):
         lst = item("Xbox Series X", 300)
         self.assertTrue(risk_of(lst, "Bitte per WhatsApp melden 0151 2345678", 545)["hard"])

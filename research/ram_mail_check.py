@@ -483,9 +483,18 @@ def send_pc_card(lst: dict):
     requests.post(f"{config.TELEGRAM_API_BASE}/bot{PC_BOT_TOKEN}/sendMessage", data=payload, timeout=15).raise_for_status()
 
 
-def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: set) -> int:
+def ram_only(title: str) -> bool:
+    """23.10: у підписці «PCs» трапляються самі планки («Acer Predator Pallas II DDR5 RAM 32 6000» за 300 € — ПК-бот рахував
+    їх як ПК на запчастини). Назва розбирається як модуль RAM (ПК, ноутбук, комплект парсер відкидає) → це оперативка."""
+    from ram_parse import parse_title
+    return parse_title(title)[0] is not None
+
+
+def _process_pc(subject: str, body: str, stale: bool, dry_run: bool, seen_ads: set, skip: set | None = None) -> int:
     sent = 0
     for lst in extract_listings(subject, body):
+        if skip and _ad_key(lst) in skip:   # планки RAM — оцінює основний бот
+            continue
         ak = "pc:" + _ad_key(lst)
         if ak in seen_ads or lst.get("gewerblich"):
             continue
@@ -543,10 +552,16 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
     age = _mail_age_hours(msg)
     stale = age is not None and age > max_age_hours
     subject = _decode(msg.get("Subject"))
-    if IGNORE_SEARCH_RE.search(subject):
-        return _process_pc(subject, _body_text(msg), stale, dry_run, seen_ads)
     body = _body_text(msg)
     listings = extract_listings(subject, body)
+    pc_sent = 0
+    if IGNORE_SEARCH_RE.search(subject):   # підписка «PCs»: ПК — у ПК-бот, самі планки RAM — як звичайна RAM (23.10)
+        ram = [lst for lst in listings if ram_only(lst["title"])]
+        pc_sent = _process_pc(subject, body, stale, dry_run, seen_ads, skip={_ad_key(lst) for lst in ram})
+        if not ram:
+            return pc_sent
+        listings, hint_times = ram, None
+        print(f" · у підписці ПК — планки RAM: {len(ram)}")
     sid, slink = search_link(body)
     slink = public_search_url(subject) or slink   # публічна сторінка: відкривається без входу в KA
     shown, shown_verdict, wrong_type = None, None, False
@@ -557,7 +572,7 @@ def _process(msg, max_age_hours: float, dry_run: bool, seen_ads: set, hint_times
               f"{', «' + count.group(0) + '»' if count else ''}")
     if not listings:
         print(f" · [{age or 0:.1f} год] без оголошень: {subject[:70]}")
-    sent = 0
+    sent = pc_sent
     for lst in listings:
         ak = _ad_key(lst)
         if ak in seen_ads:

@@ -278,6 +278,15 @@ def _age_label(lst: dict, now: datetime) -> str:
             else f"{mins / 1440:.0f} дн. тому")
 
 
+def unverified(ph, risk: dict) -> bool:
+    """23.10 (користувач: «лот без фото, а бот каже „бери“, хоча не зрозуміло, що там»): G.Skill Aegis 2×16 3200 за 100 € —
+    ціна 65% ринку, а фото не підтвердили модель. Ціна підозріло низька І фото не підтвердили товар (немає / нечіткі /
+    прочитано лише опис) → не «бери», а «спершу перевір»."""
+    cheap = any(s.startswith("ціна підозріло низька") for s in risk.get("soft") or [])
+    confirmed = bool(ph) and "Фото збігається з назвою" in ph[0]
+    return cheap and not confirmed
+
+
 def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
     """10.10: коротка картка, як на KA; тексти продавцю — лише в кнопках «📋» (keyboard)."""
     from ram_alert import card, gain, verdict_head
@@ -689,12 +698,13 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         if dry_run:
             print("   [DRY RUN] надіслав би картку")
         else:
-            card = format_card(r, lst, risk, why, now)
             r["ai_seller"] = seller_line(lst)   # 19.10: ШІ читає й опис — з даними продавця (у картку не йде)
             ph = photo_line(r, lst["title"], lst.get("images") or [])
             if ph and ph[1]:
                 print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку не надсилаю: " + re.sub(r"<[^>]+>", "", ph[0]).replace("\n", " ")[:200])
                 continue
+            r["unverified"] = unverified(ph, risk)
+            card = format_card(r, lst, risk, why, now)
             send_card(add_check(card, ph[0]) if ph else card, lst["url"], r)
             # 18.10 (воронка в тижневому звіті): скільки «бери» / «торгуйся» дійшло до тебе
             health.bump(state, "ebay_v_" + ("buy" if str(r.get("verdict")).startswith("BUY") else "neg"), 1, now)

@@ -71,5 +71,21 @@ if (gh.length !== 1 || !/ka_reply\.yml\/dispatches$/.test(gh[0][0]) || tg.length
   bad++; console.log('!! via github', gh.length, tg.length - before, JSON.stringify(gh[0] && gh[0][1]));
 }
 
+// 23.10: покупець пише щодо НАШОГО оголошення — «🛍 Покупець пише» у бот обліку, не «Відповідь продавця» і не в GitHub
+const sentOffice = [], gh0 = gh.length;
+ctxRun(`notify_ = function (t, kb) { __so.push([t, kb]); };`, { __so: sentOffice });
+const mkB = (id, body, subj) => { const m = { getId: () => id, getPlainBody: () => body, getBody: () => body, getSubject: () => subj };
+  return { getMessages: () => [m], addLabel: () => {}, moveToTrash: () => trashed.push(id) }; };
+ctxRun(`__threads = [__mkB('d', 'Hallo hätte Interesse', 'Nutzer-Anfrage zu deiner Anzeige „Patriot Viper 4 8GB Kit“')]`, { __mkB: mkB });
+ctx.kaFilter();
+if (sentOffice.length !== 1 || !/Покупець пише/.test(sentOffice[0][0]) || /Відповідь продавця/.test(sentOffice[0][0]) ||
+    !/Patriot Viper/.test(sentOffice[0][0]) || gh.length !== gh0) {
+  bad++; console.log('!! buyer message', JSON.stringify(sentOffice), gh.length - gh0);
+}
+if (!ctx.kaFromBuyer_('Nachricht zu „RAM“', 'x', { from: 'buyer' }) || ctx.kaFromBuyer_('Nachricht zu „RAM“', 'x', { from: 'seller' })) {
+  bad++; console.log('!! kaFromBuyer_ by Gemini role');
+}
+if (!/Схоже на шахрая/.test(ctx.kaBuyerText_('zu deiner Anzeige „X“', 'Schreib mir per WhatsApp', null))) { bad++; console.log('!! buyer scam'); }
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
