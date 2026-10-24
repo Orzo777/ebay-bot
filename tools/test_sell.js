@@ -59,5 +59,7 @@ ctx.Utilities.newBlob = (x) => (typeof x === 'string' ? { getBytes: () => signed
   : { getDataAsString: () => Buffer.from(x.map((b) => b & 255)).toString('utf8') });
 const kaD = ctx.unseal_(fetched[2][1].inputs, 'O');
 check('ka card dispatched', [kaD.ka, kaD.title, kaD.row, /Kleinanzeigen №1/.test(sent[sent.length - 1])], [1, 'OWC 2x16GB DDR4 für iMac', 1, true]);
+say('продати 1 ka 159');
+check('own KA price', ctx.unseal_(fetched[3][1].inputs, 'O').ka_price, 159);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

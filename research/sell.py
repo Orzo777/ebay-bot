@@ -495,14 +495,17 @@ def make(title: str, cost: float | None, row: int | None = None, comp_fn=competi
 # пропозицій, фото; далі автоматично — фільтр пропозицій (tools/kafilter.gs), продаж → зняти з eBay (tools/ledger.gs).
 KA_TITLE_MAX = 65
 KA_ACCEPT, KA_DECLINE = 0.93, 0.87     # від ціни на KA: «погоджуйся» / нижче — бот не показує
+KA_DISCOUNT = 0.90                     # 24.10 (користувач: «124 € — це 20 € заробітку, хочу нормальну ціну»): на KA —
+                                       # як чистими з продажу на eBay за медіаною, мінус 10% (на KA чекають знижки)
 KA_POST_URL = "https://www.kleinanzeigen.de/p-anzeige-aufgeben.html"
 
 
-def ka_plan(r: dict, cost: float | None) -> dict:
-    """Ціна на KA: «швидка» ціна eBay (найдешевша чверть продажів) — доставку платить покупець, комісії немає; не нижче
-    мінімуму прибутку від ціни купівлі. Пороги пропозицій — як на eBay, але від ціни на KA."""
+def ka_plan(r: dict, cost: float | None, price: float | None = None) -> dict:
+    """Ціна на KA: стільки, скільки лишилось би з продажу на eBay за медіаною, мінус 10% (доставку на KA платить покупець,
+    комісії немає); або своя (`продати N ka 159`). Не нижче мінімуму прибутку від ціни купівлі. Пороги пропозицій — як на
+    eBay, але від ціни на KA."""
     floor = cost + max(MIN_PROFIT_ABS, MIN_PROFIT_PCT * cost) + ram_alert.PACK_RAM if cost else 0.0
-    price = max(nice(r["quick_sale"]), math.ceil(floor))
+    price = round(price) if price else max(nice(KA_DISCOUNT * net_of(r, r["median_sale"])), math.ceil(floor))
     accept = max(math.ceil(floor), round(price * KA_ACCEPT))
     decline = min(accept, max(math.ceil(floor), round(price * KA_DECLINE)))
     net = price - ram_alert.PACK_RAM
@@ -527,15 +530,18 @@ def ka_desc(desc: str) -> str:
                         "(mit Käuferschutz). Abholung in Hamburg ist auch möglich.")
 
 
-def ka_card(row: int | None, r: dict, tx: dict, cost: float | None) -> tuple[str, dict]:
+def ka_card(row: int | None, r: dict, tx: dict, cost: float | None, price: float | None = None) -> tuple[str, dict]:
     e = lambda x: html.escape(str(x), quote=False)   # noqa: E731
-    pl, title, desc = ka_plan(r, cost), ka_title(tx["title"]), ka_desc(tx["desc"])
+    pl, title, desc = ka_plan(r, cost, price), ka_title(tx["title"]), ka_desc(tx["desc"])
     n = row or "N"
     lines = [f"🟢 <b>Продаж №{n} на Kleinanzeigen</b>",
              f"💶 <b>{pl['price']} € VB</b> + доставка (платить покупець) · тобі ≈ {pl['net']:.0f} €"
              + (f" · купив за {cost:.0f} € → прибуток ≈ <b>{pl['profit']:.0f} €</b>" if cost else ""),
              f"🤝 Пропозиції: від <b>{pl['accept']} €</b> — погоджуйся; нижче {pl['decline']} € — бот у Telegram не покаже",
              f"📊 На eBay за медіаною тобі лишилось би ≈ {pl['ebay_net']:.0f} € — але там чекати довше",
+             *([f"⚠️ Нижче мінімуму прибутку ({math.ceil(pl['floor'])} €) — пропозиції бот рахуватиме від нього"]
+               if price and cost and price < pl["floor"] else []),
+             f"Інша ціна — <code>продати {row or 'N'} ka 159</code>",
              "",
              "<b>Як виставити (2 хв)</b> — застосунок або сайт KA → «Anzeige aufgeben»:",
              "1. Kategorie: <b>Elektronik → PC-Zubehör &amp; Software</b> (KA підкаже сам за назвою)",
@@ -558,7 +564,7 @@ def ka_mode(d: dict, comp_fn=None) -> bool:
     p = prepare(d.get("title") or "", float(cost) if cost not in (None, "") else None, row, comp_fn or (lambda r: []))
     if not p or p["r"].get("kind") != "ram":
         return office_send_html(f"🤔 Не впізнав товар №{row} — картку для KA не зробив.", None)
-    text, kb = ka_card(row, p["r"], p["tx"], float(cost) if cost not in (None, "") else None)
+    text, kb = ka_card(row, p["r"], p["tx"], float(cost) if cost not in (None, "") else None, d.get("ka_price") or None)
     ok = office_send_html(text, kb)
     if d.get("photos"):
         print(f"фото для KA: {office_send_studio_preview(d['photos'], row, caption=f'📸 Фото для KA №{row} — збережи й додай в оголошення')}")

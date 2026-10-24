@@ -350,7 +350,9 @@ class ReviseModeTest(unittest.TestCase):
         # 24.10: «продати 6 ka» — ціна = «швидка» eBay (доставку платить покупець), не нижче мінімуму прибутку; назва ≤ 65
         p = sell.prepare("Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16 OVP", 95.0, 6, lambda r: [])
         pl = sell.ka_plan(p["r"], 95.0)
-        self.assertLessEqual(pl["price"], p["r"]["quick_sale"])
+        self.assertGreater(pl["price"], p["r"]["quick_sale"])   # не «швидка», а як чистими з eBay мінус 10%
+        self.assertEqual(sell.ka_plan(p["r"], 95.0, 159)["price"], 159)   # своя ціна
+        self.assertEqual(sell.ka_plan(p["r"], 95.0, 159)["accept"], 148)
         self.assertGreaterEqual(pl["decline"], pl["floor"])
         self.assertTrue(pl["decline"] <= pl["accept"] <= pl["price"])
         self.assertEqual(sell.ka_plan(p["r"], 200.0)["price"], 221)   # дорога купівля — ціна не нижче мінімуму

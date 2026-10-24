@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-24c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-24d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -535,7 +535,7 @@ const MENU = {
     '• відправив 3 трек — трек піде в eBay сам, покупцю — подяка\n' +
     '• виставив 3 124 — якщо виставив сам; виставив 3 ka 129 — лот ще й на Kleinanzeigen (продасться там — з eBay зніму сам)\n' +
     '• зняти 3 — зняти лот з eBay (кількість −1 або завершити)\n' +
-    '• продати 3 ka — готове оголошення для Kleinanzeigen: назва, опис, ціна, пороги пропозицій, фото\n' +
+    '• продати 3 ka — готове оголошення для Kleinanzeigen: назва, опис, ціна, пороги пропозицій, фото; своя ціна — продати 3 ka 159\n' +
     '• виставлено — що зараз на продажу: ціна, дні, перегляди, спостерігачі, посилання (eBay; KA — «Мої оголошення»)\n' +
     '• звірити — звірити eBay з таблицею зараз (саме — раз на 3 години): нові оголошення, ціни, завершені\n' +
     '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати', 'виставлено', 'звірити']],
@@ -814,7 +814,8 @@ function sellCommand_(msg) {
   const open = function (v) { return v[COL.title - 1] && ['Продано', 'Повернено', 'Скасовано'].indexOf(v[COL.status - 1]) < 0; };
   let idx = -1;
   let extra = (m[2] || '').trim();
-  const ka = /^(?:ka|ка|kleinanzeigen)$/i.test(extra);   // 24.10: «продати 6 ka» — картка для Kleinanzeigen
+  const km = extra.match(/^(?:ka|ка|kleinanzeigen)(?:\s+(\d{1,5}))?$/i);   // 24.10: «продати 6 ka [159]» — картка для Kleinanzeigen
+  const ka = !!km, kaPrice = km && km[1] ? Number(km[1]) : null;
   if (ka) extra = '';
   if (m[1]) idx = Number(m[1]) - 1;
   else if (extra) idx = findRow_(null, extra, true) - LEDGER_FIRST;
@@ -838,7 +839,7 @@ function sellCommand_(msg) {
     props.setProperty('SELL_TITLES', JSON.stringify(t));
   }
   if (ka) {
-    const kc = sellDispatch_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1), ka: 1 });
+    const kc = sellDispatch_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1), ka: 1, ka_price: kaPrice });
     notify_(kc === 204 ? '⏳ Готую оголошення для Kleinanzeigen №' + (idx + 1) + ' — приблизно хвилина.' : '⚠️ Не зміг запустити (GitHub ' + kc + ').');
     return true;
   }
