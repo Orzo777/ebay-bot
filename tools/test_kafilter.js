@@ -86,6 +86,17 @@ if (!ctx.kaFromBuyer_('Nachricht zu „RAM“', 'x', { from: 'buyer' }) || ctx.k
   bad++; console.log('!! kaFromBuyer_ by Gemini role');
 }
 if (!/Схоже на шахрая/.test(ctx.kaBuyerText_('zu deiner Anzeige „X“', 'Schreib mir per WhatsApp', null))) { bad++; console.log('!! buyer scam'); }
+// 24.10: «Nur Abholung», а покупець «20 € inkl. Versand?» — без сповіщення; оголошення з доставкою — як звичайно
+const so0 = sentOffice.length;
+let kaPage = '<div>Nur Abholung</div>';
+ctxRun(`UrlFetchApp = { fetch: (u) => ({ getContentText: () => __page(), getResponseCode: () => 200 }) };`, { __page: () => kaPage });
+ctxRun(`__threads = [__mkB('e', 'Hallo, wären sie mit 20€ inkl Versand einverstanden? https://www.kleinanzeigen.de/s-anzeige/patriot/3548111222-225-1', 'Nutzer-Anfrage zu deiner Anzeige „Patriot Viper 4“')]`, { __mkB: mkB });
+ctx.kaFilter();
+if (sentOffice.length !== so0) { bad++; console.log('!! shipping ask on pickup-only should be muted'); }
+kaPage = '<div>+ Versand ab 4,89 €</div>';
+ctxRun(`__threads = [__mkB('f', 'Würden Sie auch versenden? https://www.kleinanzeigen.de/s-anzeige/x/3548333444-225-1', 'Nutzer-Anfrage zu deiner Anzeige „Corsair“')]`, { __mkB: mkB });
+ctx.kaFilter();
+if (sentOffice.length !== so0 + 1) { bad++; console.log('!! listing with shipping — buyer message must come'); }
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

@@ -18,7 +18,7 @@
 
 // Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
 // разом із check() вичерпав денний Gmail-ліміт Google 01.10.
-const VER_KAFILTER = '2026-10-23a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_KAFILTER = '2026-10-24a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
@@ -168,6 +168,29 @@ function kaFromBuyer_(subject, body, g) {
   return !!(g && g.from === 'buyer');
 }
 
+/** 24.10 (користувач: «у мене „лише самовивіз“, а пише „20 € з доставкою?“ — тупе питання, не треба в Telegram»):
+ *  покупець просить доставку, а наше оголошення «Nur Abholung» → без сповіщення (лист лишається в KA).
+ *  Сторінку оголошення читаємо раз на добу (кеш KA_PICKUP_<id>). */
+const KA_ASKS_SHIPPING = /versand|verschick|zuschick|schicken|porto|zusenden|senden\s+sie|per\s+post|paket|dhl|hermes|shipping/i;
+function kaPickupOnly_(id) {
+  if (!id) return false;
+  const props = PropertiesService.getScriptProperties(), key = 'KA_PICKUP_' + id, day = new Date().toISOString().slice(0, 10);
+  const c = props.getProperty(key);
+  if (c && c.slice(2) === day) return c[0] === '1';
+  let page = '';
+  try {
+    page = UrlFetchApp.fetch('https://www.kleinanzeigen.de/s-anzeige/' + id, { muteHttpExceptions: true,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'de-DE' } }).getContentText();
+  } catch (e) { console.log('KA сторінка: ' + e); return false; }
+  const only = /nur\s*(?:selbst)?abholung/i.test(page) && !/\+\s*versand\s+ab|versand\s+m(?:ö|oe)glich|direkt\s+kaufen/i.test(page);
+  props.setProperty(key, (only ? '1' : '0') + ':' + day);
+  return only;
+}
+
+function kaShippingOnPickup_(msg, ids) {
+  return KA_ASKS_SHIPPING.test(String(msg || '')) && (ids || []).some(kaPickupOnly_);
+}
+
 function kaBuyerText_(subject, body, g) {
   const listing = kaListing_(subject, g), who = (g && g.seller) || '';
   const msg = (g && g.message) || String(body || '').slice(0, 600), scam = kaScamReason_(msg);
@@ -188,6 +211,10 @@ function kaDigest_(m, props) {
   const link = (String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/m-nachrichten[^"'\s<>]*/) ||
                 String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/s-anzeige\/[^"'\s<>]*/) || [])[0];
   if (kaFromBuyer_(m.getSubject(), body, g)) {   // покупець щодо НАШОГО оголошення — у бот «Облік і продаж», без реплаю на картку
+    if (kaShippingOnPickup_((g && g.message) || body, kaAdIds_(String(m.getBody() || '') + ' ' + body))) {
+      console.log('KA: покупець просить доставку, а в нас лише самовивіз — без сповіщення');
+      return;
+    }
     const bkb = { inline_keyboard: [[{ text: '💬 Відкрити чат на Kleinanzeigen', url: link || 'https://www.kleinanzeigen.de/m-nachrichten.html' }]] };
     if (typeof notify_ === 'function') { notify_(kaBuyerText_(m.getSubject(), body, g), bkb, 'HTML'); return; }
     UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'post', muteHttpExceptions: true,
