@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-10c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-24a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -113,19 +113,31 @@ function wdFailures_(st, now, msgs) {
                               (lines.length > 5 ? '\n… ще ' + (lines.length - 5) : ''));
 }
 
+/** 24.10 (користувач: «щоранку „немає листів 9 год“, а за годину „знову приходять“ — зайве»): уночі KA майже не
+ *  присилає листів, тож тишу рахуємо лише в денні години (8–23 за Берліном): останній лист опівночі — о 9-й це 1 год, а не 9. */
+function wdDayHours_(from, now) {
+  let h = 0;
+  for (let t = from.getTime(); t < now.getTime() && h < 72; t += 15 * 60000) {
+    const bh = wdBerlinHour_(new Date(t));
+    if (bh >= 8 && bh < 23) h += 0.25;
+  }
+  return h;
+}
+
 function wdKaMail_(st, now, msgs) {
   const props = PropertiesService.getScriptProperties();
   const limit = Number(props.getProperty('WD_KA_HOURS')) || 6;
   const th = GmailApp.search(WD_KA_QUERY, 0, 1);
   const last = th.length ? th[0].getLastMessageDate() : null;
   const ageH = last ? (now.getTime() - last.getTime()) / 3600e3 : 72;
+  const dayH = last ? wdDayHours_(last, now) : 72;
   const h = wdBerlinHour_(now);
-  if (ageH > limit && h >= 9 && h < 23 && !st.kaStale) {
+  if (dayH > limit && h >= 9 && h < 23 && !st.kaStale) {
     st.kaStale = true;
     msgs.push('📭 Від Kleinanzeigen немає листів ' + (ageH >= 72 ? 'понад 3 доби' : Math.round(ageH) + ' год') +
               '. Так уже було 23–25.09, коли стояв застосунок KA. Перевір: застосунок Kleinanzeigen не встановлено; ' +
               'пошукові підписки є і в них увімкнено «E-Mail»; листи не в «Спамі».');
-  } else if (ageH <= limit && st.kaStale) {
+  } else if (dayH <= limit && st.kaStale) {
     st.kaStale = false;
     msgs.push('📬 Листи від Kleinanzeigen знову приходять.');
   }

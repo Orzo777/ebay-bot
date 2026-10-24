@@ -85,11 +85,15 @@ check('fresh failure reported', [/«поділитися»: https:\/\/gh\/1/.tes
 w.run();
 check('failure once', w.sent.length, 1);
 
-// 5. листів KA немає 8 год (вдень) → попередження один раз; лист прийшов → «знову приходять»
+// 5. листів KA немає з учора (17 денних годин) → попередження один раз; лист прийшов → «знову приходять»
+w = setup({ ebay: [run('in_progress', null, ago(5))], mail: ago(26 * 60), mailRuns: [run('completed', 'success', ago(26 * 60 - 1), { name: 'ram-mail-alert' })] });
+w.run();
+w.run();
+check('ka stale once', [w.sent.length, /немає листів 26 год/.test(w.text())], [1, true]);
+// 24.10: останній лист о 06:00 (8 год тому, але денних — 6) → нічна тиша не рахується, попередження немає
 w = setup({ ebay: [run('in_progress', null, ago(5))], mail: ago(8 * 60), mailRuns: [run('completed', 'success', ago(479), { name: 'ram-mail-alert' })] });
 w.run();
-w.run();
-check('ka stale once', [w.sent.length, /немає листів 8 год/.test(w.text())], [1, true]);
+check('night gap is not an outage', /немає листів/.test(w.text()), false);
 
 // 6. лист є 40 хв, а ram_mail_alert після нього не запускався
 w = setup({ ebay: [run('in_progress', null, ago(5))], mail: ago(40), mailRuns: [run('completed', 'success', ago(120), { name: 'ram-mail-alert' })] });
