@@ -489,6 +489,82 @@ def make(title: str, cost: float | None, row: int | None = None, comp_fn=competi
     return build_card(row, title, r, pr, comp, tx, cost, p["edited"]), keyboard(tx, r, row, ebay, listed), build_steps(row, pr, tx)
 
 
+# ----------------------------------------------------------------------------- Kleinanzeigen (24.10)
+# Користувач: «другий eBay із KA» — той самий товар паралельно на KA. API в KA немає, а автопостинг через сайт порушує
+# правила KA (10.10 вже був блок за IP), тож бот готує все для ручного виставлення за 2 хв: назва, опис, ціна, пороги
+# пропозицій, фото; далі автоматично — фільтр пропозицій (tools/kafilter.gs), продаж → зняти з eBay (tools/ledger.gs).
+KA_TITLE_MAX = 65
+KA_ACCEPT, KA_DECLINE = 0.93, 0.87     # від ціни на KA: «погоджуйся» / нижче — бот не показує
+KA_POST_URL = "https://www.kleinanzeigen.de/p-anzeige-aufgeben.html"
+
+
+def ka_plan(r: dict, cost: float | None) -> dict:
+    """Ціна на KA: «швидка» ціна eBay (найдешевша чверть продажів) — доставку платить покупець, комісії немає; не нижче
+    мінімуму прибутку від ціни купівлі. Пороги пропозицій — як на eBay, але від ціни на KA."""
+    floor = cost + max(MIN_PROFIT_ABS, MIN_PROFIT_PCT * cost) + ram_alert.PACK_RAM if cost else 0.0
+    price = max(nice(r["quick_sale"]), math.ceil(floor))
+    accept = max(math.ceil(floor), round(price * KA_ACCEPT))
+    decline = min(accept, max(math.ceil(floor), round(price * KA_DECLINE)))
+    net = price - ram_alert.PACK_RAM
+    return dict(price=price, accept=accept, decline=decline, floor=floor, net=net,
+                profit=(net - cost) if cost else None, ebay_net=net_of(r, r["median_sale"]))
+
+
+def ka_title(t: str) -> str:
+    """Назва eBay → до 65 знаків (ліміт KA): спершу без «getestet» / типу планок, далі — по словах."""
+    t = re.sub(r"\s+", " ", t).strip()
+    for cut in (r"\s*[–-]?\s*getestet$", r"\s+(?:DIMM|SO-DIMM|ECC UDIMM)\s+(?:Desktop|Laptop)\s+RAM", r"\s+(?:Desktop|Laptop)\s+RAM"):
+        if len(t) > KA_TITLE_MAX:
+            t = re.sub(cut, "", t).strip()
+    while len(t) > KA_TITLE_MAX and " " in t:
+        t = t.rsplit(" ", 1)[0]
+    return t.rstrip(" –-,(")
+
+
+def ka_desc(desc: str) -> str:
+    return desc.replace("Verschickt wird gut und antistatisch verpackt als versichertes DHL-Paket mit Sendungsnummer.",
+                        "Versand gut und antistatisch verpackt mit Sendungsnummer – am liebsten über „Direkt kaufen“ "
+                        "(mit Käuferschutz). Abholung in Hamburg ist auch möglich.")
+
+
+def ka_card(row: int | None, r: dict, tx: dict, cost: float | None) -> tuple[str, dict]:
+    e = lambda x: html.escape(str(x), quote=False)   # noqa: E731
+    pl, title, desc = ka_plan(r, cost), ka_title(tx["title"]), ka_desc(tx["desc"])
+    n = row or "N"
+    lines = [f"🟢 <b>Продаж №{n} на Kleinanzeigen</b>",
+             f"💶 <b>{pl['price']} € VB</b> + доставка (платить покупець) · тобі ≈ {pl['net']:.0f} €"
+             + (f" · купив за {cost:.0f} € → прибуток ≈ <b>{pl['profit']:.0f} €</b>" if cost else ""),
+             f"🤝 Пропозиції: від <b>{pl['accept']} €</b> — погоджуйся; нижче {pl['decline']} € — бот у Telegram не покаже",
+             f"📊 На eBay за медіаною тобі лишилось би ≈ {pl['ebay_net']:.0f} € — але там чекати довше",
+             "",
+             "<b>Як виставити (2 хв)</b> — застосунок або сайт KA → «Anzeige aufgeben»:",
+             "1. Kategorie: <b>Elektronik → PC-Zubehör &amp; Software</b> (KA підкаже сам за назвою)",
+             "2. Titel:", f"<code>{e(title)}</code>",
+             "3. Beschreibung:", f"<code>{e(desc)}</code>",
+             f"4. Preis: <code>{pl['price']}</code> → «VB»",
+             "5. Versand: «Versand möglich» → увімкни <b>«Direkt kaufen»</b> → Hermes S або DHL до 2 кг (платить покупець)",
+             "6. Фото — з альбому нижче (білий фон; екран MemTest — як доказ)",
+             "7. «Anzeige aufgeben» → у бот: " + f"<code>виставив {n} ka {pl['price']} посилання</code>",
+             "",
+             "Далі сам: пропозиції нижче порогу й «а з доставкою?» на самовивіз — не показую; продалось через «Direkt kaufen» — "
+             "зніму з eBay; продалось на eBay — нагадаю зняти з KA."]
+    kb = {"inline_keyboard": [[{"text": "📋 Скопіювати назву", "copy_text": {"text": title}}],
+                              [{"text": "➕ Відкрити «Anzeige aufgeben»", "url": KA_POST_URL}]]}
+    return "\n".join(lines), kb
+
+
+def ka_mode(d: dict, comp_fn=None) -> bool:
+    row, cost = d.get("row"), d.get("cost")
+    p = prepare(d.get("title") or "", float(cost) if cost not in (None, "") else None, row, comp_fn or (lambda r: []))
+    if not p or p["r"].get("kind") != "ram":
+        return office_send_html(f"🤔 Не впізнав товар №{row} — картку для KA не зробив.", None)
+    text, kb = ka_card(row, p["r"], p["tx"], float(cost) if cost not in (None, "") else None)
+    ok = office_send_html(text, kb)
+    if d.get("photos"):
+        print(f"фото для KA: {office_send_studio_preview(d['photos'], row, caption=f'📸 Фото для KA №{row} — збережи й додай в оголошення')}")
+    return ok
+
+
 def split_html(text: str, limit: int = 3900) -> list[str]:
     """18.10 (аудит): Telegram — до 4096 символів; обрізаний посеред тегу HTML він відхиляє цілком (повідомлення губилось,
     напр. «🏷 Виставлено» з ~16+ лотами). Ріжемо між абзацами (порожній рядок), не розриваючи блоків."""
@@ -569,7 +645,7 @@ def studio_or_original(data: bytes) -> bytes:
         return data
 
 
-def office_send_studio_preview(photos: list, row: int, file_fn=None) -> int:
+def office_send_studio_preview(photos: list, row: int, file_fn=None, caption: str | None = None) -> int:
     """Альбом «так фото підуть на eBay» — оброблені версії збережених фото (до 10). → скільки надіслано."""
     import requests
     token = os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN
@@ -581,8 +657,8 @@ def office_send_studio_preview(photos: list, row: int, file_fn=None) -> int:
         media.append({"type": "photo", "media": f"attach://p{i}"})
     if not media:
         return 0
-    media[0]["caption"] = (f"📸 Так фото №{row} підуть на eBay: білий фон, без тіні (екран тесту — як є). "
-                           f"Не подобається — напиши «оригінали {row}».")
+    media[0]["caption"] = caption or (f"📸 Так фото №{row} підуть на eBay: білий фон, без тіні (екран тесту — як є). "
+                                      f"Не подобається — напиши «оригінали {row}».")
     api = f"{config.TELEGRAM_API_BASE}/bot{token}/"
     if len(media) == 1:
         resp = requests.post(api + "sendPhoto", data={"chat_id": config.TELEGRAM_CHAT_ID, "caption": media[0]["caption"]},
@@ -1014,6 +1090,10 @@ def main():
             raise SystemExit(1)
         if d.get("mode") == "plan":   # 10.10: план продажу в повідомлення «📒 Записав покупку»
             plan_mode(d, os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or "")
+            return
+        if d.get("ka"):   # 24.10: «продати N ka» — картка для Kleinanzeigen
+            if not ka_mode(d):
+                raise SystemExit(1)
             return
         if d.get("mode"):   # 09.10: підключення eBay / автопублікація
             if not ebay_mode(d, os.getenv("OFFICE_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN or ""):

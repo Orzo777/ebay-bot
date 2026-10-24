@@ -52,5 +52,12 @@ say('продати 9');
 check('missing row', /немає №9/.test(sent[sent.length - 1]), true);
 say('продати 1 Kingston Fury 2x16GB DDR4 3200');
 check('title override dispatched', fetched.length, 2);
+// 24.10: «продати 1 ka» — картка для Kleinanzeigen (не заміна назви на «ka»)
+say('продати 1 ka');
+ctx.Utilities.base64Decode = (s) => signed(Buffer.from(s, 'base64'));
+ctx.Utilities.newBlob = (x) => (typeof x === 'string' ? { getBytes: () => signed(Buffer.from(x, 'utf8')) }
+  : { getDataAsString: () => Buffer.from(x.map((b) => b & 255)).toString('utf8') });
+const kaD = ctx.unseal_(fetched[2][1].inputs, 'O');
+check('ka card dispatched', [kaD.ka, kaD.title, kaD.row, /Kleinanzeigen №1/.test(sent[sent.length - 1])], [1, 'OWC 2x16GB DDR4 für iMac', 1, true]);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

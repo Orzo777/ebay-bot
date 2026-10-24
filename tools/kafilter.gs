@@ -18,8 +18,8 @@
 
 // Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
 // разом із check() вичерпав денний Gmail-ліміт Google 01.10.
-const VER_KAFILTER = '2026-10-24a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
-const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb) ' +
+const VER_KAFILTER = '2026-10-24b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb OR preisvorschlag) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
 // Оплата без захисту покупця, контакт поза KA, передоплата — те саме, що блокує бот в описах оголошень
@@ -129,8 +129,8 @@ function kaGemini_(text, subject, key) {
     '"seller": ім\'я того, хто пише, або "", "listing": назва оголошення або "", "message": лише текст повідомлення ' +
     'мовою оригіналу (без шаблону листа), "uk": переклад повідомлення українською, коротко й точно, "intent": одне з ' +
     'hacked|agree|counter|sold|available|question|other (hacked — пише, що не викладав оголошення / акаунт зламано; agree — згоден на запропоновану ціну/купівлю; counter — називає іншу ціну; ' +
-    'sold — продано/зарезервовано; available — лише каже, що ще є; question — питає), "price": число в євро, якщо продавець ' +
-    'називає ціну, інакше null}.\n\nЛист:\n' + text;
+    'sold — продано/зарезервовано; available — лише каже, що ще є; question — питає), "price": число в євро, якщо в ' +
+    'повідомленні названо ціну (ціна продавця або пропозиція покупця), інакше null}.\n\nЛист:\n' + text;
   const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
   for (let i = 0; i < models.length; i++) {
     const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[i] + ':generateContent', {
@@ -172,31 +172,57 @@ function kaFromBuyer_(subject, body, g) {
  *  покупець просить доставку, а наше оголошення «Nur Abholung» → без сповіщення (лист лишається в KA).
  *  Сторінку оголошення читаємо раз на добу (кеш KA_PICKUP_<id>). */
 const KA_ASKS_SHIPPING = /versand|verschick|zuschick|schicken|porto|zusenden|senden\s+sie|per\s+post|paket|dhl|hermes|shipping/i;
-function kaPickupOnly_(id) {
-  if (!id) return false;
-  const props = PropertiesService.getScriptProperties(), key = 'KA_PICKUP_' + id, day = new Date().toISOString().slice(0, 10);
-  const c = props.getProperty(key);
-  if (c && c.slice(2) === day) return c[0] === '1';
+function kaAdInfo_(id) {
+  if (!id) return {};
+  const props = PropertiesService.getScriptProperties(), key = 'KA_AD_' + id, day = new Date().toISOString().slice(0, 10);
+  try { const c = JSON.parse(props.getProperty(key) || 'null'); if (c && c.d === day) return c; } catch (e) { /* перечитаємо */ }
   let page = '';
   try {
     page = UrlFetchApp.fetch('https://www.kleinanzeigen.de/s-anzeige/' + id, { muteHttpExceptions: true,
       headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'de-DE' } }).getContentText();
-  } catch (e) { console.log('KA сторінка: ' + e); return false; }
-  const only = /nur\s*(?:selbst)?abholung/i.test(page) && !/\+\s*versand\s+ab|versand\s+m(?:ö|oe)glich|direkt\s+kaufen/i.test(page);
-  props.setProperty(key, (only ? '1' : '0') + ':' + day);
-  return only;
+  } catch (e) { console.log('KA сторінка: ' + e); return {}; }
+  const info = { d: day, pickup: /nur\s*(?:selbst)?abholung/i.test(page) && !/\+\s*versand\s+ab|versand\s+m(?:ö|oe)glich|direkt\s+kaufen/i.test(page),
+    price: Number((page.match(/itemprop="price"\s+content="(\d+(?:\.\d+)?)"/) || [])[1]) || null };
+  props.setProperty(key, JSON.stringify(info));
+  return info;
+}
+function kaPickupOnly_(id) { return !!kaAdInfo_(id).pickup; }
+
+/** 24.10 (користувач: «занизькі теж відсіювати — поріг як на eBay»): пороги пропозиції на НАШЕ оголошення KA.
+ *  Ціна — з «виставив N ka ціна» (подія kaPrice) або зі сторінки; мінімум прибутку — від ціни купівлі в обліку.
+ *  → {price, accept, decline} або null (не наше / ціни не знаємо). */
+function kaOfferBounds_(ids) {
+  for (let i = 0; i < (ids || []).length; i++) {
+    const id = String(ids[i]);
+    let n = 0, ev = {};
+    if (typeof events_ === 'function') {
+      const all = events_();
+      n = Number(Object.keys(all).filter(function (k) { return String((all[k] || {}).ka) === id; })[0] || 0);
+      ev = n ? all[n] : {};
+    }
+    const price = Number(ev.kaPrice) || kaAdInfo_(id).price;
+    if (!price) continue;
+    const r = n && typeof rowByN_ === 'function' ? rowByN_(n) : null, cost = r ? Number(r.spent) || 0 : 0;
+    const floor = cost ? Math.ceil(cost + Math.max(5, 0.1 * cost) + 1) : 0;
+    const accept = Math.max(floor, Math.round(price * 0.93));
+    return { price: price, accept: accept, decline: Math.min(accept, Math.max(floor, Math.round(price * 0.87))) };
+  }
+  return null;
 }
 
 function kaShippingOnPickup_(msg, ids) {
   return KA_ASKS_SHIPPING.test(String(msg || '')) && (ids || []).some(kaPickupOnly_);
 }
 
-function kaBuyerText_(subject, body, g) {
+function kaBuyerText_(subject, body, g, bounds) {
   const listing = kaListing_(subject, g), who = (g && g.seller) || '';
   const msg = (g && g.message) || String(body || '').slice(0, 600), scam = kaScamReason_(msg);
+  const offer = g && Number(g.price);
   return ['🛍 <b>Покупець пише</b>' + (who ? ' · ' + esc_(who) : ''), listing ? '<i>' + esc_(listing.slice(0, 90)) + '</i>' : '', '',
     scam ? '⛔ <b>Схоже на шахрая</b> («' + esc_(scam) + '») — не відповідай і не відкривай посилань' : '',
-    g && g.price ? '💶 Пропонує <b>' + g.price + ' €</b>' : '',
+    offer ? '💶 Пропонує <b>' + offer + ' €</b>' + (bounds ? (offer >= bounds.accept
+      ? ' — ✅ не нижче порогу (від ' + bounds.accept + ' € при ціні ' + bounds.price + ' €): можна погоджуватись'
+      : ' — зустрічна: <b>' + bounds.accept + ' €</b> (ціна ' + bounds.price + ' €)') : '') : '',
     g && g.uk ? '🇺🇦 ' + esc_(g.uk.slice(0, 700)) : '', '🇩🇪 ' + esc_(msg.slice(0, 700)),
     scam ? '' : 'Продаєш — лише через «Direkt kaufen» / «Sicher bezahlen» в KA; посилань покупця не відкривай.']
     .filter(function (l, i) { return l !== '' || i === 2; }).join('\n');
@@ -211,14 +237,20 @@ function kaDigest_(m, props) {
   const link = (String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/m-nachrichten[^"'\s<>]*/) ||
                 String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/s-anzeige\/[^"'\s<>]*/) || [])[0];
   if (kaFromBuyer_(m.getSubject(), body, g)) {   // покупець щодо НАШОГО оголошення — у бот «Облік і продаж», без реплаю на картку
-    if (kaShippingOnPickup_((g && g.message) || body, kaAdIds_(String(m.getBody() || '') + ' ' + body))) {
+    const ids = kaAdIds_(String(m.getBody() || '') + ' ' + body);
+    if (kaShippingOnPickup_((g && g.message) || body, ids)) {
       console.log('KA: покупець просить доставку, а в нас лише самовивіз — без сповіщення');
       return;
     }
+    const bounds = g && Number(g.price) ? kaOfferBounds_(ids) : null;
+    if (bounds && Number(g.price) < bounds.decline) {
+      console.log('KA: пропозиція нижче порогу (' + g.price + ' < ' + bounds.decline + ') — без сповіщення');
+      return;
+    }
     const bkb = { inline_keyboard: [[{ text: '💬 Відкрити чат на Kleinanzeigen', url: link || 'https://www.kleinanzeigen.de/m-nachrichten.html' }]] };
-    if (typeof notify_ === 'function') { notify_(kaBuyerText_(m.getSubject(), body, g), bkb, 'HTML'); return; }
+    if (typeof notify_ === 'function') { notify_(kaBuyerText_(m.getSubject(), body, g, bounds), bkb, 'HTML'); return; }
     UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'post', muteHttpExceptions: true,
-      payload: { chat_id: chat, text: kaBuyerText_(m.getSubject(), body, g), parse_mode: 'HTML', disable_web_page_preview: 'true',
+      payload: { chat_id: chat, text: kaBuyerText_(m.getSubject(), body, g, bounds), parse_mode: 'HTML', disable_web_page_preview: 'true',
                  reply_markup: JSON.stringify(bkb) } });
     return;
   }

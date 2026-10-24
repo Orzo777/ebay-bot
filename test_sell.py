@@ -346,6 +346,22 @@ class ReviseModeTest(unittest.TestCase):
         cheap = listings.market_check([dict(lots[0], price=129.0)], rows, now, comp_fn=lambda r: [139.0, 140.0, 145.0])
         self.assertEqual(cheap, [])
 
+    def test_ka_card(self):
+        # 24.10: «продати 6 ka» — ціна = «швидка» eBay (доставку платить покупець), не нижче мінімуму прибутку; назва ≤ 65
+        p = sell.prepare("Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16 OVP", 95.0, 6, lambda r: [])
+        pl = sell.ka_plan(p["r"], 95.0)
+        self.assertLessEqual(pl["price"], p["r"]["quick_sale"])
+        self.assertGreaterEqual(pl["decline"], pl["floor"])
+        self.assertTrue(pl["decline"] <= pl["accept"] <= pl["price"])
+        self.assertEqual(sell.ka_plan(p["r"], 200.0)["price"], 221)   # дорога купівля — ціна не нижче мінімуму
+        text, kb = sell.ka_card(6, p["r"], p["tx"], 95.0)
+        title = kb["inline_keyboard"][0][0]["copy_text"]["text"]
+        self.assertLessEqual(len(title), sell.KA_TITLE_MAX)
+        self.assertIn("CMK32GX4M2A2400C16", title)
+        self.assertIn("Direkt kaufen", text)
+        self.assertIn(f"виставив 6 ka {pl['price']}", text)
+        self.assertNotIn("versichertes DHL-Paket", text)
+
     def test_listed_card_has_revise_button(self):
         kb = sell.keyboard({}, sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"), 4, True, listed=True)
         cb = [b.get("callback_data") for row in kb["inline_keyboard"] for b in row]

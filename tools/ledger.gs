@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-24b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-24c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -535,6 +535,7 @@ const MENU = {
     '• відправив 3 трек — трек піде в eBay сам, покупцю — подяка\n' +
     '• виставив 3 124 — якщо виставив сам; виставив 3 ka 129 — лот ще й на Kleinanzeigen (продасться там — з eBay зніму сам)\n' +
     '• зняти 3 — зняти лот з eBay (кількість −1 або завершити)\n' +
+    '• продати 3 ka — готове оголошення для Kleinanzeigen: назва, опис, ціна, пороги пропозицій, фото\n' +
     '• виставлено — що зараз на продажу: ціна, дні, перегляди, спостерігачі, посилання (eBay; KA — «Мої оголошення»)\n' +
     '• звірити — звірити eBay з таблицею зараз (саме — раз на 3 години): нові оголошення, ціни, завершені\n' +
     '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати', 'виставлено', 'звірити']],
@@ -812,7 +813,9 @@ function sellCommand_(msg) {
   const rows = last >= LEDGER_FIRST ? sh.getRange(LEDGER_FIRST, 1, last - LEDGER_FIRST + 1, COL.id).getValues() : [];
   const open = function (v) { return v[COL.title - 1] && ['Продано', 'Повернено', 'Скасовано'].indexOf(v[COL.status - 1]) < 0; };
   let idx = -1;
-  const extra = (m[2] || '').trim();
+  let extra = (m[2] || '').trim();
+  const ka = /^(?:ka|ка|kleinanzeigen)$/i.test(extra);   // 24.10: «продати 6 ka» — картка для Kleinanzeigen
+  if (ka) extra = '';
   if (m[1]) idx = Number(m[1]) - 1;
   else if (extra) idx = findRow_(null, extra, true) - LEDGER_FIRST;
   if (!m[1] && !extra) {
@@ -833,6 +836,11 @@ function sellCommand_(msg) {
     const t = JSON.parse(props.getProperty('SELL_TITLES') || '{}');
     t[idx + 1] = title.slice(0, 150);
     props.setProperty('SELL_TITLES', JSON.stringify(t));
+  }
+  if (ka) {
+    const kc = sellDispatch_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1), ka: 1 });
+    notify_(kc === 204 ? '⏳ Готую оголошення для Kleinanzeigen №' + (idx + 1) + ' — приблизно хвилина.' : '⚠️ Не зміг запустити (GitHub ' + kc + ').');
+    return true;
   }
   const code = sellDispatch_({ row: idx + 1, title: title, cost: cost, photos: cleanPhotos_(idx + 1), ebay: !!props.getProperty('EBAY_RT'),
     edits: sellEdits_()[idx + 1] || null, item_id: v[COL.status - 1] === 'Виставлено' ? listingId_(v[COL.note - 1]) : '' });
@@ -1758,7 +1766,7 @@ function listedKa_(n, text) {
   const price = ((text.replace(/https?:\/\/\S+/g, ' ').match(/(?:^|\s)(?:ka|ка|kleinanzeigen)\s+(\d+(?:[.,]\d{1,2})?)(?=\s|$)/i) || [])[1] || '').replace(',', '.');
   const sh = ledger_().getSheetByName('Угоди'), row = n + LEDGER_FIRST - 1;
   if (r.status !== 'Виставлено') sh.getRange(row, COL.status).setValue('Виставлено');
-  setEvents_(n, { ka: ad || 1 });
+  setEvents_(n, price ? { ka: ad || 1, kaPrice: Number(price) } : { ka: ad || 1 });
   const note = String(sh.getRange(row, COL.note).getValue() || '');
   sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'на KA' + (price ? ' за ' + price + ' €' : '') + ' ' +
     Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM') + (ad ? ' (KA ' + ad + ')' : ''));

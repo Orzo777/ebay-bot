@@ -97,6 +97,27 @@ kaPage = '<div>+ Versand ab 4,89 €</div>';
 ctxRun(`__threads = [__mkB('f', 'Würden Sie auch versenden? https://www.kleinanzeigen.de/s-anzeige/x/3548333444-225-1', 'Nutzer-Anfrage zu deiner Anzeige „Corsair“')]`, { __mkB: mkB });
 ctx.kaFilter();
 if (sentOffice.length !== so0 + 1) { bad++; console.log('!! listing with shipping — buyer message must come'); }
+// 24.10: пропозиції на НАШЕ оголошення — пороги як на eBay від ціни на KA (124 €: від 115 погоджуйся, нижче 108 — тихо)
+store.GEMINI_API_KEY = 'k';
+let gem = null;
+ctxRun(`UrlFetchApp = { fetch: (u) => /generativelanguage/.test(u)
+  ? { getResponseCode: () => 200, getContentText: () => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(__gem()) }] } }] }) }
+  : { getResponseCode: () => 200, getContentText: () => '<span itemprop="price" content="124"></span> + Versand ab 4,89 €' } };`, { __gem: () => gem });
+const so1 = sentOffice.length;
+gem = { from: 'buyer', message: 'Würden Sie 90 € nehmen?', price: 90, intent: 'counter', listing: 'Corsair' };
+ctxRun(`__threads = [__mkB('g', 'Würden Sie 90 € nehmen? https://www.kleinanzeigen.de/s-anzeige/c/3548555666-225-1', 'Nutzer-Anfrage zu deiner Anzeige „Corsair“')]`, { __mkB: mkB });
+ctx.kaFilter();
+if (sentOffice.length !== so1) { bad++; console.log('!! lowball below threshold must be muted'); }
+gem = { from: 'buyer', message: 'Würden Sie 118 € nehmen?', price: 118, intent: 'counter', listing: 'Corsair' };
+ctxRun(`__threads = [__mkB('h', 'Würden Sie 118 € nehmen? https://www.kleinanzeigen.de/s-anzeige/c/3548555666-225-1', 'Nutzer-Anfrage zu deiner Anzeige „Corsair“')]`, { __mkB: mkB });
+ctx.kaFilter();
+if (sentOffice.length !== so1 + 1 || !/Пропонує <b>118 €<\/b> — ✅ не нижче порогу \(від 115 € при ціні 124 €\)/.test(sentOffice[sentOffice.length - 1][0])) {
+  bad++; console.log('!! offer above threshold', JSON.stringify(sentOffice[sentOffice.length - 1]));
+}
+gem = { from: 'buyer', message: '110?', price: 110, intent: 'counter', listing: 'Corsair' };
+ctxRun(`__threads = [__mkB('i', '110? https://www.kleinanzeigen.de/s-anzeige/c/3548555666-225-1', 'Nutzer-Anfrage zu deiner Anzeige „Corsair“')]`, { __mkB: mkB });
+ctx.kaFilter();
+if (!/зустрічна: <b>115 €<\/b> \(ціна 124 €\)/.test(sentOffice[sentOffice.length - 1][0])) { bad++; console.log('!! counter between thresholds'); }
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
