@@ -211,6 +211,15 @@ say('звірити');
 check('manual sync dispatched', [opened().mode, opened().manual, /Звіряю eBay/.test(last()[0])], ['sync', 1, true]);
 sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], manual: 1, count: 4 }, 's2m');
 check('manual sync: all matches', /✅ Звірив з eBay: активних лотів 4 — таблиця збігається/.test(last()[0]), true);
+// 24.10: продане, яке eBay показує «Versendet» (етикетка eBay), → облік сам ставить «відправлено» + трек
+deals.cells['8:11'] = 'Продано'; deals.cells['8:' + NOTE] = 'виставлено (eBay 336849525826)';
+sync({ lots: [], ask: [], ended: [], shipped: [{ item_id: '336849525826', sku: '', track: '354502403646', carrier: 'DHL', date: '2026-10-23' }] }, 'sh1');
+check('shipped from eBay', [ctx.events_()[4].sent, ctx.events_()[4].outTrack, /№4 .*Versendet.*354502403646.*записав відправку/.test(last()[0])],
+  ['2026-10-23', '354502403646', true]);
+const nSh = sent.length;
+sync({ lots: [], ask: [], ended: [], shipped: [{ item_id: '336849525826', sku: '', track: '354502403646', carrier: 'DHL', date: '2026-10-23' }] }, 'sh2');
+check('shipped once', sent.length, nSh);
+deals.cells['8:11'] = 'Перевірено'; deals.cells['8:' + NOTE] = '';
 // 19.10: щоденна перевірка цін — порада з кнопкою «⬇️» (підтвердження); та сама порада — один раз
 const mk = [{ n: 3, id: '306123456789', price: 169, ship: 6.49, comp: [139, 140, 145], item: 132, profit: 30, floor: false, total: 36, place: 9 }];
 sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], market: mk }, 's2k');

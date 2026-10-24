@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-24d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-24e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1360,6 +1360,7 @@ function syncApply_(d) {
     out.push('⏹ №' + x.n + ': оголошення на eBay більше не активне. Продав — лист eBay запише сам; виставиш знову — бот побачить сам.');
   });
   props.setProperty('LISTED_PRICE', JSON.stringify(prices));
+  shippedFromEbay_(d.shipped || [], out);
   if (out.length) notify_(out.join('\n'), null, 'HTML');
   marketTips_(d.market || [], rows);
   if (!out.length && d.manual && !(d.ask || []).length) notify_('✅ Звірив з eBay: активних лотів ' + (d.count || 0) + ' — таблиця збігається, нічого не міняв.');
@@ -1378,6 +1379,25 @@ function syncApply_(d) {
   });
   props.setProperty('SYNC_ASKED', JSON.stringify(capKeys_(asked, 200)));
   props.setProperty('SYNC_LOTS', JSON.stringify(capKeys_(lots, 50)));
+}
+
+/** 24.10: продане, яке eBay показує «Versendet», → «відправлено» + трек в обліку (без «відправив N»). Рядок — за SKU
+ *  «ledger-N» або номером оголошення в нотатках серед проданих. Уже позначене відправленим — не чіпаємо. */
+function shippedFromEbay_(list, out) {
+  if (!list.length) return;
+  const rows = ledgerRows_().filter(function (r) { return r.status === 'Продано'; });
+  if (!rows.length) return;
+  const notes = ledger_().getSheetByName('Угоди').getRange(LEDGER_FIRST, COL.note, rows[rows.length - 1].n, 1).getValues();
+  const ev = events_(), today = iso_(new Date());
+  list.forEach(function (x) {
+    const bySku = (String(x.sku || '').match(/^ledger-(\d{1,4})$/) || [])[1];
+    const r = rows.filter(function (y) { return bySku ? y.n === Number(bySku)
+      : x.item_id && String((notes[y.n - 1] || [''])[0]).indexOf(String(x.item_id)) >= 0; })[0];
+    if (!r || (ev[r.n] || {}).sent) return;
+    setEvents_(r.n, x.track ? { sent: x.date || today, outTrack: x.track, outCarrier: x.carrier || '' } : { sent: x.date || today });
+    out.push('📮 №' + r.n + ' ' + h_(String(r.title).slice(0, 40).trim()) + ' — в eBay «Versendet»' +
+             (x.track ? ' (трек ' + h_(x.track) + ')' : '') + ', записав відправку' + (x.track ? '; коли покупець отримає — напишу' : ''));
+  });
 }
 
 /** 19.10: лоти дорожчі за трьох найдешевших конкурентів → порада з ціною й кнопкою «⬇️» (з підтвердженням). Та сама порада
@@ -1844,16 +1864,35 @@ function events_() {
   });
   return ev;
 }
-function saveEvents_(ev) {
+function saveEvents_(ev, keys) {
   const p = PropertiesService.getScriptProperties();
   if (!p.getProperties) { p.setProperty('LEDGER_EVENTS', JSON.stringify(ev)); return; }
   const cur = p.getProperties(), out = {};
-  Object.keys(ev).forEach(function (n) {
+  (keys || Object.keys(ev)).forEach(function (n) {
+    if (keys && ev[n] === undefined) { if (cur['EV_' + n] !== undefined) p.deleteProperty('EV_' + n); return; }
     const v = JSON.stringify(ev[n] || {});
     if (cur['EV_' + n] !== v) out['EV_' + n] = v;
   });
   if (Object.keys(out).length) p.setProperties(out, false);
   if (cur.LEDGER_EVENTS) p.deleteProperty('LEDGER_EVENTS');
+}
+
+/** 24.10 (користувач: «додав трек №1, а ранковий огляд знову „відправ №1“»): запис подій одного товару — свіжим читанням
+ *  саме його й записом лише його. Раніше кожна зміна перезаписувала ВСІ змінені записи зі знімка, прочитаного на початку:
+ *  команда в боті й щохвилинна обробка листів, що йшли одночасно, затирали одна одній щойно записане («трек» губився). */
+function updEvent_(n, fn) {
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperties || p.getProperty('LEDGER_EVENTS')) {   // прості заглушки / старий спільний запис — як раніше
+    const ev = events_();
+    ev[n] = fn(ev[n] || {}) || {};
+    saveEvents_(ev);
+    return ev[n];
+  }
+  let cur = {};
+  try { cur = JSON.parse(p.getProperty('EV_' + n) || '{}') || {}; } catch (e) { console.log('EV_' + n + ': ' + e); }
+  const next = fn(cur) || {};
+  p.setProperty('EV_' + n, JSON.stringify(next));
+  return next;
 }
 
 /** 18.10 (аудит): раз на добу — службові записи закритих угод (продано / повернено / скасовано). Правки, назви, ціни
@@ -1895,10 +1934,10 @@ function capKeys_(obj, max) {
   return obj;
 }
 function markEvent_(n, key, val) {
-  const ev = events_();
-  ev[n] = ev[n] || {};
-  if (key === 'rem') { ev[n].rem = ev[n].rem || {}; ev[n].rem[val] = 1; } else ev[n][key] = val;
-  saveEvents_(ev);
+  updEvent_(n, function (e) {
+    if (key === 'rem') { e.rem = e.rem || {}; e.rem[val] = 1; } else e[key] = val;
+    return e;
+  });
 }
 
 function testTip_(cat) {
@@ -2032,7 +2071,7 @@ function morningDigest_(rows, ev, today, warn, todos, exps, got) {
     } else if (r.status === 'Перевірено') {
       acts.push('💶 Виставити ' + name(r));
       btn.push(['продати', r.n]);
-    } else if (r.status === 'Продано' && r.sdate && !e.sent && days_(r.sdate, today) <= 7) {
+    } else if (r.status === 'Продано' && r.sdate && !e.sent && !e.outTrack && days_(r.sdate, today) <= 7) {
       const d = days_(r.sdate, today);
       acts.push('📮 Відправ ' + name(r) + ' — продано ' + (d === 0 ? 'сьогодні' : d === 1 ? 'вчора' : d + ' дн. тому'));
       btn.push(['відправив', r.n]);
@@ -2064,17 +2103,18 @@ function remindersIfDue_(props, now) {
   props.setProperty('REMIND_SENT', key);   // спершу ставимо — помилка нижче не засипле повторами кожні 15 хв
   const rows = ledgerRows_(), ev = events_();
   const a = dueReminders_(rows, ev, key), b = dueTodos_(LEDGER_TODO.concat(userTodos_()), ev, key);
-  a.got.forEach(function (n) { ev[n] = ev[n] || {}; ev[n].got = key; });
+  a.got.forEach(function (n) { ev[n] = updEvent_(n, function (e) { e.got = key; return e; }); });
   a.marks.concat(b.marks).forEach(function (m) {
-    ev[m[0]] = ev[m[0]] || {}; ev[m[0]].rem = ev[m[0]].rem || {}; ev[m[0]].rem[m[1]] = 1;
+    ev[m[0]] = updEvent_(m[0], function (e) { e.rem = e.rem || {}; e.rem[m[1]] = 1; return e; });
   });
+  const gone = [];
   // закриті рядки більше не потрібні (ліміт властивості 9 КБ)
   rows.forEach(function (r) {
     if (ev[r.n] && (['Повернено', 'Скасовано'].indexOf(r.status) >= 0 ||
         (r.status === 'Продано' && (ev[r.n].outDelivered || (ev[r.n].sent && !ev[r.n].outTrack) ||
-                                    (r.sdate && days_(r.sdate, key) > 30))))) delete ev[r.n];
+                                    (r.sdate && days_(r.sdate, key) > 30))))) { delete ev[r.n]; gone.push(r.n); }
   });
-  saveEvents_(ev);
+  if (gone.length) saveEvents_(ev, gone);
   // протестувати / відправити — тепер щоденні пункти «Зробити»; у «Увага» лише строки, що спливають
   const warn = a.lines.filter(function (l, i) { return WARN_KEYS.indexOf(a.marks[i][1]) >= 0; });
   const waiting = a.marks.filter(function (m) { return ['ka5', 'ka8', 'eb10', 'eb20'].indexOf(m[1]) >= 0; })
@@ -2150,10 +2190,11 @@ function statusCommand_(msg) {
 /** 19.10 (користувач: «випадково натиснув „отримав“ на №10 — як повернути? все працює тільки в один бік?»): перед
  *  кожною зміною статусу — знімок (статус і події рядка). «назад N» / «↩️ Скасувати» повертає як було (один крок). */
 function snapshot_(n, status) {
-  const ev = events_(), cur = Object.assign({}, ev[n] || {});
-  delete cur.undo;
-  ev[n] = Object.assign(ev[n] || {}, { undo: { st: status, ev: cur } });
-  saveEvents_(ev);
+  updEvent_(n, function (e) {
+    const cur = Object.assign({}, e);
+    delete cur.undo;
+    return Object.assign(e, { undo: { st: status, ev: cur } });
+  });
 }
 
 const STATUS_LIST = ['Оплачено', 'В дорозі', 'Отримано', 'Перевірено', 'Виставлено', 'Продано', 'Повернено', 'Скасовано', 'Проблема'];
@@ -2176,8 +2217,7 @@ function undoCommand_(msg) {
   }
   const ev = events_(), u = (ev[n] || {}).undo;
   if (!u) { notify_('Для ' + name + ' немає що скасовувати. Постав статус сам: «статус ' + n + ' Оплачено» (можна: ' + STATUS_LIST.join(', ') + ').'); return true; }
-  ev[n] = u.ev || {};
-  saveEvents_(ev);
+  updEvent_(n, function () { return u.ev || {}; });
   sh.getRange(row, COL.status).setValue(u.st);
   notify_('↩️ ' + name + ': повернув статус «' + u.st + '» (було «' + r.status + '»). Інший — «статус ' + n + ' …».');
   return true;
@@ -2388,9 +2428,7 @@ function carrierKind_(subject, body) {
 }
 
 function setEvents_(n, obj) {
-  const ev = events_();
-  ev[n] = Object.assign(ev[n] || {}, obj);
-  saveEvents_(ev);
+  updEvent_(n, function (e) { return Object.assign(e, obj); });
 }
 function rowByTrack_(num, key) {
   const ev = events_(), want = String(num || '').toUpperCase();

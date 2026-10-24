@@ -74,6 +74,9 @@ def recent_orders(token: str, post) -> list[dict]:
             out.append(dict(order_id=_t(o, "OrderID"), line_id=_t(tr, "OrderLineItemID"), item_id=_t(tr, "Item/ItemID"),
                             txn_id=_t(tr, "TransactionID"), title=_t(tr, "Item/Title"), sku=_t(tr, "Item/SKU"),
                             buyer=_t(o, "BuyerUserID") or _t(tr, "Buyer/UserID"), shipped=bool(_t(o, "ShippedTime")),
+                            shipped_at=_t(o, "ShippedTime")[:10],
+                            track=_t(tr, "ShippingDetails/ShipmentTrackingDetails/ShipmentTrackingNumber"),
+                            carrier=_t(tr, "ShippingDetails/ShipmentTrackingDetails/ShippingCarrierUsed"),
                             feedback_left=tr.find(NS + "FeedbackLeft") is not None))
     return out
 

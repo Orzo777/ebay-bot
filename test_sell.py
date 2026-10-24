@@ -322,8 +322,23 @@ class ReviseModeTest(unittest.TestCase):
         with mock.patch.object(el, "access_token", return_value="tok"),                 mock.patch.object(listings, "active", return_value=[dict(id="306000000004", title="x", price=159.0)]):
             sell.ebay_mode({"mode": "sync", "rt": "rt", "rows": rows}, "k", post=lambda *a, **k: None,
                            send=lambda t, m: sent.append(t) or True, back=lambda x, k: back.append(x))
-        self.assertEqual(back, [{"kind": "sync", "manual": 0, "count": 1, "lots": [dict(n=4, id="306000000004", price=159.0)], "ask": [], "ended": []}])
+        self.assertEqual(back, [{"kind": "sync", "manual": 0, "count": 1, "lots": [dict(n=4, id="306000000004", price=159.0)], "ask": [],
+                                 "ended": [], "shipped": []}])
         self.assertEqual(sent, [])
+
+    def test_sync_reports_shipped_orders(self):
+        # 24.10: продане з етикеткою eBay («Versendet» + трек) → у звірку, облік сам позначить відправленим
+        from unittest import mock
+        import ebay_actions as ea
+        import ebay_list as el
+        import listings
+        back = []
+        orders = [dict(item_id="336849525826", sku="", track="354502403646", carrier="DHL", shipped_at="2026-10-23", shipped=True),
+                  dict(item_id="1", sku="ledger-9", track="", carrier="", shipped_at="", shipped=False)]
+        with mock.patch.object(el, "access_token", return_value="tok"), mock.patch.object(listings, "active", return_value=[]),                 mock.patch.object(ea, "recent_orders", return_value=orders):
+            sell.ebay_mode({"mode": "sync", "rt": "rt", "rows": []}, "k", post=lambda *a, **k: None,
+                           send=lambda t, m: True, back=lambda x, k: back.append(x))
+        self.assertEqual(back[0]["shipped"], [dict(item_id="336849525826", sku="", track="354502403646", carrier="DHL", date="2026-10-23")])
 
     def test_market_check(self):
         # 19.10: №5 Corsair 2×16 DDR4-2400 — 169 € + 6,49 доставка, а три найдешевші 139 / 140 / 145 → порада серед них;

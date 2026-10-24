@@ -60,6 +60,14 @@ ctx.markEvent_(3, 'got', '2026-10-18');
 check('sharded after first save', [evStore.LEDGER_EVENTS, JSON.parse(evStore.EV_1).got, JSON.parse(evStore.EV_3).got], [undefined, '2026-10-01', '2026-10-18']);
 ctx.markEvent_(3, 'rem', 'test0');
 check('one row updated, others intact', [JSON.parse(evStore.EV_3).rem.test0, ctx.events_()[1].got], [1, '2026-10-01']);
+// 24.10: гонка — команда «трек 1» записала відправку, поки інша обробка тримала старий знімок і писала свій товар:
+// запис одного товару (і збереження «лише цих ключів») не повинен повертати старе в інших
+const stale = ctx.events_();
+evStore.EV_1 = JSON.stringify(Object.assign(JSON.parse(evStore.EV_1), { sent: '2026-10-24', outTrack: 'T1' }));
+ctx.markEvent_(3, 'rem', 'race');
+stale[3] = Object.assign(stale[3] || {}, { got: '2026-10-24' });
+ctx.saveEvents_(stale, [3]);
+check('no lost update', [JSON.parse(evStore.EV_1).sent, JSON.parse(evStore.EV_1).outTrack, JSON.parse(evStore.EV_3).got], ['2026-10-24', 'T1', '2026-10-24']);
 check('capKeys_ keeps the newest', Object.keys(ctx.capKeys_({ a: 1, b: 1, c: 1, d: 1 }, 2)), ['c', 'd']);
 // прибирання: №1 продано 100 днів тому (усе його — геть), №2 продано вчора (лише правки / назви / ціни), №3 відкритий
 Object.assign(evStore, { PH_1: '[1]', PHS_1: '{}', EV_2: '{}', PH_2: '[2]', PH_3: '[3]',

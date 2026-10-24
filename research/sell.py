@@ -890,10 +890,19 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             return True
         ch = listings.sync(lots, d.get("rows") or [])
         print(f"sync: лотів {len(lots)}, відомих {len(ch['lots'])}, питань {len(ch['ask'])}, завершених {len(ch['ended'])}")
+        # 24.10 (користувач: «бот сам має оновлювати за статусом, мінімально йому писати»): продане, яке eBay уже показує
+        # «Versendet» (етикетка eBay чи трек), → облік: відправлено, трек — і ранковий огляд більше не нагадує «відправ»
+        try:
+            import ebay_actions as ea
+            ch["shipped"] = [dict(item_id=o["item_id"], sku=o["sku"], track=o["track"], carrier=o["carrier"], date=o["shipped_at"])
+                             for o in ea.recent_orders(token, post) if o["shipped"]]
+        except Exception as e:
+            print(f"замовлення: {e.__class__.__name__}")
+            ch["shipped"] = []
         if d.get("market"):   # 19.10: раз на добу — ціни наших лотів проти конкурентів
             ch["market"] = listings.market_check(lots, d.get("rows") or [], comp_fn=comp_fn)
             print(f"ринок: дорожчі за конкурентів — {len(ch['market'])}")
-        if ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market"):   # 19.10: «звірити» — відповідь і коли все збігається
+        if ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market") or ch.get("shipped"):   # 19.10: «звірити» — відповідь і коли все збігається
             back({"kind": "sync", "manual": d.get("manual") or 0, "count": len(lots), **ch}, key)
         return True
     if mode == "got":   # 17.10: «отримав N» — фото з оголошення продавця: звірити, чи прийшло саме те
