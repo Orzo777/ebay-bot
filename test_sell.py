@@ -359,7 +359,11 @@ class ReviseModeTest(unittest.TestCase):
         text, kb = sell.ka_card(6, p["r"], p["tx"], 95.0)
         title = kb["inline_keyboard"][0][0]["copy_text"]["text"]
         self.assertLessEqual(len(title), sell.KA_TITLE_MAX)
-        self.assertIn("CMK32GX4M2A2400C16", title)
+        self.assertEqual(title, "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 RAM getestet")   # getestet — завжди
+        self.assertIn("Teilenummer: CMK32GX4M2A2400C16", text)                                 # номер — в описі
+        self.assertEqual(sell.ka_title("Kingston 16GB DDR4-2666 KVR26N19S8/16 DIMM Desktop RAM getestet", "KVR26N19S8/16"),
+                         "Kingston 16GB DDR4-2666 RAM KVR26N19S8/16 getestet")                  # влазить — з номером
+        self.assertTrue(sell.ka_title("X " * 40).endswith(" getestet"))
         self.assertIn("Direkt kaufen", text)
         self.assertIn(f"виставив 6 ka {pl['price']}", text)
         self.assertNotIn("versichertes DHL-Paket", text)

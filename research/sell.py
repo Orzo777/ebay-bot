@@ -513,15 +513,24 @@ def ka_plan(r: dict, cost: float | None, price: float | None = None) -> dict:
                 profit=(net - cost) if cost else None, ebay_net=net_of(r, r["median_sale"]))
 
 
-def ka_title(t: str) -> str:
-    """Назва eBay → до 65 знаків (ліміт KA): спершу без «getestet» / типу планок, далі — по словах."""
-    t = re.sub(r"\s+", " ", t).strip()
-    for cut in (r"\s*[–-]?\s*getestet$", r"\s+(?:DIMM|SO-DIMM|ECC UDIMM)\s+(?:Desktop|Laptop)\s+RAM", r"\s+(?:Desktop|Laptop)\s+RAM"):
-        if len(t) > KA_TITLE_MAX:
-            t = re.sub(cut, "", t).strip()
-    while len(t) > KA_TITLE_MAX and " " in t:
+def ka_title(t: str, pn: str | None = None) -> str:
+    """Назва eBay → до 65 знаків (ліміт KA). 24.10 (користувач: «не додає getestet — менше охоплення»): «getestet» —
+    завжди; номер моделі — лише якщо влазить (він і так в описі, а пошук KA за замовчуванням шукає й в описі);
+    «DIMM Desktop RAM» → «RAM» (ноутбучна — «SO-DIMM RAM»)."""
+    t = re.sub(r"\s*[–-]?\s*getestet\b", "", re.sub(r"\s+", " ", t)).strip()
+    if pn:
+        t = re.sub(r"\s*" + re.escape(pn), "", t).strip()
+    t = re.sub(r"\bSO-DIMM Laptop RAM\b", "SO-DIMM RAM", t)
+    t = re.sub(r"\b(?:DIMM Desktop RAM|ECC Unbuffered DIMM|Desktop RAM)\b", "RAM", t)
+    t = re.sub(r"(?<!SO-)(?<!U)\bDIMM\b", "RAM", t)                          # коротка форма з eBay «… CMK… DIMM getestet»
+    t = re.sub(r"\bSO-DIMM\b(?! RAM)", "SO-DIMM RAM", t).strip(" –-,")
+    for cand in ([t, pn, "getestet"] if pn else [], [t, "getestet"]):
+        c = " ".join(x for x in cand if x)
+        if cand and len(c) <= KA_TITLE_MAX:
+            return c
+    while len(t) + len(" getestet") > KA_TITLE_MAX and " " in t:
         t = t.rsplit(" ", 1)[0]
-    return t.rstrip(" –-,(")
+    return t.rstrip(" –-,(") + " getestet"
 
 
 def ka_desc(desc: str) -> str:
@@ -532,7 +541,7 @@ def ka_desc(desc: str) -> str:
 
 def ka_card(row: int | None, r: dict, tx: dict, cost: float | None, price: float | None = None) -> tuple[str, dict]:
     e = lambda x: html.escape(str(x), quote=False)   # noqa: E731
-    pl, title, desc = ka_plan(r, cost, price), ka_title(tx["title"]), ka_desc(tx["desc"])
+    pl, title, desc = ka_plan(r, cost, price), ka_title(tx["title"], tx.get("pn")), ka_desc(tx["desc"])
     n = row or "N"
     lines = [f"🟢 <b>Продаж №{n} на Kleinanzeigen</b>",
              f"💶 <b>{pl['price']} € VB</b> + доставка (платить покупець) · тобі ≈ {pl['net']:.0f} €"
