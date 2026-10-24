@@ -25,8 +25,7 @@ on:
         description: "reply | close | sweep"
         required: false
         default: "reply"
-  schedule:
-    - cron: "17 * * * *"
+  # 24.10: щогодинного cron більше немає — відповіді продавців ідуть у бот «Облік і продаж»; старі прибирає сторож до 08.11
 
 concurrency:
   group: ka-reply

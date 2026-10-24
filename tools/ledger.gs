@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-24e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-24f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -2044,6 +2044,9 @@ function userTodos_() { return JSON.parse(PropertiesService.getScriptProperties(
 // відправити), «Увага» — строки, що спливають (посилка не йде, захист KA / eBay; як і раніше — раз), і нагадування.
 const WARN_KEYS = ['ka5', 'ka8', 'eb10', 'eb20', 'out7', 'salesup'];
 
+const MONTHS_UK_ = ['січень', 'лютий', 'березень', 'квітень', 'травень', 'червень', 'липень', 'серпень', 'вересень', 'жовтень',
+  'листопад', 'грудень'];
+
 function moneyNow_(rows, exps, today) {
   const sum = function (list, f) { return list.reduce(function (a, r) { return a + (Number(f(r)) || 0); }, 0); };
   const sold = rows.filter(function (r) { return r.status === 'Продано' && r.sprice != null; });
@@ -2083,8 +2086,12 @@ function morningDigest_(rows, ev, today, warn, todos, exps, got) {
   const m = moneyNow_(rows, exps, today);
   const pin = rows.filter(function (r) { return ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0; }).length;
   const pout = rows.filter(function (r) { const e = ev[r.n] || {}; return r.status === 'Продано' && e.sent && !e.outDelivered; }).length;
+  // 24.10 (користувач: «як зрозуміти „гроші зараз −577 · у товарі 632 · за місяць +134“?»): словами, що це означає
   const out = ['☀️ <b>Ранковий огляд</b> · ' + today.slice(8, 10) + '.' + today.slice(5, 7),
-    '💶 Гроші зараз ' + eur(m.cash) + ' · у товарі ' + Math.round(m.stock) + ' € · за місяць ' + eur(m.month),
+    '💶 ' + (m.cash < 0 ? 'Вкладено з кишені ' + Math.abs(Math.round(m.cash)) + ' €' : 'На руках грошей +' + Math.round(m.cash) + ' €') +
+      ', з них у товарі ' + Math.round(m.stock) + ' € (за ціною купівлі)' +
+      (m.stock ? ' → продаси за ціною купівлі — буде ' + eur(m.cash + m.stock) : ''),
+    '📈 Прибуток за ' + MONTHS_UK_[Number(today.slice(5, 7)) - 1] + ': ' + eur(m.month),
     '🗂 На руках ' + m.open + (pin || pout ? ' · 📦 посилки: ' + pin + ' до тебе, ' + pout + ' від тебе' : '')];
   if (acts.length) out.push('', '<b>✅ Зробити сьогодні</b>', acts.slice(0, 8).map(function (a, i) { return (i + 1) + '. ' + a; }).join('\n') +
                             (acts.length > 8 ? '\n… ще ' + (acts.length - 8) + ' — «на руках»' : ''));
@@ -2334,7 +2341,9 @@ function ledgerSummary_(rows, exps) {
   const bought = sum(rows.filter(function (r) { return r.status !== 'Скасовано'; }), function (r) { return r.spent; });
   const stock = sum(open, function (r) { return r.spent; });
   const cash = received - bought - expTotal;
-  const money = ['💶 Гроші зараз: <b>' + sgn(cash) + '</b>' + (stock ? ' · з товаром на руках (' + e(stock) + ') — ' + sgn(cash + stock) : ''),
+  // 24.10: як у ранковому огляді — словами («вкладено з кишені», «у товарі за ціною купівлі»)
+  const money = ['💶 ' + (cash < 0 ? 'Вкладено з кишені: <b>' + e(-cash) + '</b>' : 'Грошей у плюсі: <b>' + sgn(cash) + '</b>') +
+    (stock ? ' · з них у товарі ' + e(stock) + ' (за ціною купівлі) → продаси за ціною купівлі — ' + sgn(cash + stock) : ''),
     '📊 Разом: ' + (expTotal ? sgn(profit) + ' − ' + e(expTotal) + ' = ' : '') + '<b>' + sgn(net) + '</b>' +
     (net < 0 ? ' — до нуля ще ' + e(-net) : '')];
   if (business_() && net > 0) {   // 13.10: Kleingewerbe — податок на прибуток (оцінка; точна ставка — від зарплати)

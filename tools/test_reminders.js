@@ -86,7 +86,8 @@ store.LEDGER_EVENTS = JSON.stringify({ 2: { shipped: '2026-09-27' }, 9: { sent: 
 check('10:00 — sends', ctx.remindersIfDue_(ctx.PropertiesService.getScriptProperties(), new Date()), true);
 // 13.10: «☀️ Ранковий огляд» — стан, «Зробити сьогодні» (щодня, поки не зроблено), «Увага» (строки — раз), кнопки
 const dg = sent[0].replace(/<[^>]+>/g, '');   // 14.10: HTML — текст без тегів; блок «Увага» — у цитаті
-check('one message', [sent.length, /^☀️ Ранковий огляд · 06\.10\n💶 Гроші зараз/.test(dg), (dg.match(/№\d/g) || []).length], [1, true, 6]);
+check('one message', [sent.length, /^☀️ Ранковий огляд · 06\.10\n💶 (Вкладено з кишені \d+ €|На руках грошей).*з них у товарі \d+ € \(за ціною купівлі\)[\s\S]*📈 Прибуток за жовтень/.test(dg),
+  (dg.match(/№\d/g) || []).length], [1, true, 6]);   // 24.10: гроші словами
 has('to do', dg, /✅ Зробити сьогодні\n1\. 🧪 Протестуй №4 .*проблему в KA — до 08\.10\n2\. 🧪 Протестуй №5 .*\n3\. 📮 Відправ №6 .* — продано вчора/);
 has('warnings short', dg, /⚠️ Увага\n📦 №1 .*напиши продавцю \(проблему в KA — до 11\.10\)/);
 check('warnings: one line each', dg.split('⚠️ Увага')[1].trim().split('\n\n').every((l) => !l.includes('\n')), true);

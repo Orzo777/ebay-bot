@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-10-24a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-10-24b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -205,7 +205,11 @@ function wdClaudeToken_(st, now, msgs) {
 
 // 10.10: прибирання відповідей продавців KA (ka_reply.yml, mode=sweep) — щогодини звідси: cron «17 * * * *» на
 // GitHub для публічного репозиторію спрацьовував раз на 6–7 годин
+// 24.10: відповіді продавців більше не йдуть в основний бот (лише в «Облік і продаж»), тож прибирати там нічого;
+// старі (до 24.10) живуть 14 днів (ka_reply.KEEP_DAYS) — після 08.11 прибирання вимикається само.
+const WD_SWEEP_UNTIL = '2026-11-08';
 function wdKaSweep_(st, now) {
+  if (now.toISOString().slice(0, 10) > WD_SWEEP_UNTIL) return;
   if (st.sweepAt && now.getTime() - st.sweepAt < 60 * 60000) return;
   st.sweepAt = now.getTime();
   wdGh_('/actions/workflows/ka_reply.yml/dispatches', 'post', { ref: 'main', inputs: { mode: 'sweep' } });

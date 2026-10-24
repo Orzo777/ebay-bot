@@ -89,14 +89,14 @@ const deals = ss.sheets['Угоди'];
 vm.runInContext("Utilities = { formatDate: function (d) { return d.toISOString().slice(0, 10); } };", ctx);
 say('облік');
 const t = sent[sent.length - 1].replace(/<[^>]+>/g, '');   // 14.10: «облік» — HTML; текст перевіряємо без тегів
-check('облік: blocks + details in a quote', [/^📒 <b>Облік<\/b>\n\n💶 Гроші зараз: <b>/.test(sent[sent.length - 1]),
+check('облік: blocks + details in a quote', [/^📒 <b>Облік<\/b>\n\n💶 (Вкладено з кишені|Грошей у плюсі): <b>/.test(sent[sent.length - 1]),
   /\n<blockquote>пересилка покупцям/.test(sent[sent.length - 1])], [true, true]);
 check('облік with a sale', [/Продано: 1 шт за 149\.00 € \(куплено за 70\.63 €\)/.test(t), /пересилка покупцям і пакування: −12\.00 €/.test(t),
   /заробив на товарі: \+66\.37 € \(\+94%\)/.test(t), /№1 Corsair Vengeance LPX 32GB \(2x16GB\): 70\.63 € → 149\.00 € = \+66\.37 € · 3 дн\./.test(t),
   /На руках: 1 шт, у товарі 45\.00 €/.test(t), /Разом: \+66\.37 € − 60\.20 € = \+6\.17 €$/m.test(t), /до нуля/.test(t)],
   [true, true, true, true, true, true, false]);
 // гроші загалом: 137 отримано − (70.63 + 45, скасована PS5 не рахується) − 60.20 витрат = −38.83; з товаром (45) — +6.17
-check('облік: money overall', /💶 Гроші зараз: −38\.83 € · з товаром на руках \(45\.00 €\) — \+6\.17 €/.test(t), true);
+check('облік: money overall', /💶 Вкладено з кишені: 38\.83 € · з них у товарі 45\.00 € \(за ціною купівлі\) → продаси за ціною купівлі — \+6\.17 €/.test(t), true);
 
 // 13.10: перемикач «комерційний акаунт» — вимкнено: податку в «облік» немає; увімкнено: податок ~30% з «Разом»
 check('private: no tax line', /Податок/.test(t), false);

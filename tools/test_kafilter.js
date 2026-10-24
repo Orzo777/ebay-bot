@@ -67,8 +67,10 @@ store.GITHUB_TOKEN = 'g';
 const before = tg.length;
 ctxRun(`__threads = [__mk('c', 'Ja, 70 passt. https://www.kleinanzeigen.de/s-anzeige/3528457610')]`, { __mk: mk });
 ctx.kaFilter();
-if (gh.length !== 1 || !/ka_reply\.yml\/dispatches$/.test(gh[0][0]) || tg.length !== before || /70 passt/.test(JSON.stringify(gh[0][1]))) {
-  bad++; console.log('!! via github', gh.length, tg.length - before, JSON.stringify(gh[0] && gh[0][1]));
+// 24.10: відповідь продавця — не реплаєм на картку в ebay_bot (GitHub), а окремим повідомленням з кнопкою на оголошення
+// (у проєкті — бот «Облік і продаж» через notify_; тут notify_ ще немає — запасний шлях)
+if (gh.length !== 0 || tg.length !== before + 1 || !/s-anzeige\/3528457610/.test(tg[tg.length - 1].reply_markup)) {
+  bad++; console.log('!! seller reply with ad link', gh.length, tg.length - before, JSON.stringify(tg[tg.length - 1]));
 }
 
 // 23.10: покупець пише щодо НАШОГО оголошення — «🛍 Покупець пише» у бот обліку, не «Відповідь продавця» і не в GitHub

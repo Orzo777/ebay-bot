@@ -18,7 +18,7 @@
 
 // Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
 // разом із check() вичерпав денний Gmail-ліміт Google 01.10.
-const VER_KAFILTER = '2026-10-24b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_KAFILTER = '2026-10-24c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb OR preisvorschlag) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
@@ -255,11 +255,14 @@ function kaDigest_(m, props) {
     return;
   }
   const text = kaDigestText_(m.getSubject(), body, g);
-  const markup = JSON.stringify({ inline_keyboard: [[{ text: '💬 Відкрити чат на Kleinanzeigen',
-    url: link || 'https://www.kleinanzeigen.de/m-nachrichten.html' }]] });
-  // 02.10: реплаєм на картку, з якої писав продавцю — карта карток живе в GitHub (research/ka_reply.py).
-  // Текст шифруємо (репозиторій публічний); не вийшло запустити — надсилаємо окремим повідомленням, як раніше.
-  if (kaReplyViaGitHub_(props, text, markup, kaListing_(m.getSubject(), g), kaAdIds_(String(m.getBody() || '') + ' ' + body))) return;
+  // 24.10 (користувач: «мухи окремо, котлети окремо»): ebay_bot / pc_bot — лише картки угод; усе, що далі (листування з
+  // продавцем, покупки, продажі), — у бот «Облік і продаж». Відповідь продавця — туди ж, з кнопками на чат і оголошення
+  // (раніше — реплаєм на картку в ebay_bot через research/ka_reply.py).
+  const ad = kaAdIds_(String(m.getBody() || '') + ' ' + body)[0];
+  const kb = { inline_keyboard: [[{ text: '💬 Відкрити чат на Kleinanzeigen', url: link || 'https://www.kleinanzeigen.de/m-nachrichten.html' }]]
+    .concat(ad ? [[{ text: '🔗 Оголошення', url: 'https://www.kleinanzeigen.de/s-anzeige/' + ad }]] : []) };
+  if (typeof notify_ === 'function') { notify_(text, kb, 'HTML'); return; }
+  const markup = JSON.stringify(kb);
   UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'post', muteHttpExceptions: true,
     payload: { chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: 'true', reply_markup: markup } });
 }

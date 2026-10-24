@@ -4,15 +4,15 @@
   "sha": "b6be1f26d0dc82b3"
  },
  "ledger.gs": {
-  "ver": "2026-10-24e",
-  "sha": "b1ff06db2c37b7ef"
+  "ver": "2026-10-24f",
+  "sha": "e4d0843d73c4df79"
  },
  "kafilter.gs": {
-  "ver": "2026-10-24b",
-  "sha": "749734f08df9fc54"
+  "ver": "2026-10-24c",
+  "sha": "df6f94c5b72738ee"
  },
  "watchdog.gs": {
-  "ver": "2026-10-24a",
-  "sha": "79f086025e7f6366"
+  "ver": "2026-10-24b",
+  "sha": "1b6513b1ff39c2ca"
  }
 }
