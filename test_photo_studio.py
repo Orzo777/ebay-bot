@@ -1,5 +1,6 @@
 """Фото «як у магазині» (16.10): білий фон замість паперу, товар по центру; екран тесту / темний фон — не чіпаємо."""
 import io
+import os
 import sys
 import unittest
 
@@ -98,8 +99,11 @@ class StudioTest(unittest.TestCase):
             out = photo_studio.studio(module_photo(), "k", post, cache)
             self.assertIsNotNone(out)
             self.assertEqual(len(calls), 1)
+            f = os.path.join(cache, os.listdir(cache)[0])
+            os.utime(f, (0, 0))                                        # маска «давня» (40+ днів)
             photo_studio.studio(module_photo(), "k", post, cache)
             self.assertEqual(len(calls), 1)                            # з кешу
+            self.assertGreater(os.path.getmtime(f), 10 ** 9)           # 24.10: використання оновлює дату — кеш не видалить
         a = np.asarray(Image.open(io.BytesIO(out)).convert("RGB")).astype(int)
         self.assertGreater(a[10, 10].mean(), 245)
         quota = lambda *a, **k: R(402)                                 # noqa: E731

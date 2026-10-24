@@ -109,6 +109,7 @@ def poof_mask(img: Image.Image, key: str, post, cache: str = "") -> Image.Image 
     path = os.path.join(cache, hashlib.sha1(data).hexdigest() + ".png") if cache else ""
     if path and os.path.exists(path):
         try:
+            os.utime(path)   # 24.10: кеш чистить маски, старші за 30 днів, — рахуємо від останнього використання, не від створення
             return Image.open(path).convert("L").resize(img.size, Image.LANCZOS)
         except Exception:
             pass
