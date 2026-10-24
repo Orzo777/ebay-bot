@@ -101,7 +101,9 @@ cmd('купив OWC 2x16 за 45,50 ebay');
 check('buy price after "за"', [added[1].price, added[1].title, added[1].src], [45.5, 'OWC 2x16', 'eBay']);
 cmd('Купив 30 € Kingston 16GB самовивіз');
 check('pickup', [added[2].price, added[2].src, added[2].status], [30, 'Самовивіз Гамбург', 'Отримано']);
-check('foreign chat ignored', [cmd('купив 45 X', 999), added.length], [true, 3]);
+cmd('купив 120 Corsair LPX amazon');
+check('amazon channel (24.10)', [added[3].src, added[3].title], ['Amazon', 'Corsair LPX']);
+check('foreign chat ignored', [cmd('купив 45 X', 999), added.length], [true, 4]);
 check('not a command', cmd('https://www.kleinanzeigen.de/s-anzeige/x/1-225-1'), false);
 check('no price', [cmd('купив OWC'), /спершу сума/.test(said[said.length - 1])], [true, true]);
 

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-23a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-24a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -139,7 +139,7 @@ function buildLedger_(ss) {
   set.getRange('B3:B5').setBackground('#FFF2CC').setFontColor('#0000FF');
   set.getRange('A8').setValue('Списки для меню (можна дописувати):').setFontWeight('bold');
   const lists = [['Категорія', 'Де купив / продав', 'Статус'], ['RAM', 'Kleinanzeigen', 'Оплачено'], ['Консоль', 'eBay', 'В дорозі'],
-    ['ПК', 'Самовивіз Гамбург', 'Отримано'], ['Запчастини', 'Інше', 'Перевірено'], ['Інше', '', 'Виставлено'], ['', '', 'Продано'],
+    ['ПК', 'Самовивіз Гамбург', 'Отримано'], ['Запчастини', 'Інше', 'Перевірено'], ['Інше', 'Amazon', 'Виставлено'], ['', '', 'Продано'],
     ['', '', 'Повернено'], ['', '', 'Скасовано'], ['', '', 'Проблема']];
   set.getRange(9, 1, lists.length, 3).setValues(lists);
   set.getRange('A9:C9').setFontWeight('bold');
@@ -749,8 +749,10 @@ function ledgerCommand(msg) {
   if (!pm) { notify_('Напиши так: «' + cmd + ' 45 OWC 2x16 DDR4» — спершу сума, далі назва.'); return true; }
   const amount = Number(pm[1].replace(',', '.'));
   let title = (rest.slice(0, pm.index) + ' ' + rest.slice(pm.index + pm[0].length)).replace(/\s+/g, ' ').trim();
-  const src = /\bebay\b/i.test(title) ? 'eBay' : /самовивіз|abhol/i.test(title) ? 'Самовивіз Гамбург' : 'Kleinanzeigen';
-  title = title.replace(/(^|\s)(ebay|ka|kleinanzeigen|самовивіз)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
+  // 24.10: «продав 209 Corsair amazon» — Amazon як окремий канал (раніше записалось би як Kleinanzeigen)
+  const src = /\bebay\b/i.test(title) ? 'eBay' : /\bamazon\b|амазон/i.test(title) ? 'Amazon'
+    : /самовивіз|abhol/i.test(title) ? 'Самовивіз Гамбург' : 'Kleinanzeigen';
+  title = title.replace(/(^|\s)(ebay|ka|kleinanzeigen|самовивіз|amazon|амазон)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
   if (cmd.indexOf('витрат') === 0) {
     const what = (rest.slice(0, pm.index) + ' ' + rest.slice(pm.index + pm[0].length)).replace(/\s+/g, ' ').trim() || '(без назви)';
     const cat = expenseCategory_(what);
