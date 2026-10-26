@@ -98,7 +98,7 @@ check('one huge paragraph — sent once, trimmed', [posted.length, posted[0].tex
 // 18.10: у GitHub — лише номер оголошення з нотаток
 check('compact notes for GitHub', ctx.rowsForGithub_([{ n: 4, title: 'T', status: 'Виставлено', note: 'довга історія; виставлено (eBay 111111111); ' +
   'ціна → 159 €; оновлено (eBay 336844624233); ще багато тексту' }, { n: 5, title: 'U', status: 'Перевірено', note: 'на KA' }]),
-  [{ n: 4, title: 'T', status: 'Виставлено', note: '(eBay 336844624233)' }, { n: 5, title: 'U', status: 'Перевірено', note: '' }]);
+  [{ n: 4, title: 'T', status: 'Виставлено', note: '(eBay 336844624233)', ka: '' }, { n: 5, title: 'U', status: 'Перевірено', note: '', ka: '' }]);
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

@@ -242,6 +242,23 @@ check('market tip', [/📉 <b>Ціни конкурентів[\s\S]*№3.*= <b>1
 const before3 = sent.length;
 sync({ lots: [{ n: 3, id: '306123456789', price: 55 }], ask: [], ended: [], market: mk }, 's2l');
 check('market tip once', sent.length, before3);
+// 26.10: перевірка оголошень — розбіжності раз на нову; виправлене забувається; «звірити» — і коли все збігається
+const au = [{ n: 3, where: 'eBay', id: '306123456789', url: 'https://www.ebay.de/itm/306123456789', title: 'Kingston 16GB',
+  issues: ['у Herstellernummer 2 номери (A, B) — має бути один'], key: 'k1' }];
+sync({ lots: [], ask: [], ended: [], audit: au }, 'au1');
+check('audit reported', [/🔎 <b>Перевірка оголошень<\/b>[\s\S]*№3 eBay «Kingston 16GB»[\s\S]*2 номери/.test(last()[0]),
+  last()[1].inline_keyboard[0][0].url], [true, 'https://www.ebay.de/itm/306123456789']);
+const nAu = sent.length;
+sync({ lots: [], ask: [], ended: [], audit: au }, 'au2');
+check('audit: same issues once', sent.length, nAu);
+sync({ lots: [], ask: [], ended: [], audit: [] }, 'au3');
+sync({ lots: [], ask: [], ended: [], audit: au }, 'au4');
+check('audit: fixed then broken again → reported again', sent.length, nAu + 1);
+sync({ lots: [], ask: [], ended: [], audit: [], manual: 1, count: 3 }, 'au5');
+check('manual: all listings match', /Оголошення eBay і KA перевірив/.test(last()[0]), true);
+sync({ lots: [], ask: [], ended: [], ka_links: [{ n: 3, id: '3551005398' }] }, 'au6');
+check('KA ad linked to the ledger', [ctx.events_()[3].ka, /№3 — бачу на Kleinanzeigen \(оголошення 3551005398\), записав/.test(last()[0])],
+  ['3551005398', true]);
 sync({ lots: [], ask: [{ id: '306555444333', title: 'Corsair LPX 32GB', price: 99, cands: [1, 4] }], ended: [{ n: 1, id: '1234567890' }] }, 's3');
 check('sync: ended + ask with buttons', [/№1: оголошення на eBay більше не активне/.test(sent[sent.length - 2][0]), /Це який номер/.test(last()[0]),
   last()[1].inline_keyboard.map((r) => r[0].callback_data)], [true, true, ['L|306555444333|1', 'L|306555444333|4', 'L|306555444333|0']]);

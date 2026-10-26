@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-26b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-26c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1330,7 +1330,9 @@ function parcelsWatch_() {
 /** 18.10 (аудит): у GitHub — лише номер оголошення eBay з нотаток (Python більше нічого з них не бере); повні нотатки
  *  з часом ростуть, а вхідні дані запуску GitHub обмежені (~65 000 символів — інакше «GitHub 422»). */
 function rowsForGithub_(rows) {
-  return rows.map(function (r) { const id = listingId_(r.note); return { n: r.n, title: r.title, status: r.status, note: id ? '(eBay ' + id + ')' : '', spent: r.spent }; });
+  const ev = events_();   // 26.10: ka — оголошення KA (для перевірки оголошень, research/audit.py)
+  return rows.map(function (r) { const id = listingId_(r.note); return { n: r.n, title: r.title, status: r.status, note: id ? '(eBay ' + id + ')' : '', spent: r.spent,
+    ka: (ev[r.n] || {}).ka || '' }; });
 }
 
 /** Відкриті рядки (не продані / не повернені) з нотатками — для зіставлення з лотами eBay. */
@@ -1384,9 +1386,12 @@ function syncApply_(d) {
   });
   props.setProperty('LISTED_PRICE', JSON.stringify(prices));
   shippedFromEbay_(d.shipped || [], out);
+  kaLinks_(d.ka_links || [], out);
   if (out.length) notify_(out.join('\n'), null, 'HTML');
   marketTips_(d.market || [], rows);
-  if (!out.length && d.manual && !(d.ask || []).length) notify_('✅ Звірив з eBay: активних лотів ' + (d.count || 0) + ' — таблиця збігається, нічого не міняв.');
+  const audited = auditReport_(d.audit, !!d.manual);
+  if (!out.length && d.manual && !(d.ask || []).length) notify_('✅ Звірив з eBay: активних лотів ' + (d.count || 0) + ' — таблиця збігається, нічого не міняв.' +
+    (audited === 0 ? '\n🔎 Оголошення eBay і KA перевірив — назва, номер, частота, обсяг, опис і доставка збігаються.' : ''));
   const lots = JSON.parse(props.getProperty('SYNC_LOTS') || '{}');
   (d.ask || []).forEach(function (a) {
     if (!a.id || asked[a.id] || !(a.cands || []).length) return;
@@ -1402,6 +1407,40 @@ function syncApply_(d) {
   });
   props.setProperty('SYNC_ASKED', JSON.stringify(capKeys_(asked, 200)));
   props.setProperty('SYNC_LOTS', JSON.stringify(capKeys_(lots, 50)));
+}
+
+/** 26.10 (користувач: «бот сам перевіряв, чи все збігається з фактичними даними планки, і писав одразу; і KA так само»):
+ *  розбіжності в оголошеннях (research/audit.py) — раз на кожну нову; виправлене зникає саме. manual («звірити») — усі.
+ *  → скільки оголошень з розбіжностями (undefined — перевірки не було). */
+function auditReport_(list, manual) {
+  if (!list) return undefined;
+  const props = PropertiesService.getScriptProperties(), seen = JSON.parse(props.getProperty('AUDIT_SEEN') || '{}'), now = {};
+  const fresh = list.filter(function (a) {
+    const k = a.where + ':' + a.id;
+    now[k] = a.key;
+    return manual || seen[k] !== a.key;
+  });
+  props.setProperty('AUDIT_SEEN', JSON.stringify(now));   // виправлене (немає в списку) — забуваємо
+  if (fresh.length) {
+    notify_('🔎 <b>Перевірка оголошень</b> — не збігається:\n\n' + fresh.map(function (a) {
+      return (a.n ? '№' + a.n + ' ' : '') + a.where + ' «' + h_(a.title) + '»\n<blockquote>' +
+        a.issues.map(function (s) { return '• ' + h_(s); }).join('\n') + '</blockquote>';
+    }).join('\n') + '\nВиправ в оголошенні (eBay — «✏️» / «🔁» у «продати N» або «Bearbeiten»; KA — «Bearbeiten»).',
+    { inline_keyboard: fresh.slice(0, 6).map(function (a) {
+      return [{ text: '🔗 ' + (a.n ? '№' + a.n + ' ' : '') + a.where, url: a.url }]; }) }, 'HTML');
+  }
+  return list.length;
+}
+
+/** 26.10: оголошення KA, якого бот не знав (виставив без «виставив N ka …»), — за назвою знайшов рядок обліку: записав,
+ *  щоб продаж на одному майданчику знімав товар з іншого. */
+function kaLinks_(links, out) {
+  links.forEach(function (x) {
+    const e = events_()[x.n] || {};
+    if (e.ka) return;
+    setEvents_(x.n, { ka: String(x.id) });
+    out.push('🔗 №' + x.n + ' — бачу на Kleinanzeigen (оголошення ' + h_(x.id) + '), записав');
+  });
 }
 
 /** 24.10: продане, яке eBay показує «Versendet», → «відправлено» + трек в обліку (без «відправив N»). Рядок — за SKU

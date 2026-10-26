@@ -931,7 +931,16 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         if d.get("market"):   # 19.10: раз на добу — ціни наших лотів проти конкурентів
             ch["market"] = listings.market_check(lots, d.get("rows") or [], comp_fn=comp_fn)
             print(f"ринок: дорожчі за конкурентів — {len(ch['market'])}")
-        if ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market") or ch.get("shipped"):   # 19.10: «звірити» — відповідь і коли все збігається
+        if d.get("market") or d.get("manual"):   # 26.10: раз на добу і на «звірити» — чи все в оголошеннях збігається
+            try:
+                import audit
+                cache = audit.load_cache()
+                ch.update(audit.run(lots, ch["lots"], d.get("rows") or [], token, post, cache=cache))
+                audit.save_cache(cache)
+            except Exception as e:
+                print(f"перевірка оголошень: {e.__class__.__name__}")
+        if (ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market") or ch.get("shipped")
+                or ch.get("audit") or ch.get("ka_links")):   # 19.10: «звірити» — відповідь і коли все збігається
             back({"kind": "sync", "manual": d.get("manual") or 0, "count": len(lots), **ch}, key)
         return True
     if mode == "got":   # 17.10: «отримав N» — фото з оголошення продавця: звірити, чи прийшло саме те
