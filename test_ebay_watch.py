@@ -103,6 +103,27 @@ class TestRisk(unittest.TestCase):
         self.assertIn("СПЕРШУ ПЕРЕВІР", verdict_head(r))
         self.assertNotIn("БЕРИ", verdict_head(r))
 
+    def test_seller_feedback_page_26_10(self):
+        # 26.10: Kingston FURY Beast DDR5 64 ГБ за 402 € — єдиний відгук як продавцю: «товар не прийшов, eBay повернув гроші»
+        import ebay_watch as ew
+        row = ('<tr data-feedback-id={id}><td><div class=card__rating><svg class="imagePosition icon icon--feedback-{t}" '
+               'data-test-type={t} viewBox="0 0 22 22"></svg></div><div class=card__feedback><div class=card__comment>'
+               '<span aria-label="{c}">{c}</span></div></div></td><td><div class=card__price><!--F#4--><span>EUR {p}</span>'
+               '</div></td><td><span aria-label="Letzte 6 Monate">Letzte 6 Monate</span></td></tr>')
+        scam = row.format(id=1, t="negative", p="402,25", c="Die Ware ist leider nie angekommen. Auch auf den "
+                          "eBay-K&#228;uferschutz wurde nicht reagiert, sodass eBay den Betrag erstatten musste.")
+        fb = ew.parse_feedback("<table id=feedback-cards><tbody>" + scam + "</tbody></table>")
+        self.assertEqual([(f["type"], f["price"]) for f in fb], [("negative", 402.25)])
+        self.assertIn("Käuferschutz", fb[0]["text"])
+        self.assertIn("товар не прийшов", ew.feedback_risk(fb)["hard"][0])
+        good = [dict(type="positive", text="Alles super", price=None)] * 60
+        rude = [dict(type="negative", text="Unfreundlich, langsamer Versand", price=None)]
+        self.assertEqual(ew.feedback_risk(good + fb)["hard"], [])          # великий продавець: одна скарга — лише попередження
+        self.assertTrue(ew.feedback_risk(good + fb)["soft"])
+        self.assertTrue(ew.feedback_risk(rude + good[:5])["hard"])        # новачок (до 20): будь-який негатив
+        self.assertEqual(ew.feedback_risk(good[:5]), {"hard": [], "soft": []})
+        self.assertEqual(ew.feedback_risk(None), {"hard": [], "soft": []})   # сторінка недоступна — нічого не вирішуємо
+
     def test_contact_and_payment_block(self):
         lst = item("Xbox Series X", 300)
         self.assertTrue(risk_of(lst, "Bitte per WhatsApp melden 0151 2345678", 545)["hard"])

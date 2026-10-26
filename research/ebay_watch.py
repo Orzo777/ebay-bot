@@ -240,6 +240,59 @@ def risk_of(lst: dict, desc: str | None, quick_sale: float, auction: bool = Fals
     return dict(hard=hard, soft=soft)
 
 
+# 26.10 (користувач: «Kingston FURY Beast DDR5 64 ГБ за 402 € — бот прислав „вигідно“, а в продавця єдиний відгук як
+# продавця — „товар так і не прийшов, eBay повернув гроші“»). Рейтинг з Browse API рахує й відгуки за покупки (94%, 17),
+# тож продавець з одним проданим і цим негативом виглядав нормально. Тепер — публічна сторінка відгуків «як продавцю».
+FDBK_URL = "https://www.ebay.de/fdbk/feedback_profile/{}?filter=feedback_page%3ARECEIVED_AS_SELLER"
+_NOT_DELIVERED = re.compile(r"nie\s+(?:angekommen|erhalten|geliefert|bekommen)|nicht\s+(?:angekommen|erhalten|geliefert|"
+                            r"bekommen|versendet|verschickt)|keine?\s+(?:ware|lieferung|sendungsnummer)|betrug|betrüger|fake|"
+                            r"scam|abzocke|erstatt|käuferschutz|geld\s+zurück|never\s+(?:arrived|received)|not\s+received", re.I)
+
+
+def parse_feedback(page: str) -> list[dict]:
+    """Відгуки зі сторінки (найновіші — перші): [{type: positive/neutral/negative, text, price}]."""
+    out = []
+    for row in re.findall(r"<tr data-feedback-id=\d+>(.*?)</tr>", page, re.S):
+        kind = re.search(r'data-test-type="?(positive|neutral|negative)', row)
+        text = re.search(r'class="?card__comment"?>\s*<span aria-label="([^"]*)"', row)
+        price = re.search(r'card__price.{0,120}?EUR\s*([\d.]+,\d\d)', row, re.S)
+        out.append(dict(type=kind.group(1) if kind else "", text=html.unescape(text.group(1)) if text else "",
+                        price=float(price.group(1).replace(".", "").replace(",", ".")) if price else None))
+    return out
+
+
+def seller_feedback(user: str) -> list[dict] | None:
+    """Відгуки, отримані як продавець (перша сторінка); None — сторінку не отримали (тоді нічого не вирішуємо)."""
+    import requests
+    if not user:
+        return None
+    try:
+        r = requests.get(FDBK_URL.format(user), timeout=15, headers={"Accept-Language": "de-DE,de;q=0.9",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"})
+    except requests.RequestException:
+        return None
+    if r.status_code != 200 or "feedback-cards" not in r.text:
+        print(f"   відгуки продавця: сторінка недоступна (HTTP {r.status_code})")
+        return None
+    return parse_feedback(r.text)
+
+
+def feedback_risk(fb: list[dict] | None) -> dict:
+    """Негатив «не прийшло / шахрай» серед відгуків як продавця — картки не буде; у новачка (до 20) — будь-який негатив."""
+    hard, soft = [], []
+    neg = [f for f in fb or [] if f["type"] == "negative"]
+    if not neg:
+        return dict(hard=hard, soft=soft)
+    quote = neg[0]["text"][:90] + ("…" if len(neg[0]["text"]) > 90 else "")
+    if any(_NOT_DELIVERED.search(f["text"]) for f in neg) and len(fb) < 50:
+        hard.append(f"покупці пишуть, що товар не прийшов: «{quote}» ({len(neg)} з {len(fb)} відгуків як продавцю)")
+    elif len(fb) < 20:
+        hard.append(f"негатив серед {len(fb)} відгуків як продавцю: «{quote}»")
+    else:
+        soft.append(f"є негатив як продавцю: «{quote}»")
+    return dict(hard=hard, soft=soft)
+
+
 def is_fresh(lst: dict, now: datetime, hours: float = FRESH_HOURS) -> bool:
     try:
         created = datetime.fromisoformat(lst["created"].replace("Z", "+00:00"))
@@ -692,6 +745,9 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             print(f"   ДЕФЕКТ в описі — картку не надсилаю: «{broken}»")
             continue
         risk = risk_of(lst, desc, r.get("quick_sale", 0))
+        if not risk["hard"]:
+            fr = feedback_risk(seller_feedback(lst.get("seller")))
+            risk = dict(hard=fr["hard"], soft=risk["soft"] + fr["soft"])
         if risk["hard"]:
             print("   ШАХРАЙ — картку не надсилаю: " + "; ".join(risk["hard"]))
             continue
@@ -731,6 +787,9 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
                     continue
                 r = r2
                 risk = risk_of(lst, desc, r.get("quick_sale", 0), auction=True)
+                if not risk["hard"]:
+                    fr = feedback_risk(seller_feedback(lst.get("seller")))
+                    risk = dict(hard=fr["hard"], soft=risk["soft"] + fr["soft"])
                 print(f" - [аукціон] {lst['title'][:70]} | ставка {lst['price']:.0f}€ -> макс. {r['cap'] - r['ship_in']:.0f}€")
                 if broken_reason(desc) or risk["hard"] or (desc and _DESC_UNTESTED.search(desc)):
                     print("   дефект / шахрай / не тестовано — пропускаю")
