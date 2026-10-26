@@ -261,6 +261,10 @@ def revise_listing(item_id: str, tx: dict, prices: dict, pics: list[str], token:
             + (f"<Title>{_x(tx['title'][:80])}</Title>" if has("title") else "")
             + (f"<Description>{_x(description_html(tx['desc']))}</Description>" if has("desc") else "")
             + (f"{eur('StartPrice', prices['item'])}{best}" if has("price") else "")
+            + ("<ShippingDetails><ShippingType>Flat</ShippingType><ShippingServiceOptions><ShippingServicePriority>1"
+               f"</ShippingServicePriority><ShippingService>{_x(tx.get('ship_service') or SHIP_SERVICE)}</ShippingService>"
+               f"{eur('ShippingServiceCost', tx['ship'])}" + ("<FreeShipping>true</FreeShipping>" if tx.get("ship_free") else "")
+               + "</ShippingServiceOptions></ShippingDetails>" if parts is not None and "ship" in parts else "")
             + (f"<ConditionDescription>{_x(tx['cond'][:1000])}</ConditionDescription><ItemSpecifics>{spec}</ItemSpecifics>"
                if parts is None else "")
             + ("<PictureDetails>" + "".join(f"<PictureURL>{_x(u)}</PictureURL>" for u in pics[:MAX_PHOTOS]) + "</PictureDetails>"

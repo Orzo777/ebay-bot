@@ -169,6 +169,20 @@ ctx.doPost({ postData: { contents: JSON.stringify({ sealed: ctx.seal_({ kind: 'r
   parameter: { bot: 'office' } });
 check('revised noted, edits cleared', [/оновлено на eBay 09.10 \(129 €\)/.test(deals.cells['5:' + vm.runInContext('COL.note', ctx)]),
   JSON.parse(store.SELL_EDITS)[1]], [true, undefined]);
+// 26.10: 🚚 / 📦 доставка — своя ціна запам'ятовує, при якій доставці задана; виставлене — 🔁 з частиною «доставка»
+check('listed card carries rt (live shipping)', opened().rt, 'v^1.1#RT');
+say('ціна 1 163');
+ctx.officeCallback({ id: 'q', data: 'c|безкоштовна|1', message: { chat: { id: 7 }, message_id: 73 } });
+check('free shipping: card with edits, buttons kept', [opened().edits, tg.some((c) => c[0] === 'editMessageReplyMarkup' && c[1].message_id === 73)],
+  [{ price: 163, pship: 'paid', ship: 'free' }, false]);
+say('ціна 1 169');
+check('price set while free', JSON.parse(store.SELL_EDITS)[1], { price: 169, pship: 'free', ship: 'free' });
+say('платна 1');
+check('back to paid keeps pship', JSON.parse(store.SELL_EDITS)[1], { price: 169, pship: 'free', ship: 'paid' });
+say('доставка 1 безкоштовна');
+ctx.officeCallback({ id: 'q', data: 'c|так-оновити|1', message: { chat: { id: 7 }, message_id: 74 } });
+check('revise with shipping part', opened().parts.join(), 'price,ship');
+say('скинути 1');
 say('оновити 3');
 ctx.officeCallback({ id: 'q', data: 'c|так-оновити|3', message: { chat: { id: 7 }, message_id: 72 } });
 check('not listed — no revise', /ще не виставлено автоматично/.test(last()[0]), true);

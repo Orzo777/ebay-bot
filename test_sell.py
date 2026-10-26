@@ -417,6 +417,47 @@ class EditsTest(unittest.TestCase):
         low = sell.prepare(title, 70.63, 1, lambda r: [], {"price": 50})
         self.assertTrue(any("мінус" in w for w in low["pr"]["warn"]))   # нижче закупівлі — попередження
 
+    def test_shipping_toggle_26_10(self):
+        # 26.10 (користувач): кнопка «безкоштовна / платна доставка»; ціна перераховується (навіть своя), описи — під варіант
+        title = "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16"
+        paid = sell.prepare(title, 96.54, 5, lambda r: [])
+        free = sell.prepare(title, 96.54, 5, lambda r: [], {"ship": "free"})
+        self.assertEqual((free["tx"]["ship"], free["tx"]["ship_free"]), (0.0, True))
+        self.assertIn("Kostenloser Versand", free["tx"]["desc"])
+        self.assertNotIn("Kostenloser Versand", paid["tx"]["desc"])
+        # «разом» те саме: безкоштовна — доставка в ціні товару
+        self.assertEqual(sell.item_prices(free["pr"], 0)["item"],
+                         sell.item_prices(paid["pr"], paid["tx"]["ship"])["item"] + round(paid["tx"]["ship"]))
+        card = sell.build_card(5, title, free["r"], free["pr"], [], free["tx"], 96.54, free["edited"])
+        self.assertIn("з безкоштовною доставкою", card)
+        self.assertIn("«Kostenlosen Versand anbieten» — <b>з галочкою</b>", sell.build_steps(5, free["pr"], free["tx"]))
+        cb = lambda tx: [b.get("callback_data") for row in sell.keyboard(tx, free["r"], 5, True)["inline_keyboard"] for b in row]   # noqa: E731
+        self.assertIn("c|платна|5", cb(free["tx"]))
+        self.assertIn("c|безкоштовна|5", cb(paid["tx"]))
+        # своя ціна: задана при платній (163 + 6,19) → безкоштовна 169; задана при безкоштовній 169 → платна 163
+        ip = lambda p: sell.item_prices(p["pr"], p["tx"]["ship"])["item"]   # noqa: E731
+        self.assertEqual(ip(sell.prepare(title, 96.54, 5, lambda r: [], {"price": 163, "pship": "paid", "ship": "free"})), 169)
+        self.assertEqual(ip(sell.prepare(title, 96.54, 5, lambda r: [], {"price": 169, "pship": "free", "ship": "paid"})), 163)
+        self.assertEqual(ip(sell.prepare(title, 96.54, 5, lambda r: [], {"price": 158, "ship": "free"})), 158)   # без pship — як є
+        # живе оголошення з безкоштовною: «ціна 4 158» — 158 і лишається
+        live = {"service": "DE_HermesPaket", "cost": 0.0, "free": True}
+        self.assertEqual(ip(sell.prepare(title, 96.54, 5, lambda r: [], {"price": 158}, live)), 158)
+        self.assertIn("Kostenloser Versand", sell.prepare(title, 96.54, 5, lambda r: [], None, live)["tx"]["desc"])
+        self.assertNotIn("Kostenloser", sell.ka_desc(free["tx"]["desc"]))   # на KA — своє речення про доставку
+        self.assertIn("Direkt kaufen", sell.ka_desc(free["tx"]["desc"]))
+
+    def test_revise_shipping_sends_price_desc_and_shipping(self):
+        import ebay_list as el
+        tx = sell.prepare("Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400", 96.54, 5, lambda r: [], {"ship": "free"})["tx"]
+        body = []
+        post = lambda url, headers=None, data=None, timeout=None: body.append(data.decode()) or type("R", (), {   # noqa: E731
+            "content": b'<R xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></R>', "status_code": 200})()
+        el.revise_listing("1", tx, {"item": 169, "accept": 157, "decline": 147}, [], "t", post, {"ship", "price", "desc"})
+        self.assertIn("<FreeShipping>true</FreeShipping>", body[0])
+        self.assertIn('<StartPrice currencyID="EUR">169.00</StartPrice>', body[0])
+        el.revise_listing("1", tx, {"item": 169, "accept": 157, "decline": 147}, [], "t", post, {"title"})
+        self.assertNotIn("ShippingDetails", body[1])
+
     def test_edit_button(self):
         kb = sell.keyboard({}, sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"), 3, True)
         self.assertIn("c|змінити|3", [b.get("callback_data") for row in kb["inline_keyboard"] for b in row])

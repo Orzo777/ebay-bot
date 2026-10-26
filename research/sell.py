@@ -275,7 +275,7 @@ def ram_texts(title: str, r: dict) -> dict:
              *([f"• Geschwindigkeit: {speed} MHz ({pc})"] if speed else []),
              *([f"• Teilenummer: {pn}"] if pn else []), "",
              f"Mit dabei: {mods} {'Module' if many else 'Modul'} wie auf den Fotos. Verschickt wird gut und antistatisch verpackt "
-             "als versichertes Paket mit Sendungsnummer.", "",   # 26.10: без «DHL» — у лоті може стояти Hermes
+             "als versichertes Paket mit Sendungsnummer.", "",   # 26.10: без «DHL» — у лоті може стояти Hermes; SHIP_PAID_DE
              "Privatverkauf, daher keine Garantie und keine Rücknahme. Bei Fragen einfach melden!"]
     pins = {("DDR4", True): 260, ("DDR4", False): 288, ("DDR5", True): 262, ("DDR5", False): 288}.get((gen, lap))
     # поля — як у формі eBay «Angebot fertigstellen» (09.10): обов'язкові, потім інші; «—» — не заповнювати
@@ -344,6 +344,21 @@ def money_de(x: float) -> str:
     return f"{x:.2f}".replace(".", ",")
 
 
+# 26.10 (користувач: «при виставленні — кнопка: безкоштовна чи платна доставка; ціна перераховується, навіть якщо я задав
+# свою; описи — під варіант»). Ціна «разом» (товар + доставка) лишається тою самою: безкоштовна — доставка в ціні товару.
+SHIP_PAID_DE = {"ram": "Verschickt wird gut und antistatisch verpackt als versichertes Paket mit Sendungsnummer.",
+                "console": "Verschickt wird sicher verpackt als versichertes Paket mit Sendungsnummer."}
+SHIP_FREE_DE = {"ram": "Kostenloser Versand: gut und antistatisch verpackt als versichertes Paket mit Sendungsnummer.",
+                "console": "Kostenloser Versand: sicher verpackt als versichertes Paket mit Sendungsnummer."}
+
+
+def set_shipping(tx: dict, kind: str, free: bool, base: float) -> None:
+    """Безкоштовна / платна доставка: вартість для покупця, позначка для eBay і речення в описі."""
+    tx.update(ship=0.0 if free else base, ship_free=free)
+    a, b = (SHIP_PAID_DE[kind], SHIP_FREE_DE[kind]) if free else (SHIP_FREE_DE[kind], SHIP_PAID_DE[kind])
+    tx["desc"] = tx["desc"].replace(a, b)
+
+
 def item_prices(pr: dict, ship: float) -> dict:
     """Платна доставка (09.10, як купує сам користувач): ціна товару = ціна «разом» мінус доставка; пороги — теж без неї."""
     return dict(item=max(1, round(pr["list"] - ship)), accept=max(1, round(pr["accept"] - ship)),
@@ -359,7 +374,8 @@ def build_card(row: int | None, title: str, r: dict, pr: dict, comp: list[float]
     lines = [f"🏷 <b>Продаж{' №' + str(row) if row else ''}</b> · <i>{e(title[:80])}</i>"
              + (f" · ✏️ змінено: {', '.join(edited)}" if edited else ""),
              f"📝 На eBay: <i>{e(tx['title'])}</i>",   # 14.10: видно, що саме піде в оголошення
-             f"💶 <b>{ip['item']} €</b> + доставка {money_de(tx['ship'])} €"
+             (f"💶 <b>{ip['item']} €</b> з безкоштовною доставкою" if tx.get("ship_free") else
+              f"💶 <b>{ip['item']} €</b> + доставка {money_de(tx['ship'])} €")
              + (f" · купив за {cost:.0f} € → прибуток ≈ <b>{pr['profit_list']:.0f} €</b>" + _taxed(pr["profit_list"]) if cost else ""),
              f"🤝 Автоприйняти від {ip['accept']} € · відхиляти нижче {ip['decline']} €",
              f"📊 Продано за 30 днів {r['quick_sale']}–{r['median_sale']} € · "
@@ -394,8 +410,8 @@ def build_steps(row: int | None, pr: dict, tx: dict) -> str:
             "8️⃣ <b>DETAILS ZUR LIEFERUNG</b> → «Nur Versand»",
             f"   • Paketgewicht: {e(tx['weight'])} · Paketmaße: {e(tx['dims'])}",
             "   • Inlandsversand → Ersten Versandservice hinzufügen → <b>DHL Paket</b>",
-            field("Käufer zahlt", money_de(tx["ship"])),
-            "   • «Kostenlosen Versand anbieten» — без галочки", "",
+            *(["   • «Kostenlosen Versand anbieten» — <b>з галочкою</b> (доставка вже в ціні)"] if tx.get("ship_free") else
+              [field("Käufer zahlt", money_de(tx["ship"])), "   • «Kostenlosen Versand anbieten» — без галочки"]), "",
             "9️⃣ <b>ANGEBOT BEWERBEN</b> → Basis і Premium вимкнені (перший тиждень)", "",
             "🔟 <b>Angebot einstellen</b> → потім у бот: " + code(f"виставив {row or 'N'} {ip['item']}"), "",
             "📦 <b>Після продажу:</b> Mein eBay → Verkauft → «Versandetikett kaufen» → DHL Paket → запакуй "
@@ -412,6 +428,8 @@ def keyboard(tx: dict, r: dict, row: int | None = None, ebay: bool = False, list
         rows.append([{"text": "🔁 Оновити оголошення на eBay", "callback_data": f"c|оновити|{row}"}] if listed else
                     [{"text": "🚀 Виставити на eBay автоматично", "callback_data": f"c|авто|{row}"}])
         rows.append([{"text": "✏️ Змінити ціну / назву / опис / фото", "callback_data": f"c|змінити|{row}"}])
+        rows.append([{"text": "📦 Зробити доставку платною", "callback_data": f"c|платна|{row}"} if tx.get("ship_free") else
+                     {"text": "🚚 Зробити доставку безкоштовною", "callback_data": f"c|безкоштовна|{row}"}])
     if row:
         rows.append([{"text": "📋 Покроково (вручну) + фото", "callback_data": f"c|кроки|{row}"}])
     rows.append([{"text": "🔎 Конкуренти на eBay",
@@ -429,14 +447,18 @@ def steps_keyboard(tx: dict, r: dict) -> dict:
         [{"text": "➕ Відкрити форму eBay", "url": "https://www.ebay.de/sl/prelist/suggest"}]]}
 
 
-def apply_edits(r: dict, pr: dict, tx: dict, cost: float | None, ed: dict | None) -> list[str]:
+def apply_edits(r: dict, pr: dict, tx: dict, cost: float | None, ed: dict | None, base_ship: float | None = None) -> list[str]:
     """14.10 (користувач: «хочу підправити перед фінальним пушем, з телефона»): правки з бота — «ціна N X» (ціна товару без
     доставки), «назва N …» (назва на eBay), «опис N …» (дописати в опис). Пороги Preisvorschlag — від нової ціни, як у
     plan_price, але не вище за неї. → що змінено (для картки)."""
     ed = ed or {}
     done = []
     if ed.get("price"):
-        lst = float(ed["price"]) + tx["ship"]
+        # 26.10: «ціна N X» — ціна товару при доставці, що була в момент правки (pship: free / paid); далі «разом» не
+        # змінюється, а ціна товару перераховується під поточну доставку (кнопки 🚚 / 📦). Без pship — поточна доставка.
+        ps = ed.get("pship")
+        lst = float(ed["price"]) + (0.0 if ps == "free" else (tx["ship"] if base_ship is None else base_ship) if ps == "paid"
+                                    else tx["ship"])
         floor = math.ceil(pr["floor"]) if cost else 0
         pr["accept"] = min(lst, max(floor, round(lst * ACCEPT_SHARE)))
         pr["decline"] = min(pr["accept"], max(floor, round(min(r["quick_sale"] * DECLINE_SHARE, lst * 0.87))))
@@ -454,6 +476,8 @@ def apply_edits(r: dict, pr: dict, tx: dict, cost: float | None, ed: dict | None
     if ed.get("desc"):
         tx["desc"] = tx["desc"].rstrip() + "\n\n" + str(ed["desc"]).strip()[:1000]
         done.append("опис")
+    if ed.get("ship") in ("free", "paid"):
+        done.append("доставка")
     return done
 
 
@@ -473,15 +497,19 @@ def prepare(title: str, cost: float | None, row: int | None = None, comp_fn=comp
         pr["warn"].insert(0, f"з назви не видно, скільки планок — порахував як ОДНУ на {r['spec']['total']} ГБ. "
                              f"Якщо це кіт, напиши: продати {row or 'N'} <назва з 2x…GB>")
     tx = ram_texts(title, r) if r["kind"] == "ram" else console_texts(title, r)
-    if ship:   # 20.10: перевиставлення — доставка як у старому оголошенні (безкоштовна лишається безкоштовною)
-        tx.update(ship=float(ship["cost"]), ship_service=ship.get("service"), ship_free=bool(ship.get("free")))
-    edited = apply_edits(r, pr, tx, cost, edits)
+    base = tx["ship"]
+    if ship:   # 20.10: перевиставлення / живе оголошення — доставка як на eBay (безкоштовна лишається безкоштовною)
+        tx.update(ship_service=ship.get("service"))
+        set_shipping(tx, r["kind"], bool(ship.get("free")), float(ship["cost"]) or base)
+    if (edits or {}).get("ship") in ("free", "paid"):   # 26.10: кнопка 🚚 / 📦
+        set_shipping(tx, r["kind"], edits["ship"] == "free", base)
+    edited = apply_edits(r, pr, tx, cost, edits, base)
     return dict(r=r, pr=pr, comp=comp, tx=tx, edited=edited)
 
 
 def make(title: str, cost: float | None, row: int | None = None, comp_fn=competitors, ebay: bool = False,
-         edits: dict | None = None, listed: bool = False) -> tuple[str, dict | None]:
-    p = prepare(title, cost, row, comp_fn, edits)
+         edits: dict | None = None, listed: bool = False, ship: dict | None = None) -> tuple[str, dict | None]:
+    p = prepare(title, cost, row, comp_fn, edits, ship)
     if not p:
         return (f"🤔 Не впізнав товар «{html.escape(title[:80])}».\nНапиши повніше, наприклад:\n"
                 f"<code>продати {row or 'N'} Kingston Fury 2x16GB DDR4 3200</code>", None, "")
@@ -535,9 +563,9 @@ def ka_title(t: str, pn: str | None = None) -> str:
 
 
 def ka_desc(desc: str) -> str:
-    return desc.replace("Verschickt wird gut und antistatisch verpackt als versichertes Paket mit Sendungsnummer.",
-                        "Versand gut und antistatisch verpackt mit Sendungsnummer – am liebsten über „Direkt kaufen“ "
-                        "(mit Käuferschutz). Abholung in Hamburg ist auch möglich.")
+    ka = ("Versand gut und antistatisch verpackt mit Sendungsnummer – am liebsten über „Direkt kaufen“ "
+          "(mit Käuferschutz). Abholung in Hamburg ist auch möglich.")
+    return desc.replace(SHIP_PAID_DE["ram"], ka).replace(SHIP_FREE_DE["ram"], ka)
 
 
 def ka_card(row: int | None, r: dict, tx: dict, cost: float | None, price: float | None = None) -> tuple[str, dict]:
@@ -1007,13 +1035,26 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
     parts = set(d["parts"]) if isinstance(d.get("parts"), list) else None   # 17.10: лише змінене (✏️), решта як на eBay
     if parts is not None and not parts:
         return send(f"✏️ У {what} нічого не змінено — спершу ✏️ (ціна / назва / опис / фото), потім 🔁.", None)
+    if parts is not None and "ship" in parts:   # 26.10: інша доставка — інша ціна товару й речення в описі
+        parts |= {"price", "desc"}
+    try:
+        token = el.access_token(d["rt"], app, cert, post)
+    except el.AuthError as e:
+        back({"kind": "ebay_bad"}, key)
+        return send("🔑 Ключ eBay більше не діє (" + html.escape(str(e)[:120]) + "). Напиши «ebay вхід».", None)
+    except el.EbayError as e:
+        return send(f"⚠️ Не вийшло оновити {what}: {html.escape(str(e)[:300])}\nНічого не змінено.", None)
+    try:
+        live = el.shipping_of(item_id, token, post)   # 26.10: правки ціни — від доставки, що зараз на eBay
+    except Exception as e:   # не дізнались — як раніше, від доставки за замовчуванням
+        print(f"доставка з eBay: {e.__class__.__name__}")
+        live = None
     p = prepare(d.get("title") or "", float(d["cost"]) if d.get("cost") not in (None, "") else None, row, comp_fn,
-                d.get("edits"))
+                d.get("edits"), live)
     if not p:
         return send(f"🤔 Не впізнав товар {what} — оновлювати автоматично не буду.", None)
     tx, ip = p["tx"], item_prices(p["pr"], p["tx"]["ship"])
     try:
-        token = el.access_token(d["rt"], app, cert, post)
         pics = []
         photos = [x for x in d.get("photos") or [] if isinstance(x, dict) and x.get("id")]
         if parts is not None and "photos" in parts and not photos:
@@ -1044,8 +1085,8 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
     if parts is None or "title" in parts:
         lines.append(f"<i>{html.escape(tx['title'])}</i>")
     if price_sent:
-        lines.append(f"💶 {ip['item']} € + доставка {money_de(tx['ship'])} € · автоприйняти від {ip['accept']} €, відхиляти нижче "
-                     f"{ip['decline']} €")
+        lines.append(f"💶 {ip['item']} € " + ("з безкоштовною доставкою" if tx.get("ship_free") else f"+ доставка {money_de(tx['ship'])} €")
+                     + f" · автоприйняти від {ip['accept']} €, відхиляти нижче {ip['decline']} €")
     if parts is not None and "desc" in parts:
         lines.append("📝 опис оновлено")
     if pics:
@@ -1128,9 +1169,18 @@ def main():
         photos, ebay, steps_only = d.get("photos") or [], bool(d.get("ebay")), bool(d.get("steps"))
         edits, listed = d.get("edits"), bool(d.get("item_id"))
     else:
-        title, cost, row, photos, edits, listed = a.title or "", a.cost, None, [], None, False
+        title, cost, row, photos, edits, listed, d = a.title or "", a.cost, None, [], None, False, {}
+    live = None
+    if listed and d.get("rt"):   # 26.10: картка виставленого — з доставкою, що зараз на eBay
+        try:
+            import ebay_list as el
+            live = el.shipping_of(str(d["item_id"]), el.access_token(d["rt"], config.EBAY_APP_ID, config.EBAY_CERT_ID,
+                                                                     __import__("requests").post), __import__("requests").post)
+        except Exception as e:
+            print(f"доставка з eBay: {e.__class__.__name__}")
     try:
-        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row, ebay=ebay, edits=edits, listed=listed)
+        text, kb, steps = make(title, float(cost) if cost not in (None, "") else None, row, ebay=ebay, edits=edits, listed=listed,
+                               ship=live)
     except Exception as e:   # картку-помилку — у бот, щоб не чекати мовчки
         office_send_html(f"⚠️ Не вийшло підготувати оголошення: {html.escape(e.__class__.__name__)} — напиши Claude", None)
         raise
