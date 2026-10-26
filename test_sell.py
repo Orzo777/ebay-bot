@@ -385,7 +385,7 @@ class ReviseModeTest(unittest.TestCase):
         self.assertTrue(sell.ka_title("X " * 40).endswith(" getestet"))
         self.assertIn("Direkt kaufen", text)
         self.assertIn(f"виставив 6 ka {pl['price']}", text)
-        self.assertNotIn("versichertes DHL-Paket", text)
+        self.assertNotIn("versichertes Paket", text)
 
     def test_listed_card_has_revise_button(self):
         kb = sell.keyboard({}, sell.identify("Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"), 4, True, listed=True)

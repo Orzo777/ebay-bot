@@ -275,7 +275,7 @@ def ram_texts(title: str, r: dict) -> dict:
              *([f"• Geschwindigkeit: {speed} MHz ({pc})"] if speed else []),
              *([f"• Teilenummer: {pn}"] if pn else []), "",
              f"Mit dabei: {mods} {'Module' if many else 'Modul'} wie auf den Fotos. Verschickt wird gut und antistatisch verpackt "
-             "als versichertes DHL-Paket mit Sendungsnummer.", "",
+             "als versichertes Paket mit Sendungsnummer.", "",   # 26.10: без «DHL» — у лоті може стояти Hermes
              "Privatverkauf, daher keine Garantie und keine Rücknahme. Bei Fragen einfach melden!"]
     pins = {("DDR4", True): 260, ("DDR4", False): 288, ("DDR5", True): 262, ("DDR5", False): 288}.get((gen, lap))
     # поля — як у формі eBay «Angebot fertigstellen» (09.10): обов'язкові, потім інші; «—» — не заповнювати
@@ -323,7 +323,7 @@ def console_texts(title: str, r: dict) -> dict:
              f"Die Konsole ist gebraucht, voll funktionsfähig und getestet ({check}keine Fehler), auf Werkseinstellungen "
              f"zurückgesetzt und {acct}.", "",
              "Mit dabei: alles wie auf den Fotos" + (" (inkl. Controller)" if ctrl else "") + ", Strom- und HDMI-Kabel. "
-             "Verschickt wird sicher verpackt als versichertes DHL-Paket mit Sendungsnummer.", "",
+             "Verschickt wird sicher verpackt als versichertes Paket mit Sendungsnummer.", "",
              "Privatverkauf, daher keine Garantie und keine Rücknahme. Bei Fragen einfach melden!"]
     required = [("Marke", name.split()[0]), ("Modell", " ".join(name.split()[1:]))]
     # 09.10: назви й значення — з Taxonomy API eBay.de (категорія 139971), щоб і автопублікація їх прийняла
@@ -535,7 +535,7 @@ def ka_title(t: str, pn: str | None = None) -> str:
 
 
 def ka_desc(desc: str) -> str:
-    return desc.replace("Verschickt wird gut und antistatisch verpackt als versichertes DHL-Paket mit Sendungsnummer.",
+    return desc.replace("Verschickt wird gut und antistatisch verpackt als versichertes Paket mit Sendungsnummer.",
                         "Versand gut und antistatisch verpackt mit Sendungsnummer – am liebsten über „Direkt kaufen“ "
                         "(mit Käuferschutz). Abholung in Hamburg ist auch möglich.")
 
