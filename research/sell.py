@@ -189,9 +189,10 @@ def plan_price(r: dict, cost: float | None, comp: list[float], undercut: bool = 
 
 
 # ----------------------------------------------------------------------------- тексти німецькою
+# 26.10: «Corsair Vengeance OVP …» → модель «Vengeance OVP» (OVP — оригінальна упаковка, а не серія; №5 на eBay)
 _SPEC_WORD = re.compile(r"^(?:\d+(?:[.,]\d+)?(?:gb|g|tb|mhz|mt/?s|cl\d*|x\d+)?|x|gb|ddr\d?l?|pc\d-?\d*\w?|ram|kit|set|"
                         r"so-?dimm|sodimm|dimm|udimm|ddr4-\d+|ddr5-\d+|arbeitsspeicher|speicher|memory|laptop|notebook|"
-                        r"desktop|pc|module?|riegel|stück|stk|neu|neuwertig|gebraucht|top|zustand|getestet|original|"
+                        r"desktop|pc|module?|riegel|stück|stk|neu|neuwertig|gebraucht|top|zustand|getestet|original|ovp|verpackung|"
                         r"für|fur|for|mit|und|inkl|der|die|das|ein|eine|von|im|in|cl|v|\(|\)|-|–|/|\+|&|,|\|)$", re.I)
 
 

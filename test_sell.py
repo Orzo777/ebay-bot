@@ -96,6 +96,10 @@ class TextTest(unittest.TestCase):
             self.assertNotRegex(tx["title"], r"невідом|сумнівн|x16GB MHz|  ", t)
             self.assertNotRegex(tx["desc"], r"[а-яіїє]", t)   # опис — лише німецькою
 
+    def test_ovp_is_not_a_model_26_10(self):
+        # 26.10: №5 на eBay вийшов «Corsair Vengeance OVP …», Modell «Corsair Vengeance OVP» — пошук «Vengeance LPX» його не бачив
+        self.assertEqual(sell._brand_series("Corsair Vengeance OVP 32GB 2x16GB DDR4 2400", "corsair"), "Corsair Vengeance")
+
     def test_ram_specs(self):
         r = sell.identify(TITLES[0])
         tx = sell.ram_texts(TITLES[0], r)
