@@ -140,5 +140,14 @@ const before = sent.length;
 say('отримав 2', 99);
 check('foreign chat — silent', [sent.length, cells['6:11']], [before, undefined]);
 check('main bot routes office commands', /отримав\|отримала\|перевірив/.test(fs.readFileSync(__dirname + '/gmail_trigger.gs', 'utf8')), true);
+// 26.10: продане й доставлене — подія лишається (раніше стиралась і наступного ранку знову «📮 Відправ №…», а звірка з eBay
+// записувала відправку й доставку наново, щодня); «Відправ» — не нагадуємо
+now = { 'yyyy-MM-dd': '2026-10-07', H: '10' };
+store.LEDGER_EVENTS = JSON.stringify(Object.assign(JSON.parse(store.LEDGER_EVENTS),
+  { 6: { sent: '2026-10-05', outTrack: '354502403646', outCarrier: 'dhl', outDelivered: '2026-10-06' } }));
+sent.length = 0;
+ctx.remindersIfDue_(ctx.PropertiesService.getScriptProperties(), new Date());
+check('delivered sale: events kept, no «send» in digest', [!!JSON.parse(store.LEDGER_EVENTS)[6],
+  sent.some((t) => /Відправ №6/.test(t))], [true, false]);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

@@ -72,8 +72,15 @@ jobs:
           path: ebay_watch_state.json
           key: ebaywatch-${{ github.run_id }}
 
+      # 26.10: GitHub API раз відповів HTTP 500 на запуск наступного кола → «збій» у Telegram, хоча коло відпрацювало.
+      # Тепер 3 спроби; якщо GitHub так і не відповів — не збій: щогодинний cron перезапустить ланцюжок сам.
       - name: Start next round
         if: ${{ success() && inputs.dry_run != true }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run ebay_watch.yml --ref main --repo ${{ github.repository }}
+        run: |
+          for i in 1 2 3; do
+            gh workflow run ebay_watch.yml --ref main --repo ${{ github.repository }} && exit 0
+            sleep $((20 * i))
+          done
+          echo "::warning::GitHub не прийняв запуск наступного кола — ланцюжок підхопить cron"
