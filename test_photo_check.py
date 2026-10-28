@@ -57,7 +57,7 @@ class TestPhotoCheck(unittest.TestCase):
         import photo_check
         sent = []
         saved = (photo_check.photo_line, requests.post)
-        photo_check.photo_line = lambda *a: ("📷 <b>⛔ ФОТО НЕ ЗБІГАЄТЬСЯ З НАЗВОЮ:</b> " + escape(SERVER_MSG) + " — …", True)
+        photo_check.photo_line = lambda *a, **k: ("📷 <b>⛔ ФОТО НЕ ЗБІГАЄТЬСЯ З НАЗВОЮ:</b> " + escape(SERVER_MSG) + " — …", True)
         requests.post = lambda url, data=None, **k: (sent.append(data), type("R", (), {"status_code": 200})())[1]
         try:
             res = {"price": 85}
@@ -166,6 +166,27 @@ class DescReviewTest(unittest.TestCase):
             line, bad = pc.photo_line(res, "Corsair 64GB DDR4", [])
         self.assertTrue(bad)
         self.assertIn("⛔ НЕ БЕРИ:", line)
+        # 28.10: «(64GB Kit) 2x 32GB … 350 €», а в описі «Der Preis gilt für ein 32gb Ram!» — ШІ каже: ціна за 1 планку
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "k"}), \
+                mock.patch.object(pc, "ask_gemini", return_value={"desc_problem": "", "price_covers_modules": 1, "confidence": "high"}):
+            line, bad = pc.photo_line(res, "Corsair 64GB DDR4", [])
+        self.assertTrue(bad)
+        self.assertIn("ціна за 1 планку з 2", line)
+        # ШІ не відповів (503 / таймаут) — не мовчимо
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "k"}), mock.patch.object(pc, "ask_gemini", return_value=None):
+            self.assertEqual(pc.photo_line(res, "Corsair 64GB DDR4", []), (pc.AI_FAILED, False))
+
+    def test_ai_failed_goes_on_top_of_ka_card(self):
+        import requests
+        import photo_check
+        saved, posted = (photo_check.photo_line, requests.post), []
+        photo_check.photo_line = lambda *a, **k: (photo_check.AI_FAILED, False)
+        requests.post = lambda url, data=None, timeout=None: posted.append(data) or type("R", (), {"status_code": 200})()
+        try:
+            photo_check.add_to_card(5, "🟢 <b>ВИГІДНО</b> · +138 €", None, {"price": 350}, "(64GB Kit) 2x 32GB Micron", [])
+        finally:
+            photo_check.photo_line, requests.post = saved
+        self.assertTrue(posted[0]["text"].startswith(photo_check.AI_FAILED))
 
     def test_desc_problem_rewrites_card(self):
         # 19.10: KA 3543763957 — картка «дуже вигідно», ШІ знайшов дефект в описі: увесь текст картки → ⛔, кнопки лишаються
@@ -174,7 +195,7 @@ class DescReviewTest(unittest.TestCase):
         import photo_check
         sent = []
         saved = (photo_check.photo_line, requests.post)
-        photo_check.photo_line = lambda *a: ("📷 <b>⛔ НЕ БЕРИ:</b> в описі: ПК падав — «Selten kam es zu Abstürzen»", True)
+        photo_check.photo_line = lambda *a, **k: ("📷 <b>⛔ НЕ БЕРИ:</b> в описі: ПК падав — «Selten kam es zu Abstürzen»", True)
         requests.post = lambda url, data=None, **k: (sent.append(data), type("R", (), {"status_code": 200})())[1]
         try:
             add_to_card(9, "ДУЖЕ ВИГІДНО", '{"inline_keyboard": []}', {"price": 200}, "Corsair 2x32GB DDR4", ["u"], collapse_server=True)

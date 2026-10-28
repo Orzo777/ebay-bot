@@ -96,7 +96,9 @@ DESC_FIELDS = """,
           not working, freezes, no picture, overheating, "für Bastler", "defekt"). NOT a defect: negations ("keine Probleme",
           "nie Abstürze", "0 Fehler"), legal boilerplate ("Privatverkauf, keine Garantie / Gewährleistung / Rücknahme",
           "ohne Gewähr"), cosmetic scratches, a broken accessory that is not the item;
-      "not_the_item" — sold is something else than the title suggests (only box, only one stick when the title implies a kit,
+      "not_the_item" — sold is something else than the title suggests (only box, only one stick when the title implies a kit —
+          e.g. the title says "2x 32GB" / "64GB Kit" but the text speaks of "dieses Modul", "der Riegel ist", "ein Modul",
+          or the price is for one stick only,
           an accessory, a wanted/search ad, a swap request, a different capacity or generation);
       "price_per_unit" — the price is per stick / per piece, the full set costs more;
       "scam" — clear fraud signals: asks to pay or chat outside the platform (WhatsApp, e-mail, PayPal Freunde, Vorkasse,
@@ -104,7 +106,10 @@ DESC_FIELDS = """,
   "desc_quote": the exact short German phrase (max 120 chars) from the description or title that proves desc_problem, else "",
   "desc_untested": true only if the seller says it is untested / cannot test / does not know if it works,
   "desc_note_uk": one short sentence in Ukrainian (max 100 chars) with what a buyer must know, else "",
-  "desc_confidence": "high" | "medium" | "low" for desc_problem"""
+  "desc_confidence": "high" | "medium" | "low" for desc_problem,
+  "price_covers_modules": how many RAM sticks the asking price buys according to the TEXT (read every sentence about the price,
+      e.g. "Der Preis gilt für ein 32gb Ram", "Preis pro Riegel", "einzeln abzugeben", "beide zusammen"); null if the text
+      does not say or the item is not RAM"""
 DESC_PROBLEM_UK = {"defect": "продавець пише про несправність", "not_the_item": "продається не те, що в назві",
                    "price_per_unit": "ціна за одну планку / штуку", "scam": "ознаки шахрайства"}
 
@@ -158,7 +163,9 @@ def ask_gemini(images: list[bytes], prompt: str, key: str | None = None, allow_t
                                                             if m != _working.get("m")]
     order = list(dict.fromkeys(order))[:8]
     t_end = time.time() + budget   # картка вже в Telegram; довше за ~40 с рядок «📷» не чекаємо
-    for model in order + order[:1]:   # 503 «high demand» (29.09) — інша модель, потім ще раз перша
+    for i, model in enumerate(order + order[:2]):   # 503 «high demand» (29.09) — інша модель, потім ще раз перші дві
+        if i == len(order) and time.time() + 20 < t_end:   # 28.10: усі перевантажені — пауза перед другою спробою
+            time.sleep(10)
         if time.time() > t_end:
             break
         try:
@@ -196,6 +203,10 @@ def compare(exp: dict, ph: dict) -> tuple[list[str], list[str]]:
                    + (f" — «{q[:120]}»" if q else ""))
     elif ph.get("desc_untested"):
         warn.append("продавець не тестував — бери лише з поправкою на ризик")
+    pcm = ph.get("price_covers_modules")
+    if (exp["kind"] == "ram" and isinstance(pcm, int) and 0 < pcm < exp["modules"] and prob not in DESC_PROBLEM_UK
+            and ph.get("desc_confidence") != "low"):   # 28.10: «Der Preis gilt für ein 32gb Ram!» при «2x 32GB» у назві
+        bad.append(f"в описі: ціна за {pcm} планку з {exp['modules']} — увесь набір у {exp['modules'] // pcm} рази дорожчий")
     if ph.get("confidence") == "low" or ph.get("_text_only"):
         return bad, warn
     if ph.get("only_box_or_accessory"):
@@ -235,8 +246,12 @@ STATS = {"ok": 0, "fail": 0}
 SERVER_MSG = "на фото серверна пам'ять (Registered ECC)"
 
 
-def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool] | None:
-    """→ (рядок для картки, чи є розбіжність) або None (немає ключа / фото / відповіді)."""
+AI_FAILED = "⚠️ ШІ не відповів — опис і фото НЕ перевірені: прочитай опис сам (скільки планок і за що ціна)"
+
+
+def photo_line(res: dict, title: str, image_urls: list[str], budget: float = 50) -> tuple[str, bool] | None:
+    """→ (рядок для картки, чи є розбіжність) або None (немає ключа / фото / опису).
+    28.10: Gemini не відповів (503 / таймаут) — не мовчимо: рядок AI_FAILED (користувач ледь не купив планку «за кіт»)."""
     from html import escape
     desc = (res.get("desc") or "").strip()
     if not os.getenv("GEMINI_API_KEY") or not (image_urls or desc):
@@ -251,14 +266,14 @@ def photo_line(res: dict, title: str, image_urls: list[str]) -> tuple[str, bool]
         market = res.get("median_sale") or res.get("quick_sale") or 0
         prompt += DESC_BLOCK.format(price=f"{res.get('price') or 0:.0f}", market=f"{market:.0f}", title=title.replace('"', "'")[:150],
                                     seller=res.get("ai_seller") or " · ".join(res.get("risk_lines") or []) or "—", desc=desc[:2500].replace(">>>", ">"))
-    ph = ask_gemini(imgs, prompt, allow_text=bool(desc))
+    ph = ask_gemini(imgs, prompt, allow_text=bool(desc), budget=budget)
     if ph is not None and not imgs:
         ph["_text_only"] = True   # без фото — висновки лише з тексту
     if imgs:   # для сторожа: чи відповідає Gemini (research/health.py)
         STATS["ok" if ph else "fail"] += 1
     print(f"   [фото] {len(imgs)} фото, {time.time() - t0:.1f} с: {json.dumps(ph, ensure_ascii=False)[:300] if ph else '—'}")
     if not ph:
-        return None
+        return (AI_FAILED, False) if (imgs or desc) else None
     bad, warn = compare(exp, ph)
     label = (ph.get("label_text") or "").strip()
     lbl = f" · наклейка «{escape(label[:60])}»" if label else ""
@@ -279,10 +294,12 @@ def add_to_card(message_id: int | None, html_text: str, reply_markup: str | None
     collapse_server (картки з підписок KA): серверна пам'ять на фото — картку згортаємо в один рядок без кнопок."""
     if not message_id:
         return False
-    got = photo_line(res, title, image_urls)
+    got = photo_line(res, title, image_urls, budget=90)   # картка вже в Telegram — можна чекати довше (503 «high demand»)
     if not got:
         return False
     line, bad = got
+    if line == AI_FAILED:   # 28.10: не перевірено — угору картки, щоб не прочитати «ВИГІДНО» і не купити наосліп
+        bad = True
     import requests
 
     import config

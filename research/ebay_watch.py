@@ -335,6 +335,9 @@ def unverified(ph, risk: dict) -> bool:
     """23.10 (користувач: «лот без фото, а бот каже „бери“, хоча не зрозуміло, що там»): G.Skill Aegis 2×16 3200 за 100 € —
     ціна 65% ринку, а фото не підтвердили модель. Ціна підозріло низька І фото не підтвердили товар (немає / нечіткі /
     прочитано лише опис) → не «бери», а «спершу перевір»."""
+    from photo_check import AI_FAILED
+    if ph and ph[0] == AI_FAILED:   # 28.10: ШІ не відповів — опис ніхто не прочитав, «бери» не пишемо
+        return True
     cheap = any(s.startswith("ціна підозріло низька") for s in risk.get("soft") or [])
     confirmed = bool(ph) and "Фото збігається з назвою" in ph[0]
     return cheap and not confirmed

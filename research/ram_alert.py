@@ -468,12 +468,52 @@ _D_WANTED = re.compile(r"^\W{0,5}(?:hallo\W+|moin\W+|hi\W+)?(?:ich\s+)?such(?:e|
 _D_PER_UNIT = re.compile(r"preis\s+(?:ist\s+)?(?:pro|je|für\s+(?:einen|ein|eine|1))\s+(?:riegel|stück|modul|stick|speicherriegel)|"
                          r"\d+\s*(?:€|eur\w*)\s*(?:\w+\s+){0,2}(?:je|pro)\s+(?:riegel|stück|modul|stick)\b|"
                          r"(?:je|pro)\s+(?:riegel|stück|modul|stick)\s*(?:\w+\s+){0,2}\d+\s*(?:€|eur)|"
-                         r"einzelpreis|stückpreis|preis\s+pro\s+stück", re.I)
+                         r"einzelpreis|stückpreis|preis\s+pro\s+stück|"
+                         # 28.10 (користувач: «ціна за одну планку вказана — ледь не купив»): «Der Preis gilt für ein 32gb Ram!»
+                         r"preis\s+(?:gilt|ist|versteht\s+sich|bezieht\s+sich)\s+(?:nur\s+)?(?:auf|für|pro|je)\s+"
+                         r"(?:ein(?:en|e|s)?|1|einzelne[nrs]?|den|das|die)\s+(?:[\w-]+\s+){0,2}"
+                         r"(?:riegel|stück|modul|stick|ram|speicher\w*|\d+\s*gb\w*)\b|"
+                         r"(?:pro|je)\s+(?:\d+\s*gb\s+)?(?:ram|speicherriegel|einzelnen?\s+riegel)\b|"
+                         r"\b(?:einzeln|einzelverkauf|auch\s+einzeln)\b", re.I)
+# 28.10: у назві кіт («(64GB Kit) 2x 32GB»), а опис — про ОДНУ планку («dieses Modul», «Der Riegel ist …», «ein … modul»)
+# і жодного слова про пару — ціна, найімовірніше, за одну. Множник — кількість планок з назви.
+_D_ONE_STICK = re.compile(r"\bdieses?\s+(?:[\w-]+\s+)?(?:modul|riegel|stick)\b|\bder\s+riegel\s+(?:ist|war|wurde|läuft|lief|hat)\b|"
+                          r"\bdas\s+(?:[\w-]+\s+)?modul\s+(?:ist|war|wurde|läuft|lief|hat)\b|"
+                          r"\bein(?:en|es)?\s+(?:[\w-]+\s+){0,2}[\w-]*(?:modul|riegel)\b(?!\s*(?:aus|von|eines)\s)", re.I)
+_D_MANY_STICKS = re.compile(r"\bbeide\w*|\bzwei\b|\b[2-8]\s*(?:x|×|\*|stück|stk|riegel|module)|\bpaar\b|\bkit\b|\bset\b|"
+                            r"\bdie\s+(?:riegel|module|sticks)\b|\bmodule\s+(?:sind|waren|laufen)|\briegel\s+(?:sind|waren|laufen)",
+                            re.I)
+
+
+def one_stick_only(desc: str) -> bool:
+    """Опис говорить лише про одну планку і жодного разу — про кілька."""
+    d = desc or ""
+    return bool(_D_ONE_STICK.search(d)) and not _D_MANY_STICKS.search(d)
+
+
+# Речення опису про ціну (не «Neupreis / UVP»): у картку дослівно — щоб умови ціни було видно одразу, навіть коли ШІ мовчить
+_D_PRICE_SENT = re.compile(r"[^.!?\n]*\b(?:preis|einzeln|pro\s+(?:stück|riegel|modul)|je\s+(?:stück|riegel|modul)|zusammen|"
+                           r"nur\s+(?:im\s+)?(?:set|paar|kit))\b[^.!?\n]*[.!?]?", re.I)
+
+
+def price_quote(desc: str | None) -> str | None:
+    for m in _D_PRICE_SENT.finditer(desc or ""):
+        s = m.group(0).strip()
+        if s and not _D_NEW_PRICE.search(s) and not re.search(r"(?i)neupreis|\bnp\b|uvp|preisvorschl|festpreis|"
+                                                              r"preis\s*(?:ist\s*)?(?:vb|verhandelbar)|preise?\s+inkl", s):
+            return s[:140]
+    return None
 # 15.10: «4 x 16GB RAM» за 84 € — а в описі «1 x 16GB … Set mit: 4 x 16GB (64GB RAM) -> EUR 329,00»: 84 € — за одну планку.
 # Ціна набору з опису (той самий обсяг, що в назві) — справжня ціна; «NP / UVP / Neupreis / bezahlt» — не ціна продажу.
 _D_SET_PRICE = re.compile(r"(\d)\s*[x×]\s*(\d{1,3})\s*gb[^€\n]{0,60}?(?:(?:€|eur\w*)\s*(\d{2,4})(?:[.,]\d{2})?\b|"
                           r"\b(\d{2,4})(?:[.,]\d{2})?\s*(?:€|eur))", re.I)
 _D_NEW_PRICE = re.compile(r"(?:neupreis|\bnp\b|uvp|damals|bezahlt|gekauft\s+für|kostete|original\s*preis)[^.\n]{0,25}$", re.I)
+
+
+def _title_modules(res: dict) -> int:
+    """Скільки планок ми порахували з назви («DDR5 UDIMM 64 ГБ (2×32) кіт» → 2)."""
+    m = re.search(r"\((\d)×\d+\)", res.get("type") or "")
+    return int(m.group(1)) if m else (2 if res.get("kit_unknown") else res.get("modules") or 1)
 
 
 def desc_set_price(desc: str, total: int) -> tuple[int, int, float] | None:
@@ -572,9 +612,9 @@ def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | No
         new_price = sp[2]
         if not extra:
             extra.append(f"{sp[0]}x{sp[1]}GB")
-    elif _D_PER_UNIT.search(d):
+    elif _D_PER_UNIT.search(d) or (is_ram and _title_modules(res) >= 2 and one_stick_only(d)):
         mods = int(extra[0].split("x")[0]) if extra and "x" in extra[0] and not extra[0].startswith("SO") else \
-            (2 if res.get("kit_unknown") else res.get("modules", 1) or 1)
+            (2 if res.get("kit_unknown") else _title_modules(res))
         new_price = price * max(mods, 2)
     if not extra and new_price == price:
         return res
@@ -585,6 +625,10 @@ def refine_by_desc(res: dict, title: str, price: float, vb: bool, desc: str | No
     if sp and new_price == sp[2]:
         new["reason"] = (f"за описом {price:.0f} € — ціна однієї планки; {sp[0]}×{sp[1]} ГБ — {sp[2]:.0f} €"
                          + (" (не вигідно)" if new.get("verdict") == "SKIP" else ""))
+    elif new_price != price:   # 28.10: «Der Preis gilt für ein 32gb Ram!» — щоб у лозі й картці було видно чому
+        q = price_quote(d)
+        new["reason"] = (f"за описом {price:.0f} € — ціна за одну планку, увесь набір ≈ {new_price:.0f} €"
+                         + (f" («{q[:80]}»)" if q else "") + (" — не вигідно" if new.get("verdict") == "SKIP" else ""))
     return new
 
 
@@ -705,7 +749,9 @@ def desc_line(r: dict) -> str | None:
         bits.append("без чека")
     if f["kit_ok"]:
         bits.append("✓ кількість планок вказана")
-    return "📝 В описі: " + (" · ".join(bits) if bits else "нічого про справність і чек — питання в тексті")
+    q = price_quote(r["desc"])
+    return ("📝 В описі: " + (" · ".join(bits) if bits else "нічого про справність і чек — питання в тексті")
+            + (f"\n💬 Про ціну: «{q}»" if q else ""))
 
 
 def _speed_label(st: float) -> str:

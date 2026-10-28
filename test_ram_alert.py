@@ -257,6 +257,31 @@ class SetPriceInDescTest(unittest.TestCase):
         self.assertIn("ціна однієї планки; 4×16 ГБ — 329 €", r2["reason"])
         self.assertEqual(ram_alert.desc_set_price(d, 32), (2, 16, 159.0))
 
+    def test_price_for_one_stick_28_10(self):
+        # 28.10: KA 3555003483 «(64GB Kit) 2x 32GB Micron DDR5-5600» за 350 € — «ВИГІДНО», а в описі одна планка й
+        # «Der Preis gilt für ein 32gb Ram!» — користувач ледь не купив
+        from ram_alert import refine_by_desc
+        t = "(64GB Kit) 2x 32GB Micron DDR5-5600 UDIMM RAM"
+        d = ("Ich verkaufe hier ein hochwertiges DDR5-Arbeitsspeichermodul von Micron, das aus einem neuen Server stammt. Da der "
+             "Server auf 128 GB aufgerüstet wurde, ist dieses Modul nun übrig.\n- 32 GB DDR5 UDIMM Desktop-RAM\n"
+             "Der Riegel ist technisch in einem einwandfreien Zustand.\nDer Preis gilt für ein 32gb Ram!")
+        ev = lambda tt, pp, vb=False: evaluate(tt, pp, vb=vb)   # noqa: E731
+        r = evaluate(t, 350, vb=True)
+        self.assertIn(r["verdict"], ram_alert.SEND_VERDICTS)
+        r2 = refine_by_desc(r, t, 350, True, d, ev)
+        self.assertEqual(r2["verdict"], "SKIP")
+        self.assertIn("ціна за одну планку, увесь набір ≈ 700 €", r2["reason"])
+        self.assertIn("💬 Про ціну: «Der Preis gilt für ein 32gb Ram!»", ram_alert.desc_line(dict(r, desc=d)))
+        # без фрази про ціну — але опис лише про одну планку, а в назві 2× — теж за штуку
+        r3 = refine_by_desc(r, t, 350, True, d.replace("Der Preis gilt für ein 32gb Ram!", ""), ev)
+        self.assertEqual(r3["verdict"], "SKIP")
+        # звичайний кіт: «die Riegel sind», «2x32GB» — нічого не міняємо
+        ok = "Verkaufe mein Kit 2x32GB. Die Riegel sind getestet und laufen stabil. Preis VB."
+        self.assertEqual(refine_by_desc(r, t, 350, True, ok, ev)["verdict"], r["verdict"])
+        for s in ("Preis pro Riegel 120€", "Der Preis ist für einen Riegel", "Preis gilt für 1 Stück", "auch einzeln abzugeben"):
+            self.assertTrue(ram_alert._D_PER_UNIT.search(s), s)
+        self.assertFalse(ram_alert._D_PER_UNIT.search("Preis gilt für beide Riegel zusammen"))
+
     def test_new_price_is_not_the_price(self):
         self.assertIsNone(ram_alert.desc_set_price("Neupreis 4x16GB 329 €, jetzt günstig", 64))
         self.assertIsNone(ram_alert.desc_set_price("Damals für 4 x 16GB 299€ gekauft", 64))
