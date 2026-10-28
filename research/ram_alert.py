@@ -10,6 +10,7 @@ research/ram_terapeak.py) і формує вердикт BUY/CHECK/SKIP.
     python research/ram_alert.py "..." 50 --tg
 """
 import json
+import statistics
 import re
 import os
 import sys
@@ -109,6 +110,21 @@ def key_of(type_name: str) -> tuple | None:
 
 
 REAL = _with_own(_with_refresh(REAL_BASE))
+
+
+def _top_used() -> dict:
+    """«ddr4|udimm|0|32|2» → {«brand_slow»: [135, 145, 150, …]} — п'ять найдешевших вживаних (research/price_refresh.py)."""
+    if os.getenv("RAM_PRICES_OFF") == "1":
+        return {}
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ram_prices.json"), encoding="utf-8") as fh:
+            types = json.load(fh).get("types") or {}
+    except (OSError, ValueError):
+        return {}
+    return {k: v["top_used"] for k, v in types.items() if isinstance(v, dict) and v.get("top_used")}
+
+
+TOP_USED = _top_used()
 NOISE_BRANDS = {"other", "HP", "Dell", "Lenovo", "Apple", "Supermicro", "Medion", "ASUS", "QNAP/Synology", "2-Power"}
 # Найбільша споживча одиночна планка. «DDR4 64GB» без розкладки — це точно набір (2×32 або 4×16),
 # а не одна планка: такі не відкидаємо, а оцінюємо як 2-планковий кіт із вимогою уточнити розкладку.
@@ -122,6 +138,10 @@ MAX_SINGLE_GB = {"ddr4": 32, "ddr5": 48}
 # пересилка — DHL Paket до 2 кг €6.19 (Päckchen €4.19 не має відстеження і страховки — для eBay не годиться),
 # упаковка ~€1; якщо дорожче €500 — DHL-страховка до €2 500 за €6.99 (базова покриває лише €500).
 FEE_SELL, ORDER_FEE_SELL, SHIP_OUT_RAM, PACK_RAM, INSURE_OVER_500 = 0.0, 0.0, 6.19, 1.0, 6.99
+# 28.10 (користувач: «пам'ятай, що ще з'їсть відсоток реклама»): з 25.10 усі лоти eBay з рекламою Basis 5% — платиться
+# з суми продажу (з доставкою), якщо покупець прийшов через рекламу. Поки — лише в розрахунку повільної DDR4 (там і просив
+# користувач; DDR5 — «своя гра», не чіпаємо).
+AD_RATE = 0.05
 
 # 13.10: перемикач «комерційний акаунт eBay» (Kleingewerbe) — ПОКИ ВИМКНЕНО (рішення користувача 13.10).
 # Увімкнути: "0" → "1" тут і BUSINESS_SELLER = true у tools/ledger.gs (облік: комісія в нових продажах, податок у «облік»).
@@ -218,6 +238,19 @@ def sale_basis(p25: float, med: float, share: float = SALE_BASIS) -> float:
 # гра»): повільна DDR4 (до 2666) — заробіток від ціни ШВИДКОГО продажу (p25). Наші №4/5/8 (2133/2400) куплені за ~100 €
 # під середину 148 € і висять по 163–169 €, а реально такі йдуть по 120–150 € (наші продажі: 100, 118, 120, 149 €).
 SLOW_DDR4_BASIS = 0.0
+# 28.10 (уточнення користувача): «швидкий продаж, але не сильно занижений» — медіана п'яти найдешевших вживаних живих
+# оголошень сегмента (TOP_USED, оновлюється щодня), не нижче p25 і не вище колишньої середини p25–медіана. Даних немає —
+# чверть шляху від p25 до медіани.
+SLOW_DDR4_FALLBACK = 0.25
+
+
+def slow_basis(p25: float, med: float, tops: list | None) -> tuple[float, str]:
+    """→ (ціна продажу для повільної DDR4, звідки)."""
+    hi = sale_basis(p25, med)
+    if tops and len(tops) >= 3:
+        mid = statistics.median(sorted(tops)[:5])
+        return min(max(mid, p25), hi), f"медіана 5 найдешевших зараз ≈ {mid:.0f} €"
+    return sale_basis(p25, med, SLOW_DDR4_FALLBACK), "швидкий продаж + ¼ до медіани"
 
 
 def caps_from(net: float) -> tuple[float, float, float]:
@@ -331,13 +364,20 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
                 ((f" · від {FAST_FROM[p['gen']]} МГц" if spd == "fast" else f" · до {SLOW_TO[p['gen']]} МГц")
                  if cell and "_" in cell else "")
     slow4 = p["gen"] == "ddr4" and speed_bucket(p["gen"], title, p.get("speed")) == "slow"
-    share = SLOW_DDR4_BASIS if slow4 else SALE_BASIS
-    if slow4:
-        real["name"] = real["name"] + " · повільна — рахую від швидкого продажу"
-    qb = sale_basis(quad["p25"], quad["med"], share) if quad else None
-    rb = sale_basis(real["p25"], real["med"], share)
-    net_q = (QUAD_SHARE * 2 * (qb - costs(qb)) if quad   # дві продажі пар — кожна зі своїми витратами
-             else rb - costs(rb))
+    qb = sale_basis(quad["p25"], quad["med"]) if quad else None
+    rb = sale_basis(real["p25"], real["med"])
+    if slow4:   # 28.10: повільна DDR4 — від цін, з якими ми в топ-3–5 найдешевших, а не від середини p25–медіана
+        cell = ("oem" if ecc_udimm else "brand" if BRANDED.search(title) else "oem") + "_slow"
+        kstr = "|".join(str(int(x) if isinstance(x, bool) else x) for x in (key[:3] + (p["total"] // 2, 2) if quad else key))
+        tops = TOP_USED.get(kstr, {}).get(cell)
+        if quad:
+            qb, how = slow_basis(quad["p25"], quad["med"], tops)
+        else:
+            rb, how = slow_basis(real["p25"], real["med"], tops)
+        real["name"] = real["name"] + f" · повільна — продаж ≈ {qb or rb:.0f} € ({how})"
+    ad = AD_RATE if slow4 else 0.0
+    net_q = (QUAD_SHARE * 2 * (qb - costs(qb) - ad * qb) if quad   # дві продажі пар — кожна зі своїми витратами
+             else rb - costs(rb) - ad * rb)
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     profit_est = net_q - cost
@@ -352,6 +392,7 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
                 net_q=net_q, brand=brand_flag, title=title, single_module_warning=single_module_warning,
                 total=p["total"], kit_unknown=kit_unknown, buy_cost=cost, ship_in=ship_in, vb=vb,
+                **({"slow_basis": round(qb or rb)} if slow4 else {}),
                 **({"ecc_udimm": True, "notes": [ECC_UDIMM_NOTE]} if ecc_udimm else {}))
 
 

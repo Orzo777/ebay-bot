@@ -54,6 +54,20 @@ class TestNextRatio(unittest.TestCase):
         self.assertEqual(next_ratio(1.07, None, 200, 30), 1.07)
 
 
+class TestSegTops(unittest.TestCase):
+    def test_five_cheapest_used_per_segment_28_10(self):
+        # 28.10: «найдешевший 135, далі 145 і 150, решта 160+» — п'ять найдешевших вживаних по сегменту, по одному на продавця
+        from price_refresh import seg_tops
+        it = lambda t, s, p: {"title": t, "seller": s, "total": p}   # noqa: E731
+        used = [it("Corsair Vengeance LPX 32GB 2x16GB DDR4 2400", f"s{i}", p) for i, p in enumerate([135, 145, 150, 160, 165, 170, 175])]
+        used += [it("Corsair Vengeance LPX 32GB 2x16GB DDR4 2400", "s0", 139),       # той самий продавець — його мінімум
+                 it("Corsair Vengeance LPX 32GB 2x16GB DDR4 2400", "scam", 40),     # < 60% медіани — не рахуємо
+                 it("Kingston 32GB 2x16GB DDR4 3200", "k1", 120), it("Kingston 32GB 2x16GB DDR4 3200", "k2", 125)]
+        tops = seg_tops(used)
+        self.assertEqual(tops["brand_slow"], [135, 145, 150, 160, 165])
+        self.assertNotIn("brand_fast", tops)   # лише 2 продавці — замало
+
+
 class TestRefresh(unittest.TestCase):
     def test_first_run_sets_anchor_without_moving_prices(self):
         data, changes = refresh({}, fake_fetch({"DDR5 32GB 2x16GB": [300 + i for i in range(15)]}), "2026-09-28")

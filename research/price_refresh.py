@@ -105,8 +105,9 @@ def _min_by_seller(items, keep) -> tuple[float | None, int]:
     return (statistics.median(vals) if vals else None), len(vals)
 
 
-def market_ask(key, fetch, query: str | None = None) -> tuple[float | None, int]:
-    """RAM: медіана мінімальних цін продавців (нове + вживане, з доставкою) для точного типу."""
+def market_ask(key, fetch, query: str | None = None, used_out: list | None = None) -> tuple[float | None, int]:
+    """RAM: медіана мінімальних цін продавців (нове + вживане, з доставкою) для точного типу.
+    used_out — сюди ж вживані оголошення цього типу (для п'ятірки найдешевших, seg_tops)."""
     from ram_alert import NOISE_BRANDS
     from ram_parse import parse_title
 
@@ -114,7 +115,41 @@ def market_ask(key, fetch, query: str | None = None) -> tuple[float | None, int]
         p, _ = parse_title(title)
         return bool(p) and p["brand"] not in NOISE_BRANDS and (p["gen"], p["form"], p["ecc"], p["total"], p["modules"]) == key
     q = query or QUERIES[key]
-    return _min_by_seller([it for cond in (NEW_CONDS, USED_CONDS) for it in fetch(q, cond, RAM_CAT)], keep)
+    new, used = fetch(q, NEW_CONDS, RAM_CAT), fetch(q, USED_CONDS, RAM_CAT)
+    if used_out is not None:
+        used_out.extend(it for it in used if keep(it["title"], it["total"]))
+    return _min_by_seller(new + used, keep)
+
+
+# 28.10 (користувач: «бери швидкий продаж, але не сильно занижений: найдешевший 135, наступні 145 і 150, решта 160+ —
+# рахуй 145; ми маємо бути в топ-3–5, але в їхній медіані»): п'ять найдешевших ВЖИВАНИХ живих оголошень (з доставкою, по
+# одному на продавця) у кожному сегменті DDR4 — фірмові / звичайні × повільні / швидкі. ram_alert рахує повільну DDR4 від
+# медіани цієї п'ятірки. Дешевше за 60% медіани сегмента — шахраї / дефекти / не те, не рахуємо.
+SEG_TOP = 5
+
+
+def seg_tops(used: list[dict]) -> dict:
+    from ram_alert import BRANDED, speed_bucket
+    from ram_parse import parse_title
+    cells = {}
+    for it in used:
+        p, _ = parse_title(it["title"])
+        if not p:
+            continue
+        spd = speed_bucket(p["gen"], it["title"], p.get("speed"))
+        cell = ("brand" if BRANDED.search(it["title"]) else "oem") + (f"_{spd}" if spd else "")
+        s = it["seller"] or "?"
+        by = cells.setdefault(cell, {})
+        by[s] = min(it["total"], by.get(s, 1e9))
+    out = {}
+    for cell, by in cells.items():
+        vals = sorted(by.values())
+        if len(vals) >= 3:
+            m = statistics.median(vals)
+            vals = [round(v, 2) for v in vals if v >= 0.6 * m]
+            if len(vals) >= 3:
+                out[cell] = vals[:SEG_TOP]
+    return out
 
 
 def console_ask(ckey: str, fetch) -> tuple[float | None, int]:
@@ -229,11 +264,16 @@ def refresh(data: dict, fetch, today: str) -> tuple[dict, list[str]]:
     for key, base in REAL_BASE.items():
         e = types.setdefault(key_str(key), {"name": base["name"], "p25_tp": base["p25"], "med_tp": base["med"],
                                             "ratio": 1.0, "anchor_ask": None})
+        used = []
         try:
-            ask, sellers = market_ask(key, fetch)
+            ask, sellers = market_ask(key, fetch, used_out=used)
         except Exception as ex:   # один тип не зірвав — решта оновлюється
             print(f"{base['name']}: {ex.__class__.__name__}")
             ask, sellers = None, 0
+        if key[0] == "ddr4" and used:
+            tops = seg_tops(used)
+            if tops:
+                e["top_used"], e["top_date"] = tops, today
         msg = _update(e, base, ask, sellers, today, MIN_SELLERS, False, None)
         if msg:
             changes.append(msg)

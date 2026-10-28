@@ -351,7 +351,7 @@ class ReviseModeTest(unittest.TestCase):
         import listings
         now = datetime(2026, 10, 19, tzinfo=timezone.utc)
         rows = [dict(n=5, title="Corsair Vengeance 32GB (2x16GB) DDR4-2400 DIMM", status="Виставлено", note="(eBay 1)", spent=95),
-                dict(n=8, title="G.SKILL FORTIS 32GB (2x16GB) DDR4-2400 DIMM", status="Виставлено", note="(eBay 2)", spent=140),
+                dict(n=8, title="G.SKILL FORTIS 32GB (2x16GB) DDR4-2400 DIMM", status="Виставлено", note="(eBay 2)", spent=132),   # 28.10: з рекламою 5% мінімум вищий (було 140)
                 dict(n=4, title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133", status="Виставлено", note="(eBay 3)", spent=90)]
         lots = [dict(id="1", title="x", price=169.0, ship=None, start="2026-10-11T10:00:00Z"),
                 dict(id="2", title="y", price=169.0, ship=0.0, start="2026-10-11T10:00:00Z"),

@@ -88,7 +88,7 @@ def net_of(r: dict, price: float) -> float:
     """Скільки лишиться з ціни продажу (комісія, пересилка покупцю безкоштовно, упаковка, страховка, резерв)."""
     if r["kind"] == "console":
         return price - console_alert.costs(price, r["ship_out"])
-    return price - ram_alert.costs(price)
+    return price - ram_alert.costs(price) - ram_alert.AD_RATE * price   # 28.10: реклама Basis 5% на всіх лотах eBay
 
 
 def _taxed(profit: float) -> str:
@@ -167,7 +167,8 @@ def plan_price(r: dict, cost: float | None, comp: list[float], undercut: bool = 
     «швидкої» (що менше), але ніколи нижче мінімуму."""
     quick, med = r["quick_sale"], r["median_sale"]
     warn = []
-    target = med
+    # 28.10 (користувач): повільна DDR4 — ціна в середині п'ятірки найдешевших живих (топ-3–5), а не медіана продажів
+    target = r.get("slow_basis") or med
     if undercut and comp:   # залежалося — стати серед трьох найдешевших
         target = max(min(med, comp[min(2, len(comp) - 1)] - 1), quick * LOW_SHARE)
     floor = price_for_net(r, cost + max(MIN_PROFIT_ABS, MIN_PROFIT_PCT * cost)) if cost else 0.0

@@ -258,15 +258,25 @@ class SetPriceInDescTest(unittest.TestCase):
         self.assertEqual(ram_alert.desc_set_price(d, 32), (2, 16, 159.0))
 
     def test_slow_ddr4_from_quick_sale_28_10(self):
-        # 28.10 (рішення користувача): повільна DDR4 (до 2666) — від ціни швидкого продажу; DDR4 3200+ і DDR5 — як було
-        slow = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400", 100)
-        self.assertEqual(slow["verdict"], "SKIP")
-        self.assertIn("повільна — рахую від швидкого продажу", slow["type"])
-        self.assertAlmostEqual(slow["net_q"] + 0, ram_alert.sale_basis(slow["quick_sale"], slow["median_sale"], 0.0)
-                               - ram_alert.costs(slow["quick_sale"]), places=2)
+        # 28.10 (рішення користувача): повільна DDR4 (до 2666) — від медіани 5 найдешевших вживаних живих оголошень сегмента
+        # («найдешевший 135, далі 145 і 150 — рахуй ~145»), не нижче p25, не вище колишньої середини; мінус реклама 5%.
+        # DDR4 3200+ і DDR5 — як було.
+        from unittest import mock
+        t = "Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400"
+        with mock.patch.object(ram_alert, "TOP_USED", {"ddr4|udimm|0|32|2": {"brand_slow": [130, 135, 140, 150, 160]}}):
+            r = evaluate(t, 80)
+            self.assertIn("повільна — продаж ≈ 140 € (медіана 5 найдешевших зараз ≈ 140 €)", r["type"])
+            self.assertAlmostEqual(r["net_q"], 140 - ram_alert.costs(140) - 0.05 * 140, places=2)
+        with mock.patch.object(ram_alert, "TOP_USED", {"ddr4|udimm|0|32|2": {"brand_slow": [170, 175, 180]}}):
+            self.assertNotIn("≈ 175 € (", evaluate(t, 80)["type"].split("продаж")[1][:8])   # не вище колишньої середини
+        with mock.patch.object(ram_alert, "TOP_USED", {"ddr4|udimm|0|32|2": {"brand_slow": [60, 65, 70]}}):
+            low = evaluate(t, 80)
+            self.assertIn(f"продаж ≈ {low['quick_sale']} €", low["type"])        # не нижче швидкого продажу
+        none = evaluate(t, 80)
+        self.assertIn("швидкий продаж + ¼ до медіани", none["type"])           # даних немає
+        self.assertEqual(evaluate(t, 100)["verdict"], "SKIP")                   # наші №5 за ~100 € — тепер не «бери»
         self.assertIn(evaluate("Corsair Vengeance LPX 32GB 2x16GB DDR4 3200", 100)["verdict"], ram_alert.SEND_VERDICTS)
-        ddr5 = evaluate("G.Skill 32GB 2x16 DDR5 5200", 200)
-        self.assertNotIn("повільна", ddr5.get("type", ""))
+        self.assertNotIn("повільна", evaluate("G.Skill 32GB 2x16 DDR5 5200", 200).get("type", ""))
 
     def test_price_for_one_stick_28_10(self):
         # 28.10: KA 3555003483 «(64GB Kit) 2x 32GB Micron DDR5-5600» за 350 € — «ВИГІДНО», а в описі одна планка й
