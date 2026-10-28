@@ -133,7 +133,7 @@ class TestNewTypes(unittest.TestCase):
 
 class TestPrices(unittest.TestCase):
     def test_tiers(self):
-        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 150)["verdict"], "BUY-GOOD")   # 14.10: від середини p25–медіана
+        self.assertEqual(evaluate("Samsung 64 GB SO-DIMM DDR4 2666 MHz Arbeitsspeicher (2 x 32GB)", 150)["verdict"], "BUY")   # 28.10: повільна DDR4 — від p25 (було BUY-GOOD)
         self.assertEqual(evaluate("Corsair Vengeance 64GB DDR5-6000 CL30 (2x32GB)", 450)["verdict"], "BUY-GOOD")
         self.assertEqual(evaluate("Crucial DDR5 16GB 5600 SODIMM", 145)["verdict"], "SKIP")
 
@@ -256,6 +256,17 @@ class SetPriceInDescTest(unittest.TestCase):
         self.assertEqual(r2["verdict"], "SKIP")
         self.assertIn("ціна однієї планки; 4×16 ГБ — 329 €", r2["reason"])
         self.assertEqual(ram_alert.desc_set_price(d, 32), (2, 16, 159.0))
+
+    def test_slow_ddr4_from_quick_sale_28_10(self):
+        # 28.10 (рішення користувача): повільна DDR4 (до 2666) — від ціни швидкого продажу; DDR4 3200+ і DDR5 — як було
+        slow = evaluate("Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400", 100)
+        self.assertEqual(slow["verdict"], "SKIP")
+        self.assertIn("повільна — рахую від швидкого продажу", slow["type"])
+        self.assertAlmostEqual(slow["net_q"] + 0, ram_alert.sale_basis(slow["quick_sale"], slow["median_sale"], 0.0)
+                               - ram_alert.costs(slow["quick_sale"]), places=2)
+        self.assertIn(evaluate("Corsair Vengeance LPX 32GB 2x16GB DDR4 3200", 100)["verdict"], ram_alert.SEND_VERDICTS)
+        ddr5 = evaluate("G.Skill 32GB 2x16 DDR5 5200", 200)
+        self.assertNotIn("повільна", ddr5.get("type", ""))
 
     def test_price_for_one_stick_28_10(self):
         # 28.10: KA 3555003483 «(64GB Kit) 2x 32GB Micron DDR5-5600» за 350 € — «ВИГІДНО», а в описі одна планка й

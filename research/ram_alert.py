@@ -209,9 +209,15 @@ MIN_PROFIT, GOOD_PROFIT, EXC_PROFIT, MIN_ROI = 50.0, 80.0, 110.0, 0.20
 SALE_BASIS = 0.5
 
 
-def sale_basis(p25: float, med: float) -> float:
+def sale_basis(p25: float, med: float, share: float = SALE_BASIS) -> float:
     """Ціна продажу, від якої рахуємо заробіток: між швидкою (p25) і медіаною."""
-    return p25 + SALE_BASIS * (med - p25)
+    return p25 + share * (med - p25)
+
+
+# 28.10 (рішення користувача: «наш прокол — купили повільні планки, тепер важко здихатись; на DDR5 не поширюй — там своя
+# гра»): повільна DDR4 (до 2666) — заробіток від ціни ШВИДКОГО продажу (p25). Наші №4/5/8 (2133/2400) куплені за ~100 €
+# під середину 148 € і висять по 163–169 €, а реально такі йдуть по 120–150 € (наші продажі: 100, 118, 120, 149 €).
+SLOW_DDR4_BASIS = 0.0
 
 
 def caps_from(net: float) -> tuple[float, float, float]:
@@ -324,8 +330,12 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
             real["name"] = real["name"] + (" · фірмовий" if seg == "brand" else " · звичайні планки") + \
                 ((f" · від {FAST_FROM[p['gen']]} МГц" if spd == "fast" else f" · до {SLOW_TO[p['gen']]} МГц")
                  if cell and "_" in cell else "")
-    qb = sale_basis(quad["p25"], quad["med"]) if quad else None
-    rb = sale_basis(real["p25"], real["med"])
+    slow4 = p["gen"] == "ddr4" and speed_bucket(p["gen"], title, p.get("speed")) == "slow"
+    share = SLOW_DDR4_BASIS if slow4 else SALE_BASIS
+    if slow4:
+        real["name"] = real["name"] + " · повільна — рахую від швидкого продажу"
+    qb = sale_basis(quad["p25"], quad["med"], share) if quad else None
+    rb = sale_basis(real["p25"], real["med"], share)
     net_q = (QUAD_SHARE * 2 * (qb - costs(qb)) if quad   # дві продажі пар — кожна зі своїми витратами
              else rb - costs(rb))
     cap, good, excellent = caps_from(net_q)
