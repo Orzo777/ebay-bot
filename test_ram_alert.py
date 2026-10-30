@@ -278,6 +278,12 @@ class SetPriceInDescTest(unittest.TestCase):
         self.assertIn(evaluate("Corsair Vengeance LPX 32GB 2x16GB DDR4 3200", 100)["verdict"], ram_alert.SEND_VERDICTS)
         self.assertNotIn("повільна", evaluate("G.Skill 32GB 2x16 DDR5 5200", 200).get("type", ""))
 
+    def test_quad_both_ways_30_10(self):
+        # 30.10 (користувач): «може вигідніше 2 по 2×16 ставити потім? таке теж треба рахувати, а не 4»
+        r = evaluate("G.Skill Ripjaws V 64 GB DDR4 3200 MHz RAM Kit 4x16GB", 200)
+        self.assertIn("продаси як 2 пари 2×16", r["type"])
+        self.assertEqual(r["net_q"], evaluate("G.Skill Ripjaws V 64 GB DDR4 3200 MHz RAM Kit 4x16GB", 200, _as_pairs=True)["net_q"])
+
     def test_price_for_one_stick_28_10(self):
         # 28.10: KA 3555003483 «(64GB Kit) 2x 32GB Micron DDR5-5600» за 350 € — «ВИГІДНО», а в описі одна планка й
         # «Der Preis gilt für ein 32gb Ram!» — користувач ледь не купив
@@ -443,9 +449,11 @@ class TestQuadKits1010(unittest.TestCase):
     def test_quads_with_own_sales(self):
         from ram_alert import evaluate
         r = evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 150)
-        self.assertTrue(r["type"].startswith("DDR4 UDIMM 64 ГБ (4×16) кіт · фірмовий"))
-        self.assertNotIn("2 пари", r["type"])
-        self.assertEqual(r["median_sale"], 317)                 # фірмові 4×16 від 2933 МГц (Terapeak 11.10)
+        self.assertIn("4×16", r["type"])
+        # 30.10 (користувач): рахуємо і набором 4×16 (Terapeak 11.10: фірмові від 2933 — медіана 317), і двома парами 2×16 —
+        # беремо вигідніше
+        pairs = evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 150, _as_pairs=True)
+        self.assertGreaterEqual(r["net_q"], pairs["net_q"])
         self.assertEqual(evaluate("G.Skill Ripjaws 64GB (4x16GB) DDR4 3200", 300)["verdict"], "SKIP")
         self.assertIn("4×16", evaluate("64GB DDR4 Quad-Kit G.Skill Trident Z 3200", 150)["type"])
         self.assertNotEqual(evaluate("Crucial Pro DDR5-5600 64GB (4x16GB) UDIMM", 300)["verdict"], "SKIP")

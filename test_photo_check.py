@@ -176,6 +176,44 @@ class DescReviewTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "k"}), mock.patch.object(pc, "ask_gemini", return_value=None):
             self.assertEqual(pc.photo_line(res, "Corsair 64GB DDR4", []), (pc.AI_FAILED, False))
 
+    def test_photo_other_layout_recalculated_30_10(self):
+        # 30.10: «G.Skill Ripjaws V 64 GB DDR4 3200» за 200 € — бот рахував 2×32, на фото 4×16 (2 кіти F4-3200C16D-32GVK):
+        # не «фото не збігається», а нова оцінка за фото + питання продавцю «ціна за всі 4?»
+        from unittest import mock
+        import json as _json
+        import requests
+        import photo_check as pc
+        from ram_alert import evaluate
+        t = "G.Skill Ripjaws V 64 GB DDR4 3200 MHz RAM Kit"
+        res = dict(evaluate(t, 200), desc="Verkaufe meinen RAM, läuft einwandfrei.", risk_lines=["низький"], buy_now=True)
+        ph = {"ram_gb_per_module": 16, "ram_modules_visible": 4, "label_text": "F4-3200C16D-32GVK", "ram_gen": "DDR4",
+              "ram_form": "desktop", "confidence": "high", "desc_problem": ""}
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "k"}), mock.patch.object(pc, "ask_gemini", return_value=ph),                 mock.patch.object(pc, "_download", return_value=b"x"):
+            line, bad = pc.photo_line(res, t, ["u"])
+        self.assertIn("Перерахував за фото", line)
+        r2 = res["_relayout"]
+        self.assertEqual((r2["layout"], r2["verdict"].startswith("BUY")), ((4, 16), True))
+        self.assertIn("продаси як 2 пари 2×16", r2["type"])
+        self.assertIn("für alle 4 zusammen", pc.seller_question(r2))
+        posted = []
+        saved = requests.post
+        requests.post = lambda url, data=None, timeout=None: posted.append(data) or type("R", (), {"status_code": 200})()
+        try:
+            with mock.patch.object(pc, "photo_line", return_value=(line, bad)):
+                pc.add_to_card(5, "🟢🟢 ДУЖЕ ВИГІДНО · +137 €", _json.dumps({"inline_keyboard": [[{"text": "🔗", "url": "u"}]]}),
+                               res, t, ["u"])
+        finally:
+            requests.post = saved
+        self.assertNotIn("+137", posted[0]["text"])                              # стара оцінка (2×32) — геть
+        self.assertIn("4×16", posted[0]["text"])
+        kb = _json.loads(posted[0]["reply_markup"])
+        self.assertIn("für alle 4 zusammen", kb["inline_keyboard"][0][0]["copy_text"]["text"])
+        # інший обсяг (16 ГБ × 2 при 64 у назві) — як і раніше «не збігається»
+        bad_ph = dict(ph, ram_modules_visible=2)
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "k"}), mock.patch.object(pc, "ask_gemini", return_value=bad_ph),                 mock.patch.object(pc, "_download", return_value=b"x"):
+            res2 = dict(evaluate(t, 200), desc="x")
+            self.assertIn("ФОТО НЕ ЗБІГАЄТЬСЯ", pc.photo_line(res2, t, ["u"])[0])
+
     def test_ai_failed_goes_on_top_of_ka_card(self):
         import requests
         import photo_check

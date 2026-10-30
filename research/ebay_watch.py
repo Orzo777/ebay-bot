@@ -759,6 +759,10 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         else:
             r["ai_seller"] = seller_line(lst)   # 19.10: ШІ читає й опис — з даними продавця (у картку не йде)
             ph = photo_line(r, lst["title"], lst.get("images") or [])
+            r2 = r.pop("_relayout", None)
+            if r2 and r2.get("verdict") in SEND_VERDICTS:   # 30.10: на фото інша розкладка (4×16 замість 2×32) — оцінка за фото
+                print(f"   ПЕРЕРАХУВАВ ЗА ФОТО: {r2['layout'][0]}×{r2['layout'][1]} ГБ → {r2['verdict']}")
+                r, ph = dict(r2, desc=r.get("desc"), ai_seller=r.get("ai_seller")), (ph[0], False)
             if ph and ph[1]:
                 print("   ФОТО НЕ ЗБІГАЄТЬСЯ — картку не надсилаю: " + re.sub(r"<[^>]+>", "", ph[0]).replace("\n", " ")[:200])
                 continue

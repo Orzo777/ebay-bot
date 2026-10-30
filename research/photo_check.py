@@ -248,6 +248,41 @@ SERVER_MSG = "на фото серверна пам'ять (Registered ECC)"
 
 AI_FAILED = "⚠️ ШІ не відповів — опис і фото НЕ перевірені: прочитай опис сам (скільки планок і за що ціна)"
 
+# 30.10 (користувач: «G.Skill 64 GB за 200 € — на фото 4×16, а бот лише „фото не збігається“, замість перерахувати, чи
+# все одно вигідно; і дай текст продавцю „ціна за всі 4 планки?“»). Той самий обсяг, інша розкладка (4×16 замість 2×32,
+# 2×16 замість 1×32) — не розбіжність, а уточнення: оцінюємо заново за фото.
+_CONTEXT_KEYS = ("desc", "risk_lines", "buy_now", "ai_seller", "link", "pickup_hint")
+
+
+def relayout(exp: dict, ph: dict, res: dict, title: str) -> dict | None:
+    """Фото: той самий обсяг, інша кількість планок → нова оцінка (ram_alert.evaluate) з контекстом картки; None — ні."""
+    if exp.get("kind") != "ram" or ph.get("confidence") == "low" or ph.get("_text_only"):
+        return None
+    per, vis = ph.get("ram_gb_per_module"), ph.get("ram_modules_visible")
+    if not (isinstance(per, int) and isinstance(vis, int) and vis in (1, 2, 4) and per != exp["per"]
+            and per * vis == exp["total"]):
+        return None
+    import ram_alert
+    r2 = ram_alert.evaluate(f"{title} {vis}x{per}GB", res.get("price") or 0, res.get("ship_in"), vb=bool(res.get("vb")))
+    if "net_q" not in r2:
+        return None
+    if res.get("pickup"):
+        r2 = ram_alert.apply_pickup(r2)
+    for k in _CONTEXT_KEYS:
+        if k in res and k not in r2:
+            r2[k] = res[k]
+    r2.update(title=res.get("title") or title, layout=(vis, per), was=(exp["modules"], exp["per"]))
+    return r2
+
+
+def seller_question(r2: dict) -> str:
+    """Людський текст продавцю німецькою: за скільки планок ціна (опис мовчить)."""
+    vis, per = r2["layout"]
+    if vis == 1:
+        return f"Hallo! Auf den Fotos sehe ich einen Riegel mit {per} GB – ist das ein einzelnes Modul? Danke!"
+    return (f"Hallo! Auf den Fotos sehe ich {vis} Riegel à {per} GB – gilt der Preis von {r2['price']:.0f} € "
+            f"für alle {vis} zusammen? Danke!")
+
 
 def photo_line(res: dict, title: str, image_urls: list[str], budget: float = 50) -> tuple[str, bool] | None:
     """→ (рядок для картки, чи є розбіжність) або None (немає ключа / фото / опису).
@@ -277,6 +312,20 @@ def photo_line(res: dict, title: str, image_urls: list[str], budget: float = 50)
     bad, warn = compare(exp, ph)
     label = (ph.get("label_text") or "").strip()
     lbl = f" · наклейка «{escape(label[:60])}»" if label else ""
+    r2 = relayout(exp, ph, res, title)
+    if r2:
+        bad = [b for b in bad if not b.startswith("на наклейці")]
+    if r2 and not bad:
+        res["_relayout"] = r2
+        vis, per = r2["layout"]
+        what = f"на фото {vis} {'планка' if vis == 1 else 'планки'} по {per} ГБ (а не {exp['modules']}×{exp['per']})"
+        if r2.get("verdict") == "SKIP":
+            import ram_alert
+            cap = ram_alert.item_for(r2, r2["cap"]) if r2.get("cap") else None
+            return ("📷 <b>⛔ НЕ БЕРИ:</b> " + escape(what) + f" — як {vis}×{per} ГБ не вигідно"
+                    + (f": бери до {cap:.0f} €" if cap and cap > 0 else "") + lbl, True)
+        return ("📷 🔄 <b>Перерахував за фото:</b> " + escape(what) + lbl
+                + ("\n📷 ⚠️ " + escape("; ".join(warn)) if warn else ""), True)
     if bad:
         head = "⛔ НЕ БЕРИ:" if any(b.startswith("в описі") for b in bad) else "⛔ ФОТО НЕ ЗБІГАЄТЬСЯ З НАЗВОЮ:"
         return ("📷 <b>" + head + "</b> " + escape("; ".join(bad)) + lbl
@@ -306,6 +355,20 @@ def add_to_card(message_id: int | None, html_text: str, reply_markup: str | None
     from html import escape
     from ram_alert import add_check
     text = (line + "\n\n" + html_text) if bad else add_check(html_text, line)   # 14.10: у блок перевірок картки
+    r2 = res.get("_relayout")
+    if r2 and "НЕ БЕРИ" not in line:   # 30.10: інша розкладка за фото — уся картка заново (вердикт, межі, заробіток)
+        from ram_alert import format_html
+        text = line + "\n\n" + format_html(r2)
+    if r2:   # опис не каже, скільки планок, — питання продавцю однією кнопкою (копіюється)
+        from ram_alert import desc_facts
+        if not desc_facts(res.get("desc"), r2).get("kit_ok"):
+            try:
+                kb = json.loads(reply_markup) if reply_markup else {"inline_keyboard": []}
+                kb["inline_keyboard"].insert(0, [{"text": "📋 Питання продавцю: за скільки планок ціна?",
+                                                  "copy_text": {"text": seller_question(r2)}}])
+                reply_markup = json.dumps(kb, ensure_ascii=False)
+            except (ValueError, KeyError, TypeError):
+                pass
     folded = collapse_server and bad and escape(SERVER_MSG) in line
     if folded:   # 03.10: користувач хоче, щоб такі картки відсіювались, а не висіли з ⛔
         text = (f"🗑 <b>Відсіяно: {escape(SERVER_MSG)}</b> — у звичайний ПК не піде\n"

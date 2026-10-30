@@ -297,7 +297,7 @@ def speed_bucket(gen: str, title: str, parsed: int | None) -> str | None:
     return "fast" if sp >= FAST_FROM[gen] else "slow"
 
 
-def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False) -> dict:
+def evaluate(title: str, price: float, shipping: float | None = None, vb: bool = False, _as_pairs: bool = False) -> dict:
     ship_in = SHIP_IN_RAM if shipping is None else shipping
     total_price = price
     p, reason = parse_title(title)
@@ -320,7 +320,7 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
                     title=title, price=total_price, wrong_type=True)
     real = REAL.get(key)
     quad = None
-    if not real and p["modules"] == 4 and p["total"] % 4 == 0:
+    if (not real or _as_pairs) and p["modules"] == 4 and p["total"] % 4 == 0:
         quad = REAL.get(key[:3] + (p["total"] // 2, 2))
         if quad:
             real = dict(quad, p25=2 * quad["p25"], med=2 * quad["med"], st=quad["st"] / 2,
@@ -388,6 +388,12 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     # для того самого числа (продавці часто пишуть лише підсумкову ємність). Фото рятує не
     # завжди (нове фото легко попросити, старе — ні), тож попереджаємо завжди для цих типів.
     single_module_warning = p["modules"] == 1 and not kit_unknown
+    # 30.10 (користувач: «може вигідніше 2 по 2×16 ставити потім? таке теж треба рахувати, а не 4»): набір з 4 планок, для
+    # якого є свої ціни (DDR4 4×16), — рахуємо й «двома парами» і беремо вигідніше
+    if p["modules"] == 4 and not quad and not _as_pairs and REAL.get(key[:3] + (p["total"] // 2, 2)):
+        alt = evaluate(title, price, shipping, vb, _as_pairs=True)
+        if alt.get("net_q", -1e9) > net_q:
+            return alt
     return dict(verdict=verdict, type=real["name"], price=total_price, cap=cap, good=good, excellent=excellent,
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
                 net_q=net_q, brand=brand_flag, title=title, single_module_warning=single_module_warning,
