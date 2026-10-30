@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-26c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-30a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -538,6 +538,7 @@ const MENU = {
     '• продати 3 ka — готове оголошення для Kleinanzeigen: назва, опис, ціна, пороги пропозицій, фото; своя ціна — продати 3 ka 159\n' +
     '• виставлено — що зараз на продажу: ціна, дні, перегляди, спостерігачі, посилання (eBay; KA — «Мої оголошення»)\n' +
     '• звірити — звірити eBay з таблицею зараз (саме — раз на 3 години): нові оголошення, ціни, завершені\n' +
+    '• спостерігачам 3 155 — пропозиція ціни всім, хто спостерігає лот №3; безкоштовна 3 / платна 3 — доставка\n' +
     '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати', 'виставлено', 'звірити']],
   parcels: ['📦 Посилки', '• посилки — де кожна посилка до тебе й від тебе, коли очікується, чи дійшла\n' +
     '• сам напишу, коли посилка чекає у відділенні або доставлена (перевіряю раз на 3 години, 8–21)\n' +
@@ -701,8 +702,88 @@ function officeMessage(msg) {
             '? Напиши ще раз точно — тут різні дії.');
     return;
   }
+  if (!msg._ai && aiSuggest_(msg)) return;
   notify_('Не зрозумів 🙂 Натисни «☰ Меню» — там усе, що вміє бот. Оголошення для оцінки — в ebay_bot, питання — в retail_helper.',
           OFFICE_KEYBOARD);
+}
+
+// 30.10 (користувач: «щоб боти розуміли контекст не тільки по ключових словах, а загалом, що я хочу — я не пам'ятаю всі
+// команди»; «пропозиція 8 160 євро» → «Не зрозумів»). Не впізнали команду — Gemini за списком команд (меню + AI_EXTRA) і
+// товарами з таблиці перекладає фразу в команду. Лише показ (облік, посилки…) — виконуємо одразу; усе, що змінює таблицю,
+// eBay чи гроші, — кнопкою «▶️ Виконати» (і далі звичайне підтвердження команди, де воно є).
+const AI_EXTRA = '• спостерігачам 8 155 — пропозиція ціни всім, хто спостерігає лот №8 на eBay (155 € за товар)\n' +
+  '• ціна 8 155 — своя ціна в оголошенні №8; назва 8 текст; опис 8 текст (дописати німецькою); скинути 8 — як порахував бот\n' +
+  '• безкоштовна 8 / платна 8 — доставка в оголошенні №8 (ціна перерахується)\n' +
+  '• оновити 8 — внести зміни в живе оголошення eBay; перевиставити 8 — завершити й виставити заново\n' +
+  '• на руках — усе непродане; кроки 8 — покроково виставити вручну; фото 8 — показати фото\n' +
+  '• статус 8 Продано — поставити статус; назад 8 — скасувати останню зміну; трек 8 номер; відправив 8 номер\n' +
+  '• продав 8 140 — записати продаж №8 за 140 € вручну; купив 45 назва — записати покупку';
+const AI_SAFE = /^(?:облік|на руках|посилки|виставлено|звірити|звіт|меню|нагадування|межі|продати(?:\s+\d{1,4}(?:\s+ka)?)?|кроки\s+\d{1,4}|фото\s+\d{1,4}|документи\s+\d{1,4})$/i;
+
+function aiSuggest_(msg) {
+  const text = String(msg.text || '').trim();
+  if (!text || text.length > 300 || /^https?:\/\//i.test(text)) return false;
+  let rows = [];
+  try { rows = ledgerRows_().filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; }); } catch (e) {}
+  const goods = rows.slice(-40).map(function (r) { return '№' + r.n + ' ' + String(r.title).slice(0, 50) + ' (' + r.status + ')'; }).join('; ');
+  const menu = MENU_ORDER.map(function (k) { return MENU[k][1]; }).join('\n');
+  const res = geminiJson_('Ти — помічник Telegram-бота обліку перепродажу оперативної пам\'яті. Користувач написав боту: «' + text + '».\n' +
+    'Команди бота (точний синтаксис, N — номер товару в таблиці):\n' + menu + '\n' + AI_EXTRA + '\n' +
+    'Товари в таблиці (не продані): ' + (goods || '—') + '\n' +
+    'Поверни JSON: {"command": ОДНА команда точно за синтаксисом вище, з підставленими номером і числами (без «€», без «євро»), ' +
+    'або "" якщо це не команда чи неясно, що саме; "confidence": "high" | "medium" | "low"; "explain": коротко українською, ' +
+    'що зробить команда}. Номер товару бери лише з таблиці (за номером або назвою, яку назвав користувач); не вигадуй.');
+  if (!res || !res.command || res.confidence === 'low') return false;
+  const cmd = String(res.command).replace(/^\//, '').trim();
+  if (!cmd || cmd.length > 200 || cmd.toLowerCase() === text.toLowerCase()) return false;
+  if (AI_SAFE.test(cmd) && res.confidence === 'high') {
+    notify_('🤖 Зрозумів як «' + cmd + '»');
+    officeMessage(Object.assign({}, msg, { text: cmd, _fixed: true, _ai: true }));
+    return true;
+  }
+  const props = PropertiesService.getScriptProperties(), saved = JSON.parse(props.getProperty('AI_CMD') || '{}');
+  const id = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
+  saved[id] = cmd;
+  props.setProperty('AI_CMD', JSON.stringify(capKeys_(saved, 20)));
+  notify_('🤖 Мабуть, ти мав на увазі:\n<code>' + h_(cmd) + '</code>' + (res.explain ? '\n' + h_(String(res.explain).slice(0, 200)) : '') +
+          '\n(точна команда на майбутнє — натисни на неї, скопіюється)',
+          { inline_keyboard: [[{ text: '▶️ Виконати', callback_data: 'x|' + id }]] }, 'HTML');
+  return true;
+}
+
+/** «▶️ Виконати» під підказкою ШІ — та сама команда, ніби написав її сам. */
+function aiCallback_(cq, chat) {
+  const m = String(cq.data || '').match(/^x\|(\w{6,16})$/);
+  if (!m) return false;
+  const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
+  tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: '▶️' });
+  if (!chat || String(from) !== String(chat)) return true;
+  const props = PropertiesService.getScriptProperties(), saved = JSON.parse(props.getProperty('AI_CMD') || '{}'), cmd = saved[m[1]];
+  tgOffice_('editMessageReplyMarkup', { chat_id: chat, message_id: cq.message.message_id, reply_markup: JSON.stringify({ inline_keyboard: [] }) });
+  if (!cmd) { notify_('Підказка застаріла — напиши ще раз.'); return true; }
+  delete saved[m[1]];
+  props.setProperty('AI_CMD', JSON.stringify(saved));
+  officeMessage({ text: cmd, chat: { id: from }, message_id: 0, _fixed: true, _ai: true });
+  return true;
+}
+
+/** Gemini, лише текст → JSON або null (ключ — GEMINI_API_KEY у властивостях скрипту). */
+function geminiJson_(prompt) {
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return null;
+  const models = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+  for (let i = 0; i < models.length; i++) {
+    let r;
+    try {
+      r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[i] + ':generateContent', {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': key },
+        payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } }) });
+    } catch (e) { console.log('Gemini текст: ' + e); continue; }
+    if (r.getResponseCode() !== 200) { console.log('Gemini текст ' + models[i] + ': ' + r.getResponseCode()); continue; }
+    try { return JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text.replace(/^```(?:json)?|```$/g, '')); }
+    catch (e) { console.log('Gemini текст: не JSON'); }
+  }
+  return null;
 }
 
 /**
@@ -3158,7 +3239,7 @@ function btns_(list, extra) {
 /** Натискання кнопки (doPost, ?bot=office): виконати команду, кнопки з повідомлення прибрати. */
 function officeCallback(cq) {
   const props = PropertiesService.getScriptProperties(), chat = props.getProperty('TELEGRAM_CHAT_ID');
-  if (ebayCallback_(cq, chat) || menuCallback_(cq, chat) || syncCallback_(cq, chat)) return;
+  if (ebayCallback_(cq, chat) || menuCallback_(cq, chat) || syncCallback_(cq, chat) || aiCallback_(cq, chat)) return;
   const m = String(cq.data || '').match(/^c\|([^|]+)\|(\d{1,4})$/);
   const from = cq.message && cq.message.chat ? cq.message.chat.id : '';
   tgOffice_('answerCallbackQuery', { callback_query_id: cq.id, text: m ? BTN[m[1]] + (m[1] === 'посилки' ? '' : ' №' + m[2]) : '' });

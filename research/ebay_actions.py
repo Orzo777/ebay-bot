@@ -225,12 +225,14 @@ def offer_watchers(item_id: str, price: float, token: str, post, get) -> dict:
     h = {"Authorization": f"Bearer {token}", "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE", "Content-Type": "application/json"}
     r = get(f"{NEGOTIATION}/find_eligible_items", headers=h, params={"limit": 200}, timeout=30)
     if r.status_code == 204:
-        return {"status": "none", "n": 0, "errors": []}
+        print("пропозиція спостерігачам: eBay — жодного лота з «зацікавленими» (204)")
+        return {"status": "none", "n": 0, "errors": [], "eligible": 0}
     if r.status_code != 200:
         return {"status": "error", "n": 0, "errors": [f"HTTP {r.status_code}: {r.text[:200]}"]}
     ids = {str(x.get("listingId")) for x in (r.json().get("eligibleItems") or [])}
+    print(f"пропозиція спостерігачам: лотів з «зацікавленими» {len(ids)}, наш серед них: {str(item_id) in ids}")
     if str(item_id) not in ids:
-        return {"status": "none", "n": 0, "errors": []}
+        return {"status": "none", "n": 0, "errors": [], "eligible": len(ids)}
     body = {"allowCounterOffer": False, "message": OFFER_MSG.format(price=f"{price:.0f}"),
             "offeredItems": [{"listingId": str(item_id), "price": {"currency": "EUR", "value": f"{price:.2f}"}, "quantity": 1}]}
     r = post(f"{NEGOTIATION}/send_offer_to_interested_buyers", headers=h, json=body, timeout=30)
@@ -345,9 +347,12 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
         if not item_id or price <= 0:
             return send(f"⚠️ Не знаю оголошення eBay або ціну для {what}.", None)
         res = offer_watchers(item_id, price, token, post, get)
-        if res["status"] == "none":
-            return send(f"💌 {what}: eBay зараз не має кому надіслати пропозицію — спостерігачі ще не «зацікавлені» "
-                        "(з'являються через кілька днів) або пропозицію їм уже надсилали.", None)
+        if res["status"] == "none":   # 30.10 (користувач: «у мене є спостерігачі, а пише, що немає»): що саме сказав eBay
+            return send(f"💌 {what}: eBay не дав надіслати — цього лота немає в його списку «є кому запропонувати» "
+                        f"(зараз таких лотів: {res.get('eligible', 0)}). Спостерігачі в Seller Hub є, але eBay пускає пропозицію "
+                        "не до всіх: тим, кому вже надсилали (ти надсилав вручну), — лише після закінчення попередньої (48 год), "
+                        "і не одразу після додавання в спостереження. Спробуй завтра або вручну: Seller Hub → Aktive Angebote → "
+                        "⋮ → «Angebote an Interessenten senden» — там eBay покаже причину.", None)
         if res["status"] == "error":
             return send(f"⚠️ eBay не надіслав пропозицію {what}:\n{_errs(res['errors'])}\n"
                         "Знижка має бути ≥5% від ціни; можна надіслати вручну: Aktive Angebote → ⋮ → «Preisvorschlag senden».", None)

@@ -143,5 +143,29 @@ ctx.ledgerCommand = realLC;
 office('купив 20 Kingston 8GB');
 check('office ledger command', added[added.length - 1].price, 20);
 
+// 30.10: «пропозиція 8 160 євро» → «Не зрозумів»; тепер ШІ (Gemini, тут підмінений) перекладає фразу в команду:
+// показ — одразу, зміни / гроші — кнопкою «▶️ Виконати»
+const store = { TELEGRAM_CHAT_ID: '7', LEDGER_ID: 'L', GEMINI_API_KEY: 'g' }, marks = [];
+let gem = { command: 'спостерігачам 8 160', confidence: 'high', explain: 'пропозиція 160 € спостерігачам №8' };
+Object.assign(ctx, {
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => store[k] || null, setProperty: (k, v) => { store[k] = v; } }) },
+  UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(gem) }] } }] }) }) },
+  Utilities: { getUuid: () => 'abcdef12-3456' }, __marks: marks });
+vm.runInContext('ledgerRows_ = function () { return [{ n: 8, title: "G.SKILL FORTIS 32GB", status: "Виставлено" }]; };' +
+  'notify_ = function (t, m) { __said.push(t); __marks.push(m || null); }; tgOffice_ = function () {};' +
+  'watchersAsk_ = function (n, p) { __said.push("W:" + n + " " + p); };' +
+  'ledgerCommand = function (m) { if (m.text === "облік") { __said.push("LC:" + m.text); return true; } return false; };', ctx);
+office('пропозиція 8 160 євро');
+check('AI: money command — suggest with a button', [/Мабуть, ти мав на увазі:\n<code>спостерігачам 8 160<\/code>/.test(said[said.length - 1]),
+  marks[marks.length - 1].inline_keyboard[0][0].callback_data], [true, 'x|abcdef1234']);
+ctx.officeCallback({ id: 'q', data: 'x|abcdef1234', message: { chat: { id: 7 }, message_id: 9 } });
+check('AI: ▶️ runs the command (then its own confirmation)', said[said.length - 1], 'W:8 160');
+gem = { command: 'облік', confidence: 'high' };
+office('скільки в мене зараз грошей і товару');
+check('AI: read-only command runs at once', [said[said.length - 2], said[said.length - 1]], ['🤖 Зрозумів як «облік»', 'LC:облік']);
+gem = { command: '', confidence: 'low' };
+office('привіт як справи');
+check('AI: not a command → as before', /Не зрозумів/.test(said[said.length - 1]), true);
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

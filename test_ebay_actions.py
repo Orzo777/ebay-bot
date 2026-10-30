@@ -228,7 +228,7 @@ class WatchersOfferTest(unittest.TestCase):
         self.assertIn("надіслано 2 зацікавленим", sent[-1])
         self.assertEqual(back[-1], {"kind": "offer_sent", "row": 4, "price": 159, "n": 2})
         ea.run(d, "tok", post, lambda t, m: sent.append(t) or True, lambda x, k: back.append(x), "k", get=lambda url, **k: self.R(204))
-        self.assertIn("не має кому", sent[-1])
+        self.assertIn("eBay не дав надіслати", sent[-1])   # 30.10: з причиною
         bad = lambda url, **k: self.R(400, {"errors": [{"longMessage": "Discount must be at least 5%"}]})   # noqa: E731
         ea.run(d, "tok", bad, lambda t, m: sent.append(t) or True, lambda x, k: back.append(x), "k", get=get)
         self.assertIn("at least 5%", sent[-1])
