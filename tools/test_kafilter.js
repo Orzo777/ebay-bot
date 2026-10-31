@@ -121,5 +121,21 @@ ctxRun(`__threads = [__mkB('i', '110? https://www.kleinanzeigen.de/s-anzeige/c/3
 ctx.kaFilter();
 if (!/зустрічна: <b>115 €<\/b> \(ціна 124 €\)/.test(sentOffice[sentOffice.length - 1][0])) { bad++; console.log('!! counter between thresholds'); }
 
+// 01.11: відповідь на наше «Suche Arbeitsspeicher» — не «Покупець пише», а в GitHub (ka_wanted.py: оцінка й текст відповіді)
+const gh1 = gh.length, so2 = sentOffice.length;
+gem = { from: 'buyer', message: 'Hab 2x16GB DDR5 Corsair, 150€?', price: 150, intent: 'counter', listing: 'Suche Arbeitsspeicher DDR4 / DDR5 RAM', item: 'Corsair DDR5 2x16GB' };
+ctxRun(`UrlFetchApp = { fetch: (u, o) => /generativelanguage/.test(u)
+  ? { getResponseCode: () => 200, getContentText: () => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(__gem()) }] } }] }) }
+  : /github/.test(u) ? (__gh.push([u, JSON.parse(o.payload)]), { getResponseCode: () => 204 }) : { getResponseCode: () => 200, getContentText: () => '' } };`, { __gem: () => gem });
+ctxRun(`__threads = [__mkB('j', 'Hab 2x16GB DDR5 Corsair, 150€? https://www.kleinanzeigen.de/s-anzeige/suche-arbeitsspeicher-ddr4-ddr5-ram-pc-laptop/3557879305-225-26491', 'Nutzer-Anfrage zu deiner Anzeige „Suche Arbeitsspeicher DDR4 / DDR5 RAM – PC & Laptop“')]`, { __mkB: mkB });
+ctx.kaFilter();
+const wg = gh[gh.length - 1];
+if (gh.length !== gh1 + 1 || sentOffice.length !== so2 || !/ka_reply\.yml/.test(wg[0]) || wg[1].inputs.mode !== 'wanted') {
+  bad++; console.log('!! wanted → GitHub', gh.length - gh1, sentOffice.length - so2, JSON.stringify(wg));
+}
+if (!ctx.kaWanted_('Nachricht zu „Suche Arbeitsspeicher DDR4“', 'x', null) || ctx.kaWanted_('zu deiner Anzeige „Corsair“', 'https://www.kleinanzeigen.de/s-anzeige/3548555666', null)) {
+  bad++; console.log('!! kaWanted_');
+}
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

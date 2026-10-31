@@ -5,6 +5,7 @@ name: ka-reply
 # 06.10: прибирання переписки — mode=close (облік записав покупку з KA, номер оголошення зашифрований) і щогодинна
 # перевірка (schedule): оголошення зняте → відповіді видаляються з чату (старші 48 год — згортаються в один рядок).
 # Стан (номер оголошення → id відповідей) — у кеші ka_replies_state.json; запуски по черзі (concurrency).
+# 01.11: mode=wanted — пропозиція на наше оголошення «Suche Arbeitsspeicher» → оцінка й готова відповідь (research/ka_wanted.py).
 
 on:
   workflow_dispatch:
@@ -22,7 +23,7 @@ on:
         required: false
         default: ""
       mode:
-        description: "reply | close | sweep"
+        description: "reply | close | sweep | wanted"
         required: false
         default: "reply"
   # 24.10: щогодинного cron більше немає — відповіді продавців ідуть у бот «Облік і продаж»; старі прибирає сторож до 08.11
@@ -83,6 +84,7 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           case "$MODE" in
+            wanted) python research/ka_wanted.py --blob "$BLOB" --mac "$MAC" --nonce "$NONCE" ;;
             sweep) python research/ka_reply.py --sweep --replies ka_replies_state.json ;;
             close) python research/ka_reply.py --close-blob "$BLOB" --mac "$MAC" --nonce "$NONCE" --replies ka_replies_state.json ;;
             *)     python research/ka_reply.py --blob "$BLOB" --mac "$MAC" --nonce "$NONCE" \
@@ -90,7 +92,7 @@ jobs:
           esac
 
       - name: Save sent replies
-        if: always()
+        if: ${{ always() && inputs.mode != 'wanted' }}
         uses: actions/cache/save@v5
         with:
           path: ka_replies_state.json

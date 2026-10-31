@@ -18,7 +18,7 @@
 
 // Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
 // разом із check() вичерпав денний Gmail-ліміт Google 01.10.
-const VER_KAFILTER = '2026-10-24c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_KAFILTER = '2026-11-01a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb OR preisvorschlag) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
@@ -130,7 +130,9 @@ function kaGemini_(text, subject, key) {
     'мовою оригіналу (без шаблону листа), "uk": переклад повідомлення українською, коротко й точно, "intent": одне з ' +
     'hacked|agree|counter|sold|available|question|other (hacked — пише, що не викладав оголошення / акаунт зламано; agree — згоден на запропоновану ціну/купівлю; counter — називає іншу ціну; ' +
     'sold — продано/зарезервовано; available — лише каже, що ще є; question — питає), "price": число в євро, якщо в ' +
-    'повідомленні названо ціну (ціна продавця або пропозиція покупця), інакше null}.\n\nЛист:\n' + text;
+    'повідомленні названо ціну (ціна продавця або пропозиція покупця), інакше null, "item": якщо людина пропонує ' +
+    'користувачу купити свій товар (відповідь на його оголошення «Suche …») — назва товару як в оголошенні, з усіма ' +
+    'деталями з повідомлення (бренд, DDR4/DDR5, кількість планок × ГБ, частота, ПК чи ноутбук, номер моделі), інакше ""}.\n\nЛист:\n' + text;
   const models = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
   for (let i = 0; i < models.length; i++) {
     const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[i] + ':generateContent', {
@@ -236,6 +238,17 @@ function kaDigest_(m, props) {
   const g = key ? kaGemini_(body.slice(0, 3000), m.getSubject(), key) : null;
   const link = (String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/m-nachrichten[^"'\s<>]*/) ||
                 String(m.getBody() || '').match(/https:\/\/(?:www\.)?kleinanzeigen\.de\/s-anzeige\/[^"'\s<>]*/) || [])[0];
+  if (kaWanted_(m.getSubject(), String(m.getBody() || '') + ' ' + body, g)) {   // відповідь на наше «Suche Arbeitsspeicher»
+    if (kaWantedViaGitHub_(props, body, g, link)) return;
+    const wt = ['📥 <b>Пропонують пам\'ять</b>' + (g && g.seller ? ' · ' + esc_(g.seller) : ''), '<i>на твоє «Suche Arbeitsspeicher»</i>', '',
+      g && g.uk ? '🇺🇦 ' + esc_(g.uk.slice(0, 700)) : '', '🇩🇪 ' + esc_(((g && g.message) || body).slice(0, 700)),
+      '<i>(оцінка не вдалась — глянь сам)</i>'].filter(function (l, i) { return l !== '' || i === 2; }).join('\n');
+    const wkb = { inline_keyboard: [[{ text: '💬 Відкрити чат на Kleinanzeigen', url: link || 'https://www.kleinanzeigen.de/m-nachrichten.html' }]] };
+    if (typeof notify_ === 'function') { notify_(wt, wkb, 'HTML'); return; }
+    UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'post', muteHttpExceptions: true,
+      payload: { chat_id: chat, text: wt, parse_mode: 'HTML', disable_web_page_preview: 'true', reply_markup: JSON.stringify(wkb) } });
+    return;
+  }
   if (kaFromBuyer_(m.getSubject(), body, g)) {   // покупець щодо НАШОГО оголошення — у бот «Облік і продаж», без реплаю на картку
     const ids = kaAdIds_(String(m.getBody() || '') + ' ' + body);
     if (kaShippingOnPickup_((g && g.message) || body, ids)) {
@@ -265,6 +278,30 @@ function kaDigest_(m, props) {
   const markup = JSON.stringify(kb);
   UrlFetchApp.fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'post', muteHttpExceptions: true,
     payload: { chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: 'true', reply_markup: markup } });
+}
+
+/** 01.11 (користувач: «ось моє оголошення»): наше оголошення «Suche Arbeitsspeicher» — нам пропонують пам'ять. Оцінка й
+ *  готова відповідь — research/ka_wanted.py (ka_reply.yml, mode=wanted) у бот угод; на KA бот нічого не пише сам. */
+const KA_WANTED_ADS = ['3557879305'];
+function kaWanted_(subject, text, g) {
+  if (kaAdIds_(text).some(function (id) { return KA_WANTED_ADS.indexOf(id) >= 0; })) return true;
+  return /\bsuche\s+arbeitsspeicher\b/i.test(String(subject || '') + ' ' + kaListing_(subject, g));
+}
+
+function kaWantedViaGitHub_(props, body, g, link) {
+  if (typeof seal_ !== 'function' || typeof officeToken_ !== 'function') return false;
+  const token = props.getProperty('GITHUB_TOKEN') || (typeof GITHUB_TOKEN === 'undefined' ? '' : GITHUB_TOKEN);
+  if (!token) return false;
+  const sealed = seal_({ msg: ((g && g.message) || body).slice(0, 1500), uk: (g && g.uk) || '', item: (g && g.item) || '',
+                         price: (g && Number(g.price)) || null, who: (g && g.seller) || '', link: link || '' },
+                       officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
+  sealed.mode = 'wanted';
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_reply.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: 'main', inputs: sealed }) });
+  if (r.getResponseCode() !== 204) console.log('KA Suche → GitHub: ' + r.getResponseCode());
+  return r.getResponseCode() === 204;
 }
 
 function kaListing_(subject, g) {
