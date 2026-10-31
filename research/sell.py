@@ -88,7 +88,7 @@ def net_of(r: dict, price: float) -> float:
     """Скільки лишиться з ціни продажу (комісія, пересилка покупцю безкоштовно, упаковка, страховка, резерв)."""
     if r["kind"] == "console":
         return price - console_alert.costs(price, r["ship_out"])
-    return price - ram_alert.costs(price) - ram_alert.AD_RATE * price   # 28.10: реклама Basis 5% на всіх лотах eBay
+    return price - ram_alert.costs(price) - ram_alert.AD_RATE * price   # 28.10: реклама Basis 5% (+19% ПДВ) на всіх лотах eBay
 
 
 def _taxed(profit: float) -> str:

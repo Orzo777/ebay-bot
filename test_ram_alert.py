@@ -266,7 +266,7 @@ class SetPriceInDescTest(unittest.TestCase):
         with mock.patch.object(ram_alert, "TOP_USED", {"ddr4|udimm|0|32|2": {"brand_slow": [130, 135, 140, 150, 160]}}):
             r = evaluate(t, 80)
             self.assertIn("повільна — продаж ≈ 140 € (медіана 5 найдешевших зараз ≈ 140 €)", r["type"])
-            self.assertAlmostEqual(r["net_q"], 140 - ram_alert.costs(140) - 0.05 * 140, places=2)
+            self.assertAlmostEqual(r["net_q"], 140 - ram_alert.costs(140) - ram_alert.AD_RATE * 140, places=2)
         with mock.patch.object(ram_alert, "TOP_USED", {"ddr4|udimm|0|32|2": {"brand_slow": [170, 175, 180]}}):
             self.assertNotIn("≈ 175 € (", evaluate(t, 80)["type"].split("продаж")[1][:8])   # не вище колишньої середини
         with mock.patch.object(ram_alert, "TOP_USED", {"ddr4|udimm|0|32|2": {"brand_slow": [60, 65, 70]}}):
