@@ -437,11 +437,11 @@ class TestQuadKits1010(unittest.TestCase):
         from ram_alert import QUAD_SHARE, REAL, SEGMENT, costs, evaluate, sale_basis
         key = ("ddr4", "udimm", False, 64, 2)
         pair = REAL[key]
-        r = evaluate("Corsair Vengeance 128GB (4x32GB) DDR4 3200", 505)
+        r = evaluate("Corsair Vengeance 128GB (4x32GB) DDR4 3200", 480)   # 31.10: з рекламою 5,95% для DDR4 (було 505)
         self.assertEqual(r["verdict"], "BUY")
         med = round(pair["med"] * SEGMENT[key]["brand_fast"][1])   # фірмові швидкі 2×32
         b = sale_basis(round(pair["p25"] * SEGMENT[key]["brand_fast"][0]), med)   # 14.10: між p25 і медіаною
-        self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (b - costs(b)))
+        self.assertAlmostEqual(r["net_q"], QUAD_SHARE * 2 * (b - costs(b) - ram_alert.AD_RATE * b))
         self.assertIn("4×32", r["type"])
         self.assertIn("2 пари", r["type"])
         self.assertEqual(r["quick_sale"], 2 * round(pair["p25"] * SEGMENT[key]["brand_fast"][0]))

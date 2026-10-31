@@ -75,7 +75,7 @@ class TestPhotoCheck(unittest.TestCase):
         from ram_alert import refine_by_desc
         self.assertEqual(evaluate("SK Hynix 2x 16GB DDR4 PC4-2666V-RE1 Arbeitsspeicher", 85)["verdict"], "SKIP")
         self.assertEqual(evaluate("Micron 2x16GB 2RX8 PC4-2666V-RE2-12 MTA18ASF2G72PDZ", 85)["verdict"], "SKIP")
-        self.assertNotEqual(evaluate("Samsung 2x16GB DDR4 M378A2K43EB1-CWE PC4-3200AA-UA2-11", 45)["verdict"], "SKIP")   # 10.10: звичайні планки дешевші
+        self.assertNotEqual(evaluate("Samsung 2x16GB DDR4 M378A2K43EB1-CWE PC4-3200AA-UA2-11", 40)["verdict"], "SKIP")   # 10.10: звичайні планки дешевші; 31.10: з рекламою — 40 (було 45)
         t = "SK Hynix 2x 16GB DDR4 RAM PC4-2666V Arbeitsspeicher"
         r = evaluate(t, 30)   # 28.10: повільна DDR4 — від швидкого продажу, «бери» лише дешевше (було 45)
         self.assertNotEqual(r["verdict"], "SKIP")

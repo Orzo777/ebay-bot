@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-31a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-31b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1469,6 +1469,12 @@ function syncApply_(d) {
   props.setProperty('LISTED_PRICE', JSON.stringify(prices));
   shippedFromEbay_(d.shipped || [], out);
   kaLinks_(d.ka_links || [], out);
+  feesFromEbay_(d.fees || [], out);
+  if (d.fees_auth && !props.getProperty('FIN_AUTH_ASKED')) {   // 31.10: старий дозвіл eBay — без фінансового звіту
+    props.setProperty('FIN_AUTH_ASKED', '1');
+    out.push('🔑 Щоб у таблицю йшли фактичні витрати eBay (етикетка, реклама) по кожному продажу, один раз підключи eBay ' +
+             'заново: напиши «ebay вхід». Решта працює як було.');
+  }
   if (out.length) notify_(out.join('\n'), null, 'HTML');
   marketTips_(d.market || [], rows);
   const audited = auditReport_(d.audit, !!d.manual);
@@ -1512,6 +1518,45 @@ function auditReport_(list, manual) {
       return [{ text: '🔗 ' + (a.n ? '№' + a.n + ' ' : '') + a.where, url: a.url }]; }) }, 'HTML');
   }
   return list.length;
+}
+
+/** 31.10 (користувач: «фактичні мінуси в таблиці робимо»): етикетка й комісії eBay (реклама Basis з ПДВ) по кожному
+ *  замовленню (research/finances.py) → «Моя пересилка покупцю» і «Комісія eBay» проданого рядка; прибуток таблиця рахує
+ *  сама. Рядок — за SKU «ledger-N» або номером оголошення в нотатках; лот на кілька штук — кожне замовлення свій рядок
+ *  (FEES_ORDER: замовлення → №). Повідомлення — лише коли суми нові / змінились. */
+function feesFromEbay_(list, out) {
+  if (!list.length) return;
+  const props = PropertiesService.getScriptProperties(), done = JSON.parse(props.getProperty('FEES_ORDER') || '{}');
+  const rows = ledgerRows_().filter(function (r) { return r.status === 'Продано'; });
+  if (!rows.length) return;
+  const sh = ledger_().getSheetByName('Угоди');
+  const notes = sh.getRange(LEDGER_FIRST, COL.note, rows[rows.length - 1].n, 1).getValues();
+  const taken = {};
+  Object.keys(done).forEach(function (o) { taken[done[o][0]] = o; });
+  list.forEach(function (x) {
+    const prev = done[x.order_id];
+    let r = prev ? rows.filter(function (y) { return y.n === prev[0]; })[0] : null;
+    if (!r) {
+      const sku = (String(x.sku || '').match(/^ledger-(\d{1,4})$/) || [])[1];
+      const cands = rows.filter(function (y) {
+        return !taken[y.n] && ((sku && y.n === Number(sku)) || (x.item_id && String((notes[y.n - 1] || [''])[0]).indexOf(String(x.item_id)) >= 0));
+      });
+      r = cands.filter(function (y) { return sku && y.n === Number(sku); })[0] || cands[cands.length - 1];
+    }
+    if (!r) return;
+    const label = Math.round((Number(x.label) || 0) * 100) / 100, fees = Math.round((Number(x.fees) || 0) * 100) / 100;
+    if (prev && prev[1] === label && prev[2] === fees) return;
+    const row = r.n + LEDGER_FIRST - 1;
+    if (label) sh.getRange(row, COL.sship).setValue(label);
+    if (fees && !sh.getRange(row, COL.comm).getFormula()) sh.getRange(row, COL.comm).setValue(fees);
+    done[x.order_id] = [r.n, label, fees];
+    taken[r.n] = x.order_id;
+    const profit = num_(sh.getRange(row, COL.profit).getValue());
+    out.push('🧾 №' + r.n + ' ' + h_(String(r.title).slice(0, 34).trim()) + ': фактично eBay — ' +
+             [label ? 'етикетка ' + label.toFixed(2).replace('.', ',') + ' €' : '', fees ? 'реклама / комісія ' + fees.toFixed(2).replace('.', ',') + ' €' : '']
+               .filter(Boolean).join(' · ') + ', записав' + (profit != null ? ' → прибуток ' + (profit >= 0 ? '+' : '') + profit.toFixed(2).replace('.', ',') + ' €' : ''));
+  });
+  props.setProperty('FEES_ORDER', JSON.stringify(capKeys_(done, 300)));
 }
 
 /** 26.10: оголошення KA, якого бот не знав (виставив без «виставив N ka …»), — за назвою знайшов рядок обліку: записав,

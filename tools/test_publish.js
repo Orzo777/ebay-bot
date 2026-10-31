@@ -14,6 +14,7 @@ function sheet() {
     const rng = new Proxy({}, { get: (_, k) => {
       if (k === 'setValue') return (v) => { cells[r + ':' + c] = v; s.last = Math.max(s.last, r); return rng; };
       if (k === 'getValue') return () => (cells[r + ':' + c] !== undefined ? cells[r + ':' + c] : '');
+      if (k === 'getFormula') return () => '';   // 31.10: у тестових клітинках формул немає
       if (k === 'getValues') return () => Array.from({ length: n }, (_, i) => Array.from({ length: w }, (_, j) => {
         const v = cells[(r + i) + ':' + (c + j)]; return v === undefined ? '' : v; }));
       return () => rng;
@@ -256,6 +257,20 @@ sync({ lots: [], ask: [], ended: [], audit: au }, 'au4');
 check('audit: fixed then broken again → reported again', sent.length, nAu + 1);
 sync({ lots: [], ask: [], ended: [], audit: [], manual: 1, count: 3 }, 'au5');
 check('manual: all listings match', /Оголошення eBay і KA перевірив/.test(last()[0]), true);
+// 31.10: фактичні витрати eBay по замовленню → «Моя пересилка покупцю» / «Комісія eBay»; один раз; прохання «ebay вхід» — раз
+deals.cells['8:11'] = 'Продано'; deals.cells['8:' + NOTE] = 'виставлено (eBay 336849011147)';
+sync({ lots: [], ask: [], ended: [], fees: [{ order_id: '12-15361-67725', item_id: '336849011147', sku: '', label: 5.79, fees: 9.52 }] }, 'fe1');
+check('fees written', [deals.cells['8:' + vm.runInContext('COL.sship', ctx)], deals.cells['8:' + vm.runInContext('COL.comm', ctx)],
+  /🧾 №4 .*етикетка 5,79 € · реклама \/ комісія 9,52 €, записав/.test(last()[0])], [5.79, 9.52, true]);
+const nFe = sent.length;
+sync({ lots: [], ask: [], ended: [], fees: [{ order_id: '12-15361-67725', item_id: '336849011147', sku: '', label: 5.79, fees: 9.52 }] }, 'fe2');
+check('fees once', sent.length, nFe);
+sync({ lots: [], ask: [], ended: [], fees_auth: 1 }, 'fe3');
+check('asks ebay login once', /ebay вхід/.test(last()[0]), true);
+const nFa = sent.length;
+sync({ lots: [], ask: [], ended: [], fees_auth: 1 }, 'fe4');
+check('ebay login asked once', sent.length, nFa);
+deals.cells['8:11'] = 'Перевірено'; deals.cells['8:' + NOTE] = '';
 sync({ lots: [], ask: [], ended: [], ka_links: [{ n: 3, id: '3551005398' }] }, 'au6');
 check('KA ad linked to the ledger', [ctx.events_()[3].ka, /№3 — бачу на Kleinanzeigen \(оголошення 3551005398\), записав/.test(last()[0])],
   ['3551005398', true]);

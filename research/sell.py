@@ -922,13 +922,32 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         print(f"sync: лотів {len(lots)}, відомих {len(ch['lots'])}, питань {len(ch['ask'])}, завершених {len(ch['ended'])}")
         # 24.10 (користувач: «бот сам має оновлювати за статусом, мінімально йому писати»): продане, яке eBay уже показує
         # «Versendet» (етикетка eBay чи трек), → облік: відправлено, трек — і ранковий огляд більше не нагадує «відправ»
+        orders = []
         try:
             import ebay_actions as ea
+            orders = ea.recent_orders(token, post)
             ch["shipped"] = [dict(item_id=o["item_id"], sku=o["sku"], track=o["track"], carrier=o["carrier"], date=o["shipped_at"])
-                             for o in ea.recent_orders(token, post) if o["shipped"]]
+                             for o in orders if o["shipped"]]
         except Exception as e:
             print(f"замовлення: {e.__class__.__name__}")
             ch["shipped"] = []
+        # 31.10 (користувач: «фактичні мінуси в таблиці робимо»): етикетка й реклама кожного продажу — з фінансового звіту eBay
+        if orders:
+            import requests
+            import finances
+            try:
+                ftok = el.access_token(d["rt"], app, cert, post, scopes=el.SCOPES + [el.FIN_SCOPE])
+            except Exception as e:   # старий дозвіл — без sell.finances: решта звірки працює, у бот — прохання «ebay вхід»
+                print(f"фінанси: немає доступу ({e.__class__.__name__})")
+                ch["fees_auth"] = 1
+            else:
+                try:
+                    costs = finances.order_costs(finances.fetch(ftok, requests.get))
+                    ch["fees"] = [dict(order_id=o["order_id"], item_id=o["item_id"], sku=o["sku"], **costs[o["order_id"]])
+                                  for o in orders if o["order_id"] in costs]
+                    print(f"фінанси: замовлень з витратами {len(ch['fees'])}")
+                except Exception as e:
+                    print(f"фінанси: {str(e)[:160]}")
         if d.get("market"):   # 19.10: раз на добу — ціни наших лотів проти конкурентів
             ch["market"] = listings.market_check(lots, d.get("rows") or [], comp_fn=comp_fn)
             print(f"ринок: дорожчі за конкурентів — {len(ch['market'])}")
@@ -941,7 +960,7 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             except Exception as e:
                 print(f"перевірка оголошень: {e.__class__.__name__}")
         if (ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market") or ch.get("shipped")
-                or ch.get("audit") or ch.get("ka_links")):   # 19.10: «звірити» — відповідь і коли все збігається
+                or ch.get("audit") or ch.get("ka_links") or ch.get("fees") or ch.get("fees_auth")):   # 19.10: «звірити» — відповідь і коли все збігається
             back({"kind": "sync", "manual": d.get("manual") or 0, "count": len(lots), **ch}, key)
         return True
     if mode == "got":   # 17.10: «отримав N» — фото з оголошення продавця: звірити, чи прийшло саме те

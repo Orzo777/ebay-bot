@@ -19,6 +19,9 @@ TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 TRADING_URL = "https://api.ebay.com/ws/api.dll"
 SCOPES = ["https://api.ebay.com/oauth/api_scope", "https://api.ebay.com/oauth/api_scope/sell.inventory",
           "https://api.ebay.com/oauth/api_scope/sell.account", "https://api.ebay.com/oauth/api_scope/sell.fulfillment"]
+# 31.10: фактичні витрати по продажах (етикетка, реклама) — research/finances.py. У дозвіл («ebay вхід») — разом з
+# рештою; ключ звичайних викликів — без нього, щоб старий дозвіл (без sell.finances) далі працював для всього іншого.
+FIN_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.finances"
 SITE_DE, COMPAT = "77", "1311"
 NS = "{urn:ebay:apis:eBLBaseComponents}"
 CATEGORY = {"ram": "170083", "console": "139971"}   # Taxonomy API 09.10: «Arbeitsspeicher (RAM)», «Konsolen»
@@ -42,7 +45,7 @@ def _basic(app_id: str, cert_id: str) -> str:
 
 def consent_url(app_id: str, runame: str, state: str = "ebaybot") -> str:
     return AUTH_URL + "?" + urlencode({"client_id": app_id, "redirect_uri": runame, "response_type": "code",
-                                       "scope": " ".join(SCOPES), "state": state})
+                                       "scope": " ".join(SCOPES + [FIN_SCOPE]), "state": state})
 
 
 def code_from(text: str) -> str | None:
@@ -81,8 +84,8 @@ def exchange_code(code: str, app_id: str, cert_id: str, runame: str, post) -> tu
     return j["refresh_token"], int(j.get("refresh_token_expires_in") or 0)
 
 
-def access_token(refresh: str, app_id: str, cert_id: str, post) -> str:
-    j = _token_call({"grant_type": "refresh_token", "refresh_token": refresh, "scope": " ".join(SCOPES)}, app_id, cert_id, post)
+def access_token(refresh: str, app_id: str, cert_id: str, post, scopes: list | None = None) -> str:
+    j = _token_call({"grant_type": "refresh_token", "refresh_token": refresh, "scope": " ".join(scopes or SCOPES)}, app_id, cert_id, post)
     return j["access_token"]
 
 
