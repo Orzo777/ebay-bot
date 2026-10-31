@@ -35,7 +35,7 @@ def active(token: str, post) -> list[dict]:
         price = _num(_t(it, "SellingStatus/CurrentPrice", ns)) or _num(_t(it, "BuyItNowPrice", ns))
         free = _t(it, "ShippingDetails/ShippingServiceOptions/FreeShipping", ns).lower() == "true"
         ship = 0.0 if free else _num(_t(it, "ShippingDetails/ShippingServiceOptions/ShippingServiceCost", ns))
-        out.append(dict(id=_t(it, "ItemID", ns), title=_t(it, "Title", ns), price=price, ship=ship,
+        out.append(dict(id=_t(it, "ItemID", ns), title=_t(it, "Title", ns), price=price, ship=ship, sku=_t(it, "SKU", ns),
                         watch=int(_num(_t(it, "WatchCount", ns)) or 0), questions=int(_num(_t(it, "QuestionCount", ns)) or 0),
                         start=_t(it, "ListingDetails/StartTime", ns), url=_t(it, "ListingDetails/ViewItemURL", ns)
                         or f"https://www.ebay.de/itm/{_t(it, 'ItemID', ns)}"))
@@ -92,6 +92,22 @@ def _last_id(note: str) -> str:
     return ids[-1] if ids else ""
 
 
+def _same_kit(title: str, rows: list[dict]) -> dict | None:
+    """Рядок з тим самим кітом (обсяг, покоління, тип, кількість планок, частота) — лише якщо такий один."""
+    from ram_parse import parse_title
+    p, _ = parse_title(title)
+    if not p:
+        return None
+    hits = []
+    for r in rows:
+        q, _ = parse_title(r.get("title") or "")
+        same_brand = q and (q.get("brand") in (None, "other") or p.get("brand") in (None, "other") or q["brand"] == p["brand"])
+        if same_brand and all(q.get(k) == p.get(k) for k in ("gen", "form", "total", "modules")) and \
+                (not q.get("speed") or q["speed"] == p.get("speed")):
+            hits.append(r)
+    return hits[0] if len(hits) == 1 else None
+
+
 def sync(lots: list[dict], rows: list[dict]) -> dict:
     """17.10 (користувач: «бот сам відслідковує зміни в оголошеннях і заносить в облік»): активні лоти eBay → облік.
     rows — відкриті рядки {n, title, status, note}. → {"lots": [{n, id, price}] — лот відомого рядка (номер у нотатках або
@@ -107,9 +123,18 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
         if r:
             known.append(dict(n=r["n"], id=lot["id"], price=lot.get("price")))
             continue
+        free = [r for r in rows if r.get("status") in SYNC_FREE and not _last_id(r.get("note"))]
+        # 31.10: лот на кілька штук (№5 і №6 — однакові кіти, SKU ledger-5): №5 продали — решта лота тепер №6. SKU рядка,
+        # якого вже немає серед відкритих, → один відкритий рядок з тими самими обсягом, поколінням, типом і частотою
+        sku = re.match(r"^ledger-(\d{1,4})$", str(lot.get("sku") or ""))
+        if sku and not any(int(r["n"]) == int(sku.group(1)) for r in rows):
+            twin = _same_kit(lot["title"], [r for r in rows if r.get("status") in SYNC_FREE and (not _last_id(r.get("note"))
+                                                                                             or _last_id(r.get("note")) == lot["id"])])
+            if twin:
+                known.append(dict(n=twin["n"], id=lot["id"], price=lot.get("price"), twin_of=int(sku.group(1))))
+                continue
         if lot["id"] in linked:
             continue
-        free = [r for r in rows if r.get("status") in SYNC_FREE and not _last_id(r.get("note"))]
         want = _words(lot["title"])
         scored = sorted(((len(want & _words(r.get("title", ""))), r) for r in free), key=lambda x: -x[0])
         if not scored or scored[0][0] < 2:

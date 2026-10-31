@@ -221,9 +221,13 @@ def ebay_item(item_id: str, token: str, post) -> dict:
 def ka_page(ad_id: str, get) -> str | None:
     try:
         r = get(KA_AD.format(ad_id), headers=UA, timeout=15)
-        return r.text if r.status_code == 200 and "viewad-title" in r.text else None
-    except Exception:
+    except Exception as e:
+        print(f"KA {ad_id}: {e.__class__.__name__}")
         return None
+    if r.status_code == 200 and "viewad-title" in r.text:
+        return r.text
+    print(f"KA {ad_id}: HTTP {r.status_code}, сторінка {'без оголошення' if r.status_code == 200 else 'недоступна'}")   # 31.10: «KA 0»
+    return None
 
 
 def ka_item(ad_id: str, page: str) -> dict:
@@ -263,7 +267,8 @@ def match_row(title: str, rows: list[dict]) -> dict | None:
     hit = []
     for r in rows:
         q, _ = parse_title(r.get("title") or "")
-        if q and all(q.get(k) == p.get(k) for k in ("gen", "form", "total", "modules")) and \
+        same_brand = q and (q.get("brand") in (None, "other") or p.get("brand") in (None, "other") or q["brand"] == p["brand"])
+        if same_brand and all(q.get(k) == p.get(k) for k in ("gen", "form", "total", "modules")) and \
                 (not q.get("speed") or not p.get("speed") or q["speed"] == p["speed"]):
             hit.append(r)
     return hit[0] if len(hit) == 1 else None
@@ -326,6 +331,7 @@ def run(lots: list[dict], known: list[dict], rows: list[dict], token: str, post,
             print(f"перевірка eBay {lot.get('id')}: {e.__class__.__name__}")
     # KA: відомі оголошення з обліку, далі — решта оголошень продавця (зі сторінки продавця)
     ka_rows = [r for r in rows if r.get("ka")]
+    print(f"KA в обліку: {len(ka_rows)}")
     user, seen = None, set()
     for r in ka_rows:
         page = ka_page(str(r["ka"]), get)

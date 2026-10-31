@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-30a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-31a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1451,7 +1451,8 @@ function syncApply_(d) {
     if (r.status !== 'Виставлено' || listingId_(r.note) !== String(x.id)) {
       listedCommand_({ text: 'виставив ' + r.n + (nice ? ' ' + nice : ''), chat: { id: chat }, _auto: true }, String(x.id));
       if (nice) prices[r.n] = nice;
-      out.push('🏷 №' + r.n + ' ' + h_(String(r.title).slice(0, 40).trim()) + ' — бачу на eBay' + (nice ? ' за ' + nice + ' €' : '') + ', записав');
+      out.push('🏷 №' + r.n + ' ' + h_(String(r.title).slice(0, 40).trim()) + ' — бачу на eBay' + (nice ? ' за ' + nice + ' €' : '') +
+               (x.twin_of ? ' (друга штука лота №' + x.twin_of + ', його продано)' : '') + ', записав');   // 31.10: лот на 2 штуки
     } else if (nice && prices[r.n] && Math.abs(prices[r.n] - nice) >= 0.5) {
       const sh = ledger_().getSheetByName('Угоди'), row = r.n + LEDGER_FIRST - 1;
       sh.getRange(row, COL.note).setValue(r.note + '; ціна на eBay → ' + nice + ' € ' + Utilities.formatDate(new Date(), 'Europe/Berlin', 'dd.MM'));

@@ -120,6 +120,16 @@ class SyncTest(unittest.TestCase):
         ch = listings.sync([dict(id="306000000009", title="Lego Star Wars 75192", price=500.0)], self.ROWS)
         self.assertEqual((ch["lots"], ch["ask"]), ([], []))           # не з обліку — не питаємо
 
+    def test_multi_quantity_lot_passes_to_twin_31_10(self):
+        # 31.10: лот ledger-5 на 2 штуки (№5 і №6 — однакові кіти); №5 продали (немає серед відкритих) → решта лота — №6
+        rows = [r for r in self.ROWS if r["n"] != 5]
+        lot = dict(id="336849011147", title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16 getestet",
+                   price=169.0, sku="ledger-5")
+        ch = listings.sync([lot], rows)
+        self.assertEqual(ch["lots"], [dict(n=6, id="336849011147", price=169.0, twin_of=5)])
+        self.assertEqual(listings.sync([lot], self.ROWS)["lots"][:0], [])   # №5 ще відкритий — як раніше (не twin)
+        self.assertNotIn("twin_of", (listings.sync([lot], self.ROWS)["lots"] or [{}])[0])
+
 
 if __name__ == "__main__":
     unittest.main()
