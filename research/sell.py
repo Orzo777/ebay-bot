@@ -953,9 +953,9 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
                 sign = d.get("sign")
                 if not sign:   # 31.10: продавцям з ЄС фінансовий звіт — лише з підписом; ключ — один раз, далі з Apps Script
                     import ebay_sign
-                    for tok in (_app_token(), ftok):
+                    for get_tok in (_app_token, lambda: ftok):   # спершу токен застосунку, тоді — користувача
                         try:
-                            sign = ebay_sign.create_key(tok, requests.post)
+                            sign = ebay_sign.create_key(get_tok(), requests.post)
                             back({"kind": "sign_key", **sign}, key)
                             print("ключ підпису eBay створено")
                             break
