@@ -42,6 +42,11 @@ REAL_BASE = {
     ("ddr5", "sodimm", False, 64, 2): dict(p25=529, med=611, st=10, period=30, name="DDR5 SO-DIMM 64 ГБ (2×32) кіт"),
     ("ddr5", "sodimm", False, 32, 1): dict(p25=258, med=277, st=16, period=30, name="DDR5 SO-DIMM 32 ГБ"),
     ("ddr5", "sodimm", False, 16, 1): dict(p25=129, med=153, st=18, period=30, name="DDR5 SO-DIMM 16 ГБ"),
+    # 31.10 (користувач: «ноутбучна пам'ять — такий самий напрям, як ПК, розширити й вирівняти»): реальні продажі eBay.de
+    # (вживані, сторінка «Verkauft», 1 489 назв, класифікатор бота): 2×8 — 105 продажів за ~80 дн., 2×48 — 24 за ~57 дн.
+    # Раніше обидва — «цей тип не купуємо»; на KA 31.10 пропустили «Samsung 2×8 DDR5 SO-DIMM» за 49 €.
+    ("ddr5", "sodimm", False, 16, 2): dict(p25=106, med=126, st=38, period=30, name="DDR5 SO-DIMM 16 ГБ (2×8) кіт"),
+    ("ddr5", "sodimm", False, 96, 2): dict(p25=863, med=1042, st=12, period=30, name="DDR5 SO-DIMM 96 ГБ (2×48) кіт"),
     ("ddr5", "udimm", False, 48, 2): dict(p25=462, med=474, st=9, period=30, name="DDR5 UDIMM 48 ГБ (2×24) кіт"),
     ("ddr5", "udimm", False, 16, 2): dict(p25=193, med=209, st=10, period=30, name="DDR5 UDIMM 16 ГБ (2×8) кіт"),
     ("ddr5", "udimm", False, 64, 4): dict(p25=614, med=661, st=3, period=30, name="DDR5 UDIMM 64 ГБ (4×16) кіт"),

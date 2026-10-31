@@ -47,6 +47,8 @@ QUERIES = {  # ключ як у ram_alert.REAL → пошуковий запит
     ("ddr5", "sodimm", False, 64, 2): "DDR5 SODIMM 64GB 2x32GB",
     ("ddr5", "sodimm", False, 32, 1): "DDR5 SODIMM 32GB",
     ("ddr5", "sodimm", False, 16, 1): "DDR5 SODIMM 16GB",
+    ("ddr5", "sodimm", False, 16, 2): "DDR5 SODIMM 16GB 2x8GB",   # 31.10
+    ("ddr5", "sodimm", False, 96, 2): "DDR5 SODIMM 96GB 2x48GB",
     ("ddr5", "udimm", False, 48, 2): "DDR5 48GB 2x24GB",
     ("ddr5", "udimm", False, 16, 2): "DDR5 16GB 2x8GB",
     ("ddr4", "sodimm", False, 32, 2): "DDR4 SODIMM 32GB 2x16GB",
@@ -71,8 +73,7 @@ CANDIDATES = {
     ("ddr4", "sodimm", False, 16, 2): "DDR4 SODIMM 16GB 2x8GB",
     ("ddr4", "sodimm", False, 16, 1): "DDR4 SODIMM 16GB",
     ("ddr4", "udimm", False, 16, 1): "DDR4 16GB",
-    ("ddr5", "sodimm", False, 16, 2): "DDR5 SODIMM 16GB 2x8GB",
-    ("ddr5", "udimm", False, 96, 2): "DDR5 96GB 2x48GB",
+    ("ddr5", "udimm", False, 96, 2): "DDR5 96GB 2x48GB",   # 31.10: DDR5 SO-DIMM 2×8 — уже наш тип (ram_alert.REAL_BASE)
     ("ddr4", "server", True, 32, 1): "DDR4 32GB RDIMM ECC",
 }
 

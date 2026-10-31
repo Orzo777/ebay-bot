@@ -302,7 +302,7 @@ _HAMBURG_SEARCH = {
     "playstation 5": "/s-konsolen/hamburg/anbieter:privat/anzeige:angebote/preis:230:{ps5}/playstation-5/k0c279" + _HAMBURG
                      + "+konsolen.art_s:playstation",
 }
-HAMBURG_MAX = dict(ddr5=584, ddr4=299, xbox=453, ps5=382, switch2=326)   # = стеля «торгуйся» (VB) для самовивозу, тест звіряє
+HAMBURG_MAX = dict(ddr5=790, ddr4=299, xbox=453, ps5=382, switch2=326)   # 31.10: DDR5 790 — з SO-DIMM 2×48; = стеля «торгуйся» (VB) для самовивозу, тест звіряє
 
 
 def _load_bounds():

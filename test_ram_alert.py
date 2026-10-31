@@ -127,8 +127,16 @@ class TestNewTypes(unittest.TestCase):
 
     def test_not_added_types_still_skip(self):
         for t, p in [("Samsung 8GB DDR5-5600 SO-DIMM", 20),
-                     ("Crucial DDR5 96GB Kit 2x48GB 5600", 200), ("Micron 16gb DDR5 sodimm 5600 2x 8Gb", 30)]:
+                     ("Crucial DDR5 96GB Kit 2x48GB 5600", 200)]:
             self.assertEqual(evaluate(t, p)["verdict"], "SKIP", t)
+
+    def test_laptop_types_aligned_31_10(self):
+        # 31.10: DDR5 SO-DIMM 2×8 і 2×48 — свої типи (реальні продажі); «Samsung 16 GB DDR5-4800 2x 8 GB SO-DIMM» за 49 € — вигідно
+        r = evaluate("Samsung 16 GB DDR5-4800 RAM - 2x 8 GB SO-DIMM", 49)
+        self.assertEqual(r["type"].split(" · ")[0], "DDR5 SO-DIMM 16 ГБ (2×8) кіт")
+        self.assertTrue(r["verdict"].startswith("BUY"))
+        self.assertEqual(evaluate("Crucial 96GB (2x48GB) DDR5-5600 SO-DIMM CT2K48G56C46S5", 650)["type"].split(" · ")[0],
+                         "DDR5 SO-DIMM 96 ГБ (2×48) кіт")
 
 
 class TestPrices(unittest.TestCase):
