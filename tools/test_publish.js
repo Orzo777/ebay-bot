@@ -375,6 +375,22 @@ check('was not listed → nothing', gh.length, ghD);
 say('зняти 7');
 check('«зняти N»', [opened().action, opened().row], ['delist', 7]);
 
+// 31.10: продаж №5 записався на №4 — «перенести продаж 4 5»: дата, ціна, трек → №5; №4 знову «Виставлено»
+const NOTE3 = vm.runInContext("COL.note", ctx), ST3 = vm.runInContext("COL.status", ctx), SP3 = vm.runInContext("COL.sprice", ctx);
+deals.cells['9:2'] = new Date('2026-10-12T10:00:00Z'); deals.cells['9:3'] = 'Corsair Vengeance LPX 32GB DDR4 2133'; deals.cells['9:11'] = 'Продано';
+deals.cells['9:' + SP3] = 160; deals.cells['9:' + NOTE3] = 'виставлено (eBay 336844624233)';
+deals.cells['10:2'] = new Date('2026-10-12T10:00:00Z'); deals.cells['10:3'] = 'Corsair Vengeance 32GB DDR4 2400'; deals.cells['10:11'] = 'Виставлено';
+deals.last = 10;
+ctx.setEvents_(5, { sent: '2026-10-31', outTrack: '02304112003507', outCarrier: 'DPD' });
+say('перенести продаж 5 6');
+check('sale moved', [deals.cells['9:' + ST3], deals.cells['9:' + SP3], deals.cells['10:' + ST3], deals.cells['10:' + SP3],
+  ctx.events_()[6].outTrack, ctx.events_()[5].outTrack, /Продаж перенесено: №5 → №6.*трек 02304112003507 тепер у №6/.test(last()[0])],
+  ['Виставлено', '', 'Продано', 160, '02304112003507', undefined, true]);
+// продаж з листа за назвою — двоє схожих → не вгадуємо, питаємо кнопками
+deals.cells['10:11'] = 'Виставлено'; deals.cells['9:11'] = 'Виставлено';
+const sr = ctx.saleRowByTitle_('Corsair Vengeance LPX 32GB (2x16GB) DDR4');
+check('ambiguous sale → candidates', [sr.row, sr.cands.length >= 2, sr.cands.indexOf(5) >= 0], [0, true, true]);
+
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));
 check('rt removed', store.EBAY_RT, undefined);

@@ -35,8 +35,9 @@ def similar(a: str, b: str) -> float:
     return len(wa & wb) / len(wa | wb) if wa and wb else 0.0
 
 
-def pick(cands: list[dict], item_id: str = "", row=None, title: str = "", min_sim: float = 0.3) -> dict | None:
-    """Номер eBay → SKU «ledger-N» → найсхожіша назва (≥ min_sim); один кандидат без назви — він."""
+def pick(cands: list[dict], item_id: str = "", row=None, title: str = "", min_sim: float = 0.3, strict: bool = False) -> dict | None:
+    """Номер eBay → SKU «ledger-N» → найсхожіша назва (≥ min_sim); один кандидат без назви — він.
+    strict — лише номер eBay або SKU (31.10: «трек 4» за схожою назвою взяв старе замовлення 9.10 — подяка пішла не тому покупцю)."""
     if item_id:
         for c in cands:
             if c.get("item_id") == str(item_id):
@@ -45,6 +46,8 @@ def pick(cands: list[dict], item_id: str = "", row=None, title: str = "", min_si
         for c in cands:
             if c.get("sku") == f"ledger-{row}":
                 return c
+    if strict:
+        return None
     if title:
         best = max(cands, key=lambda c: similar(title, c.get("title", "")), default=None)
         if best and similar(title, best.get("title", "")) >= min_sim:
@@ -86,8 +89,10 @@ def orders_to_ship(token: str, post) -> list[dict]:
 
 
 def pick_order(orders: list[dict], item_id: str = "", row=None, title: str = "") -> dict | None:
-    """Спершу серед невідправлених, потім — серед усіх (етикетка eBay вже позначила відправленим)."""
-    return pick([o for o in orders if not o["shipped"]], item_id, row, title) or pick(orders, item_id, row, title)
+    """Спершу серед невідправлених, потім — серед усіх (етикетка eBay вже позначила відправленим). Лише за номером
+    оголошення або SKU «ledger-N»: покупцю пишемо — схожа назва не доказ (31.10)."""
+    return (pick([o for o in orders if not o["shipped"]], item_id, row, title, strict=True)
+            or pick(orders, item_id, row, title, strict=True))
 
 
 def thank_buyer(line: dict, track: str, carrier: str, token: str, post) -> tuple[bool, list[str]]:
@@ -256,17 +261,33 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
         if not line:
             return send(f"📮 Трек {what} в eBay не передав: не знайшов такого продажу за 45 днів (продажів: {len(orders)}). "
                         "Введи трек в eBay вручну: Mein eBay → Verkauft → «Sendungsnummer hinzufügen».", None)
+        same = bool(line.get("track")) and line["track"].replace(" ", "").upper() == str(track).replace(" ", "").upper()
+        if line["shipped"] and line.get("track") and not same:   # 31.10: в eBay інший трек — це не той продаж, нікому не пишемо
+            return send(f"⚠️ {what}: у знайденому продажі eBay вже інший трек ({html.escape(line['track'])}) — схоже, номер не той. "
+                        "Нічого не надсилав. Перевір номер у таблиці («назад N», «перенести продаж A B»).", None)
         if line["shipped"]:   # етикетка eBay: трек уже в замовленні — не дублюємо
             out = [f"✅ {what}: в eBay вже «Versendet» з треком (етикетка eBay) — нічого не дублюю."]
         else:
             ok, errs = complete_sale(line, track, carrier, token, post)
             out = [f"✅ Трек {what} передано в eBay ({html.escape(carrier)} {html.escape(track)}): «Versendet», покупець бачить відстеження."
                    if ok else f"⚠️ eBay не прийняв трек {what}:\n{_errs(errs)}\nВведи вручну: Mein eBay → Verkauft → «Sendungsnummer hinzufügen»."]
-        if d.get("thanks") and line.get("buyer"):   # 10.10: коротка подяка покупцю з треком
-            ok, errs = thank_buyer(line, track, carrier, token, post)
-            out.append(f"💌 Покупцю {html.escape(line['buyer'])} надіслав подяку з треком." if ok
-                       else f"⚠️ Подяку покупцю eBay не прийняв: {_errs(errs)}")
+        # 31.10 (користувач: «автоматично не надсилати жодних повідомлень — лише після згоди»): подяка — кнопкою, видно кому
+        if line.get("buyer") and row:
+            out.append(f"💌 Подяку з треком покупцю <b>{html.escape(line['buyer'])}</b> (замовлення {html.escape(line.get('order_id') or '')}, "
+                       f"«{html.escape((line.get('title') or '')[:50])}») — надіслати?")
+            return send("\n".join(out), {"inline_keyboard": [[{"text": f"💌 Надіслати подяку {line['buyer']}"[:60],
+                                                                 "callback_data": f"g|{row}"}]]})
         return send("\n".join(out), None)
+    if a == "thanks":   # 31.10: «💌 Надіслати подяку» — лише той самий продаж (номер оголошення / SKU) і той самий трек
+        line = pick_order(recent_orders(token, post), d.get("item_id") or "", row, title)
+        track, carrier = str(d.get("track") or ""), d.get("carrier") or "DHL"
+        if not line or not line.get("buyer"):
+            return send(f"💌 {what}: не знайшов цього продажу в eBay — подяку не надсилав.", None)
+        if line.get("track") and track and line["track"].replace(" ", "").upper() != track.replace(" ", "").upper():
+            return send(f"⚠️ {what}: у продажі eBay інший трек ({html.escape(line['track'])}) — подяку не надсилав.", None)
+        ok, errs = thank_buyer(line, track or line.get("track") or "", carrier or line.get("carrier") or "", token, post)
+        return send(f"💌 Покупцю {html.escape(line['buyer'])} надіслав подяку з треком." if ok
+                    else f"⚠️ Подяку покупцю eBay не прийняв: {_errs(errs)}", None)
     if a == "feedback":   # 10.10: позитивний відгук покупцю, щойно продаж оплачено
         line = pick_order(recent_orders(token, post), d.get("item_id") or "", row, title)
         if not line or not line.get("buyer"):

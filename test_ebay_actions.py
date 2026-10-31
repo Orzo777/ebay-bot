@@ -95,8 +95,8 @@ class MatchTest(unittest.TestCase):
 
 class ActionsTest(unittest.TestCase):
     def test_ship_tracking(self):
-        sent, _, f = run({"action": "ship", "row": 2, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", "track": "00340434161234567890",
-                          "carrier": "DHL"})
+        sent, _, f = run({"action": "ship", "row": 2, "item_id": "111", "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200",
+                          "track": "00340434161234567890", "carrier": "DHL"})
         b = f.body("CompleteSale")
         self.assertEqual([t(b, "ItemID"), t(b, "TransactionID"), t(b, "Shipped")], ["111", "T1", "true"])
         self.assertEqual(t(b, "Shipment/ShipmentTrackingDetails/ShipmentTrackingNumber"), "00340434161234567890")
@@ -118,26 +118,44 @@ class ActionsTest(unittest.TestCase):
         self.assertIn("Зніми вручну", sent[0][0])
 
     def test_ship_with_thanks(self):
-        sent, _, f = run({"action": "ship", "row": 2, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200", "track": "00340434161234567890",
-                          "carrier": "DHL", "thanks": True})
+        sent, _, f = run({"action": "ship", "row": 2, "item_id": "111", "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200",
+                          "track": "00340434161234567890", "carrier": "DHL", "thanks": True})
+        # 31.10: подяка — не сама: кнопка «💌» з ніком покупця; надсилає лише дія «thanks» після натискання
+        self.assertNotIn("AddMemberMessageAAQToPartner", [c[0] for c in f.calls])
+        self.assertIn("buyer_77", sent[0][0])
+        self.assertEqual(sent[0][1]["inline_keyboard"][0][0]["callback_data"], "g|2")
+        sent, _, f = run({"action": "thanks", "row": 2, "item_id": "111", "title": "Corsair", "track": "00340434161234567890", "carrier": "DHL"})
         b = f.body("AddMemberMessageAAQToPartner")
         self.assertEqual([t(b, "ItemID"), t(b, "MemberMessage/RecipientID"), t(b, "MemberMessage/QuestionType")], ["111", "buyer_77", "Shipping"])
         self.assertIn("Sendungsnummer 00340434161234567890", t(b, "MemberMessage/Body"))
         self.assertIn("подяку", sent[0][0])
+        sent, _, f = run({"action": "thanks", "row": 2, "item_id": "999", "title": "Corsair", "track": "1"})
+        self.assertNotIn("AddMemberMessageAAQToPartner", [c[0] for c in f.calls])   # не той продаж — нікому
 
     def test_ship_already_shipped_by_ebay_label(self):
-        # етикетка eBay: замовлення вже «Versendet» — трек не дублюємо, подяку надсилаємо
-        sent, _, f = run({"action": "ship", "row": 1, "title": "OWC 32GB DDR4 SO-DIMM", "track": "00340434160000000001", "thanks": True})
+        # етикетка eBay: замовлення вже «Versendet» — трек не дублюємо; подяку пропонуємо кнопкою
+        sent, _, f = run({"action": "ship", "row": 1, "item_id": "222", "title": "OWC 32GB DDR4 SO-DIMM", "track": "00340434160000000001",
+                          "thanks": True})
         self.assertNotIn("CompleteSale", [c[0] for c in f.calls])
-        self.assertEqual(t(f.body("AddMemberMessageAAQToPartner"), "MemberMessage/RecipientID"), "owc_fan")
+        self.assertNotIn("AddMemberMessageAAQToPartner", [c[0] for c in f.calls])   # 31.10: подяка — лише кнопкою
+        self.assertIn("owc_fan", sent[0][0])
         self.assertIn("вже «Versendet»", sent[0][0])
 
     def test_feedback(self):
-        sent, _, f = run({"action": "feedback", "row": 2, "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"})
+        sent, _, f = run({"action": "feedback", "row": 2, "item_id": "111", "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200"})
         b = f.body("LeaveFeedback")
         self.assertEqual([t(b, "ItemID"), t(b, "TransactionID"), t(b, "TargetUser"), t(b, "CommentType")], ["111", "T1", "buyer_77", "Positive"])
         self.assertLessEqual(len(t(b, "CommentText")), 80)
         self.assertIn("Відгук", sent[0][0])
+
+    def test_ship_wrong_row_writes_to_nobody_31_10(self):
+        # 31.10: «трек 4» для непроданого №4 — схожа назва взяла старе відправлене замовлення й подяка пішла чужому покупцю
+        sent, _, f = run({"action": "ship", "row": 4, "item_id": "999", "title": "Corsair Vengeance LPX 32GB (2x16GB) DDR4-3200",
+                          "track": "02304112003507", "carrier": "DPD", "thanks": True})
+        self.assertEqual([c[0] for c in f.calls if c[0] not in ("GetOrders", "token")], [])   # ні треку, ні подяки
+        self.assertIn("не знайшов такого продажу", sent[0][0])
+        orders = [dict(order_id="O2", item_id="222", sku="", shipped=True, track="354502403646", buyer="owc_fan", title="OWC")]
+        self.assertIsNone(ea.pick_order(orders, "", 2, "OWC 32GB DDR4 SO-DIMM"))     # за назвою — ні
 
     def test_ship_no_order(self):
         sent, _, f = run({"action": "ship", "row": 9, "title": "PlayStation 5 Slim", "track": "H1000000000001", "carrier": "Hermes"})
