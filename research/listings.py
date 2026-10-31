@@ -121,7 +121,7 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
             continue
         r = next((r for r in rows if _last_id(r.get("note")) == lot["id"]), None)
         if r:
-            known.append(dict(n=r["n"], id=lot["id"], price=lot.get("price")))
+            known.append(dict(n=r["n"], id=lot["id"], price=lot.get("price"), title=lot.get("title") or ""))
             continue
         free = [r for r in rows if r.get("status") in SYNC_FREE and not _last_id(r.get("note"))]
         # 31.10: лот на кілька штук (№5 і №6 — однакові кіти, SKU ledger-5): №5 продали — решта лота тепер №6. SKU рядка,
@@ -131,7 +131,8 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
             twin = _same_kit(lot["title"], [r for r in rows if r.get("status") in SYNC_FREE and (not _last_id(r.get("note"))
                                                                                              or _last_id(r.get("note")) == lot["id"])])
             if twin:
-                known.append(dict(n=twin["n"], id=lot["id"], price=lot.get("price"), twin_of=int(sku.group(1))))
+                known.append(dict(n=twin["n"], id=lot["id"], price=lot.get("price"), title=lot.get("title") or "",
+                                  twin_of=int(sku.group(1))))
                 continue
         if lot["id"] in linked:
             continue
@@ -142,7 +143,7 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
         best = scored[0][0]
         second = scored[1][0] if len(scored) > 1 else 0
         if best >= 4 and best - second >= 3:   # схожі кіти (2133 / 2400) — краще спитати одним натиском, ніж переплутати
-            known.append(dict(n=scored[0][1]["n"], id=lot["id"], price=lot.get("price")))
+            known.append(dict(n=scored[0][1]["n"], id=lot["id"], price=lot.get("price"), title=lot.get("title") or ""))
         else:
             ask.append(dict(id=lot["id"], title=short(lot["title"], 60), price=lot.get("price"),
                             cands=[r["n"] for sc, r in scored if sc >= max(2, best - 2)][:4]))

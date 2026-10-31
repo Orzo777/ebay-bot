@@ -105,7 +105,7 @@ class SyncTest(unittest.TestCase):
 
     def test_known_id_price_and_ended(self):
         ch = listings.sync([dict(id="306000000004", title="whatever", price=159.0)], self.ROWS)
-        self.assertEqual(ch["lots"], [dict(n=4, id="306000000004", price=159.0)])
+        self.assertEqual(ch["lots"], [dict(n=4, id="306000000004", price=159.0, title="whatever")])
         self.assertEqual(ch["ended"], [])
         self.assertEqual(listings.sync([], self.ROWS)["ended"], [dict(n=4, id="306000000004")])
 
@@ -126,7 +126,7 @@ class SyncTest(unittest.TestCase):
         lot = dict(id="336849011147", title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16 getestet",
                    price=169.0, sku="ledger-5")
         ch = listings.sync([lot], rows)
-        self.assertEqual(ch["lots"], [dict(n=6, id="336849011147", price=169.0, twin_of=5)])
+        self.assertEqual(ch["lots"], [dict(n=6, id="336849011147", price=169.0, title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16 getestet", twin_of=5)])
         self.assertEqual(listings.sync([lot], self.ROWS)["lots"][:0], [])   # №5 ще відкритий — як раніше (не twin)
         self.assertNotIn("twin_of", (listings.sync([lot], self.ROWS)["lots"] or [{}])[0])
 

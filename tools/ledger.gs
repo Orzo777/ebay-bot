@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-31d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-31e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -490,6 +490,7 @@ function processLedger() {
           if (p.total != null || p.price != null) deals.getRange(row, COL.sprice).setValue(p.total != null ? p.total : p.price);
           saleFee_(deals, row, p.src || 'eBay');
           deals.getRange(row, COL.status).setValue('Продано');
+          if (/ebay/i.test(String(p.src || ''))) rememberListTitle_(row - LEDGER_FIRST + 1, p.title);
           what = 'продаж записано';
           notify_('💰 Продано №' + (row - LEDGER_FIRST + 1) + ': ' + p.title + (p.total || p.price ? ' — ' + (p.total || p.price) + ' €' : '') +
                   '\n📮 Відправ за 1–3 робочі дні, потім «відправив ' + (row - LEDGER_FIRST + 1) + ' трек» або фото квитанції з підписом «' +
@@ -1482,6 +1483,7 @@ function syncApply_(d) {
   (d.lots || []).forEach(function (x) {
     const r = rows.filter(function (y) { return y.n === Number(x.n); })[0];
     if (!r || !x.id) return;
+    if (x.title) rememberListTitle_(r.n, x.title);   // 31.10: у повідомленнях — назва нашого оголошення
     const price = Number(x.price) || 0, nice = price ? (Math.round(price * 100) / 100) : 0;
     if (r.status !== 'Виставлено' || listingId_(r.note) !== String(x.id)) {
       listedCommand_({ text: 'виставив ' + r.n + (nice ? ' ' + nice : ''), chat: { id: chat }, _auto: true }, String(x.id));
@@ -1587,11 +1589,31 @@ function feesFromEbay_(list, out) {
     done[x.order_id] = [r.n, label, fees];
     taken[r.n] = x.order_id;
     const profit = num_(sh.getRange(row, COL.profit).getValue());
-    out.push('🧾 №' + r.n + ' ' + h_(String(r.title).slice(0, 34).trim()) + ': фактично eBay — ' +
+    out.push('🧾 №' + r.n + ' ' + h_(String(listTitle_(r.n, r.title)).slice(0, 34).trim()) + ': фактично eBay — ' +
              [label ? 'етикетка ' + label.toFixed(2).replace('.', ',') + ' €' : '', fees ? 'реклама / комісія ' + fees.toFixed(2).replace('.', ',') + ' €' : '']
                .filter(Boolean).join(' · ') + ', записав' + (profit != null ? ' → прибуток ' + (profit >= 0 ? '+' : '') + profit.toFixed(2).replace('.', ',') + ' €' : ''));
   });
   props.setProperty('FEES_ORDER', JSON.stringify(capKeys_(done, 300)));
+}
+
+/** 31.10 (користувач: «при продажі навіщо мені назва, з якою я купував? у ТГ — назва нашого оголошення на eBay, у таблиці
+ *  теж має бути»): назва нашого оголошення eBay для №N (зі звірки й листа про продаж); у нотатки рядка — один раз. */
+function listTitle_(n, fallback) {
+  const t = JSON.parse(PropertiesService.getScriptProperties().getProperty('LIST_TITLES') || '{}')[n];
+  return t || fallback || '';
+}
+function rememberListTitle_(n, title) {
+  title = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!n || !title) return;
+  const props = PropertiesService.getScriptProperties(), m = JSON.parse(props.getProperty('LIST_TITLES') || '{}');
+  if (m[n] === title) return;
+  m[n] = title;
+  props.setProperty('LIST_TITLES', JSON.stringify(capKeys_(m, 300)));
+  try {
+    const sh = ledger_().getSheetByName('Угоди'), row = Number(n) + LEDGER_FIRST - 1;
+    const note = String(sh.getRange(row, COL.note).getValue() || '');
+    if (note.indexOf(title) < 0) sh.getRange(row, COL.note).setValue((note ? note + '; ' : '') + 'на eBay: «' + title + '»');
+  } catch (e) { console.log('назва оголошення в нотатки: ' + e); }
 }
 
 /** 31.10: «відгук N» (кнопка «⭐ Відгук покупцю» під продажем) — позитивний відгук, лише за згодою. */
@@ -1682,7 +1704,7 @@ function shippedFromEbay_(list, out) {
       : x.item_id && String((notes[y.n - 1] || [''])[0]).indexOf(String(x.item_id)) >= 0; })[0];
     if (!r || (ev[r.n] || {}).sent) return;
     setEvents_(r.n, x.track ? { sent: x.date || today, outTrack: x.track, outCarrier: x.carrier || '' } : { sent: x.date || today });
-    out.push('📮 №' + r.n + ' ' + h_(String(r.title).slice(0, 40).trim()) + ' — в eBay «Versendet»' +
+    out.push('📮 №' + r.n + ' ' + h_(String(listTitle_(r.n, r.title)).slice(0, 40).trim()) + ' — в eBay «Versendet»' +
              (x.track ? ' (трек ' + h_(x.track) + ')' : '') + ', записав відправку' + (x.track ? '; коли покупець отримає — напишу' : ''));
   });
 }
@@ -2397,7 +2419,9 @@ function remindersIfDue_(props, now) {
   const key = Utilities.formatDate(now, 'Europe/Berlin', 'yyyy-MM-dd');
   if (Number(Utilities.formatDate(now, 'Europe/Berlin', 'H')) < 10 || props.getProperty('REMIND_SENT') === key) return false;
   props.setProperty('REMIND_SENT', key);   // спершу ставимо — помилка нижче не засипле повторами кожні 15 хв
-  const rows = ledgerRows_(), ev = events_();
+  const rows = ledgerRows_().map(function (r) {   // 31.10: продане / виставлене — назвою нашого оголошення
+    return ['Продано', 'Виставлено'].indexOf(r.status) >= 0 ? Object.assign({}, r, { title: listTitle_(r.n, r.title) }) : r;
+  }), ev = events_();
   const a = dueReminders_(rows, ev, key), b = dueTodos_(LEDGER_TODO.concat(userTodos_()), ev, key);
   a.got.forEach(function (n) { ev[n] = updEvent_(n, function (e) { e.got = key; return e; }); });
   a.marks.concat(b.marks).forEach(function (m) {
@@ -2435,7 +2459,7 @@ function statusCommand_(msg) {
   const n = Number(m[2]), r = rowByN_(n);
   if (!r) { notify_('У таблиці немає №' + n + '.'); return true; }
   const sh = ledger_().getSheetByName('Угоди'), row = n + LEDGER_FIRST - 1, today = iso_(new Date());
-  const e = events_()[n] || {}, name = '№' + n + ' «' + r.title + '»';
+  const e = events_()[n] || {}, name = '№' + n + ' «' + (cmd === 'відправив' || cmd === 'трек' ? listTitle_(n, r.title) : r.title) + '»';
   const t = trackArg_(m[3]);
   if (cmd === 'відправив') {
     if (r.status !== 'Продано') { notify_(name + ' — статус «' + r.status + '», а «відправив» — для проданого.'); return true; }
@@ -2747,7 +2771,7 @@ function shippedNotice_(row, t) {
 
 /** Посилка покупцю (продаж). */
 function outParcel_(n, kind, date) {
-  const r = rowByN_(n), e = events_()[n] || {}, name = '№' + n + ' «' + (r ? r.title : '') + '»';
+  const r = rowByN_(n), e = events_()[n] || {}, name = '№' + n + ' «' + listTitle_(n, r ? r.title : '') + '»';
   if (kind === 'delivered') {
     if (e.outDelivered) return 'покупцю: уже доставлено';
     setEvents_(n, { outDelivered: iso_(date) });
@@ -2755,7 +2779,7 @@ function outParcel_(n, kind, date) {
     const sto = r ? String(ledger_().getSheetByName('Угоди').getRange(n + LEDGER_FIRST - 1, COL.sto).getValue() || '') : '';
     notify_('✅ ' + name + ' доставлено покупцю. ' + (/kleinanzeigen|ka\b/i.test(sto)
       ? 'Гроші KA перерахує, коли покупець підтвердить отримання (або сам через 14 днів).'
-      : /ebay/i.test(sto) || !sto ? 'Відгук покупцю бот поставив після оплати; гроші — за графіком виплат eBay. Строк повернення — 30 днів.'
+      : /ebay/i.test(sto) || !sto ? 'Гроші — за графіком виплат eBay. Строк повернення — 30 днів. Відгук покупцю — кнопкою «⭐», якщо ще не ставив.'
       : ''));
     return 'покупцю: доставлено';
   }

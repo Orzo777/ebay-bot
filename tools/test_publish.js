@@ -391,6 +391,13 @@ deals.cells['10:11'] = 'Виставлено'; deals.cells['9:11'] = 'Виста
 const sr = ctx.saleRowByTitle_('Corsair Vengeance LPX 32GB (2x16GB) DDR4');
 check('ambiguous sale → candidates', [sr.row, sr.cands.length >= 2, sr.cands.indexOf(5) >= 0], [0, true, true]);
 
+// 31.10: у повідомленнях — назва нашого оголошення eBay (зі звірки), у таблиці — в нотатках один раз
+sync({ lots: [{ n: 3, id: '306123456789', price: 55, title: 'Kingston FURY Beast 16GB DDR4-3200 getestet' }], ask: [], ended: [] }, 'lt1');
+check('listing title remembered + noted once', [ctx.listTitle_(3, 'x'), (String(deals.cells['7:' + NOTE3]).match(/на eBay: «Kingston FURY Beast 16GB DDR4-3200 getestet»/g) || []).length],
+  ['Kingston FURY Beast 16GB DDR4-3200 getestet', 1]);
+sync({ lots: [{ n: 3, id: '306123456789', price: 55, title: 'Kingston FURY Beast 16GB DDR4-3200 getestet' }], ask: [], ended: [] }, 'lt2');
+check('noted only once', (String(deals.cells['7:' + NOTE3]).match(/на eBay:/g) || []).length, 1);
+
 // ключ відкликано → видалити
 ctx.sealedPost(ctx.seal_({ kind: 'ebay_bad' }, '123:ABC', 'n4'));
 check('rt removed', store.EBAY_RT, undefined);
