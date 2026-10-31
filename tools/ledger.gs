@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-31c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-31d';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1953,6 +1953,8 @@ function sealedPost(s) {
   } else if (d.kind === 'merged' && d.row && d.item_id) {   // 18.10: +1 шт до оголошення близнюка — рядок «Виставлено»
     const chat = props.getProperty('TELEGRAM_CHAT_ID');
     listedCommand_({ text: 'виставив ' + d.row + (d.price ? ' ' + d.price : ''), chat: { id: chat }, _auto: true }, String(d.item_id));
+  } else if (d.kind === 'carrier' && d.row && d.carrier) {   // 31.10: перевізник з замовлення eBay (Hermes / DPD — однакові номери)
+    setEvents_(Number(d.row), { outCarrier: String(d.carrier).slice(0, 20) });
   } else if (d.kind === 'offer_sent' && d.row) {   // 18.10: пропозиція спостерігачам — у нотатки
     const sh = ledger_().getSheetByName('Угоди'), row = Number(d.row) + LEDGER_FIRST - 1;
     const note = String(sh.getRange(row, COL.note).getValue() || '');

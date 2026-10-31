@@ -267,6 +267,10 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
                         "Нічого не надсилав. Перевір номер у таблиці («назад N», «перенести продаж A B»).", None)
         if line["shipped"]:   # етикетка eBay: трек уже в замовленні — не дублюємо
             out = [f"✅ {what}: в eBay вже «Versendet» з треком (етикетка eBay) — нічого не дублюю."]
+            ebay_carrier = (line.get("carrier") or "").strip()
+            if same and ebay_carrier and ebay_carrier.upper() != str(carrier).upper():   # 31.10: «DPD» вгадано за номером, а це Hermes
+                back({"kind": "carrier", "row": row, "carrier": ebay_carrier}, key)
+                out.append(f"🚚 Перевізник за eBay — {html.escape(ebay_carrier)} (не {html.escape(str(carrier))}), виправив.")
         else:
             ok, errs = complete_sale(line, track, carrier, token, post)
             out = [f"✅ Трек {what} передано в eBay ({html.escape(carrier)} {html.escape(track)}): «Versendet», покупець бачить відстеження."

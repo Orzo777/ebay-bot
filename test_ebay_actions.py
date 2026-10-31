@@ -157,6 +157,19 @@ class ActionsTest(unittest.TestCase):
         orders = [dict(order_id="O2", item_id="222", sku="", shipped=True, track="354502403646", buyer="owc_fan", title="OWC")]
         self.assertIsNone(ea.pick_order(orders, "", 2, "OWC 32GB DDR4 SO-DIMM"))     # за назвою — ні
 
+    def test_carrier_from_ebay_order_31_10(self):
+        # 31.10: «трек 5 02304112003507» — бот вгадав DPD (14 цифр), а в замовленні eBay етикетка Hermes
+        import ebay_actions as ea2
+        orders = [dict(order_id="O5", line_id="L5", item_id="555", txn_id="T5", title="Corsair", sku="ledger-5", buyer="mr.wombat",
+                       shipped=True, shipped_at="2026-10-31", track="02304112003507", carrier="Hermes", feedback_left=False)]
+        from unittest import mock
+        sent, back = [], []
+        with mock.patch.object(ea2, "recent_orders", return_value=orders):
+            ea2.run({"action": "ship", "row": 5, "item_id": "555", "title": "Corsair", "track": "02304112003507", "carrier": "DPD"},
+                    "tok", None, lambda t, m: sent.append(t) or True, lambda x, k: back.append(x), "k")
+        self.assertEqual(back, [{"kind": "carrier", "row": 5, "carrier": "Hermes"}])
+        self.assertIn("Перевізник за eBay — Hermes", sent[0])
+
     def test_ship_no_order(self):
         sent, _, f = run({"action": "ship", "row": 9, "title": "PlayStation 5 Slim", "track": "H1000000000001", "carrier": "Hermes"})
         self.assertNotIn("CompleteSale", [c[0] for c in f.calls])
