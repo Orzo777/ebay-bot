@@ -138,7 +138,7 @@ class ActionsTest(unittest.TestCase):
                           "thanks": True})
         self.assertNotIn("CompleteSale", [c[0] for c in f.calls])
         self.assertNotIn("AddMemberMessageAAQToPartner", [c[0] for c in f.calls])   # 31.10: подяка — лише кнопкою
-        self.assertIn("owc_fan", sent[0][0])
+        self.assertNotIn("owc_fan", sent[0][0])   # 31.10: відправлено 8.10 — продаж закритий, подяку навіть не пропонуємо
         self.assertIn("вже «Versendet»", sent[0][0])
 
     def test_feedback(self):

@@ -931,6 +931,15 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         except Exception as e:
             print(f"замовлення: {e.__class__.__name__}")
             ch["shipped"] = []
+        # 31.10 (користувач: «у повідомленнях eBay бардак»): «Posteingang» — лише активні покупці / продавці, решта — у папки
+        try:
+            import ebay_messages
+            moved = ebay_messages.tidy(token, post, orders)
+            if moved:
+                ch["tidy"] = moved
+                print(f"повідомлення eBay: розкладено {moved}")
+        except Exception as e:
+            print(f"повідомлення eBay: {e.__class__.__name__} {str(e)[:120]}")
         # 31.10 (користувач: «фактичні мінуси в таблиці робимо»): етикетка й реклама кожного продажу — з фінансового звіту eBay
         if orders:
             import requests
@@ -960,7 +969,7 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
             except Exception as e:
                 print(f"перевірка оголошень: {e.__class__.__name__}")
         if (ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market") or ch.get("shipped")
-                or ch.get("audit") or ch.get("ka_links") or ch.get("fees") or ch.get("fees_auth")):   # 19.10: «звірити» — відповідь і коли все збігається
+                or ch.get("audit") or ch.get("ka_links") or ch.get("fees") or ch.get("fees_auth") or ch.get("tidy")):   # 19.10: «звірити» — відповідь і коли все збігається
             back({"kind": "sync", "manual": d.get("manual") or 0, "count": len(lots), **ch}, key)
         return True
     if mode == "got":   # 17.10: «отримав N» — фото з оголошення продавця: звірити, чи прийшло саме те

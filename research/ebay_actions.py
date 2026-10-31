@@ -275,8 +275,10 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
             ok, errs = complete_sale(line, track, carrier, token, post)
             out = [f"✅ Трек {what} передано в eBay ({html.escape(carrier)} {html.escape(track)}): «Versendet», покупець бачить відстеження."
                    if ok else f"⚠️ eBay не прийняв трек {what}:\n{_errs(errs)}\nВведи вручну: Mein eBay → Verkauft → «Sendungsnummer hinzufügen»."]
-        # 31.10 (користувач: «автоматично не надсилати жодних повідомлень — лише після згоди»): подяка — кнопкою, видно кому
-        if line.get("buyer") and row:
+        # 31.10 (користувач: «автоматично не надсилати жодних повідомлень — лише після згоди»): подяка — кнопкою, видно кому;
+        # лише покупцю живого продажу (не тому, кому продали давно — як 31.10 з berwald08)
+        import ebay_messages
+        if line.get("buyer") and row and ebay_messages.active_sale(line):
             out.append(f"💌 Подяку з треком покупцю <b>{html.escape(line['buyer'])}</b> (замовлення {html.escape(line.get('order_id') or '')}, "
                        f"«{html.escape((line.get('title') or '')[:50])}») — надіслати?")
             return send("\n".join(out), {"inline_keyboard": [[{"text": f"💌 Надіслати подяку {line['buyer']}"[:60],
@@ -289,6 +291,9 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
             return send(f"💌 {what}: не знайшов цього продажу в eBay — подяку не надсилав.", None)
         if line.get("track") and track and line["track"].replace(" ", "").upper() != track.replace(" ", "").upper():
             return send(f"⚠️ {what}: у продажі eBay інший трек ({html.escape(line['track'])}) — подяку не надсилав.", None)
+        import ebay_messages
+        if not ebay_messages.active_sale(line):   # 31.10: давно відправлений продаж — покупцю вже нічого не пишемо
+            return send(f"⚠️ {what}: продаж уже давно відправлено ({html.escape(line.get('shipped_at') or '')}) — подяку не надсилав.", None)
         ok, errs = thank_buyer(line, track or line.get("track") or "", carrier or line.get("carrier") or "", token, post)
         return send(f"💌 Покупцю {html.escape(line['buyer'])} надіслав подяку з треком." if ok
                     else f"⚠️ Подяку покупцю eBay не прийняв: {_errs(errs)}", None)

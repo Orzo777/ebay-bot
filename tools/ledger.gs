@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-31e';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-31f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1507,6 +1507,12 @@ function syncApply_(d) {
   shippedFromEbay_(d.shipped || [], out);
   kaLinks_(d.ka_links || [], out);
   feesFromEbay_(d.fees || [], out);
+  if (d.tidy && !props.getProperty('TIDY_SHOWN')) {   // 31.10: повідомлення eBay розкладено по папках — сказати один раз
+    props.setProperty('TIDY_SHOWN', '1');
+    const names = { ebay: 'eBay', sold: 'Verkauft – erledigt', bought: 'Gekauft – erledigt', other: 'Sonstiges' };
+    out.push('📬 Розклав повідомлення eBay по папках: ' + Object.keys(d.tidy).map(function (k) { return '«' + names[k] + '» ' + d.tidy[k]; }).join(' · ') +
+             '. У «Posteingang» — лише активні покупці, продавці й неоплачені покупки; решта — у «Ordner» зліва. Далі — тихо, раз на 3 год.');
+  }
   if (d.fees_auth && !props.getProperty('FIN_AUTH_ASKED')) {   // 31.10: старий дозвіл eBay — без фінансового звіту
     props.setProperty('FIN_AUTH_ASKED', '1');
     out.push('🔑 Щоб у таблицю йшли фактичні витрати eBay (етикетка, реклама) по кожному продажу, один раз підключи eBay ' +
