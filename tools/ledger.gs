@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-31f';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-10-31g';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -1462,6 +1462,11 @@ function openRowsNotes_() {
 
 /** 17.10 (користувач: «бот сам відслідковує зміни в оголошеннях і заносить в облік»): раз на 3 години (8–21) — активні лоти
  *  eBay → облік (нове оголошення, зміна ціни, завершене). KA — без API, лише вручну. */
+/** 31.10: ключ підпису eBay (research/ebay_sign.py) для запиту звірки — або null (GitHub створить і пришле). */
+function signKey_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('EBAY_SIGN') || 'null'); } catch (e) { return null; }
+}
+
 function listingsWatch_() {
   const props = PropertiesService.getScriptProperties(), now = Date.now(), rt = props.getProperty('EBAY_RT');
   const h = Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }));
@@ -1472,7 +1477,7 @@ function listingsWatch_() {
   // 19.10: раз на добу (після 10:00) — ще й ціни наших лотів проти конкурентів
   const day = iso_(new Date()), market = h >= 10 && props.getProperty('MARKET_CHECK_DAY') !== day;
   if (market) props.setProperty('MARKET_CHECK_DAY', day);
-  return sellDispatch_({ mode: 'sync', rt: rt, rows: rowsForGithub_(rows), market: market ? 1 : 0 }) === 204;
+  return sellDispatch_({ mode: 'sync', rt: rt, rows: rowsForGithub_(rows), market: market ? 1 : 0, sign: signKey_() }) === 204;
 }
 
 /** Зміни з eBay → облік: lots — відомі рядки (записати «Виставлено» / нову ціну), ask — спитати кнопками, ended — повідомити. */
@@ -1757,7 +1762,7 @@ function listingsCommand_(msg) {
   if (/^\/?(?:звірити|звір|синхронізуй|sync)$/i.test(String(msg.text || '').trim())) {   // 19.10: звірка з eBay на вимогу
     const rt0 = props.getProperty('EBAY_RT') || '';
     if (!rt0) { notify_('eBay не підключено — «ebay вхід».'); return true; }
-    const c = sellDispatch_({ mode: 'sync', rt: rt0, rows: rowsForGithub_(openRowsNotes_()), manual: 1 });
+    const c = sellDispatch_({ mode: 'sync', rt: rt0, rows: rowsForGithub_(openRowsNotes_()), manual: 1, sign: signKey_() });
     notify_(c === 204 ? '⏳ Звіряю eBay з таблицею — до хвилини.' : '⚠️ Не зміг запустити (GitHub ' + c + ').');
     return true;
   }
@@ -1981,6 +1986,8 @@ function sealedPost(s) {
   } else if (d.kind === 'merged' && d.row && d.item_id) {   // 18.10: +1 шт до оголошення близнюка — рядок «Виставлено»
     const chat = props.getProperty('TELEGRAM_CHAT_ID');
     listedCommand_({ text: 'виставив ' + d.row + (d.price ? ' ' + d.price : ''), chat: { id: chat }, _auto: true }, String(d.item_id));
+  } else if (d.kind === 'sign_key' && d.k && d.p) {   // 31.10: ключ підпису eBay (Finances API для продавців з ЄС) — лише тут
+    PropertiesService.getScriptProperties().setProperty('EBAY_SIGN', JSON.stringify({ k: d.k, p: d.p, id: d.id || '' }));
   } else if (d.kind === 'carrier' && d.row && d.carrier) {   // 31.10: перевізник з замовлення eBay (Hermes / DPD — однакові номери)
     setEvents_(Number(d.row), { outCarrier: String(d.carrier).slice(0, 20) });
   } else if (d.kind === 'offer_sent' && d.row) {   // 18.10: пропозиція спостерігачам — у нотатки

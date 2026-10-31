@@ -950,8 +950,19 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
                 print(f"фінанси: немає доступу ({e.__class__.__name__})")
                 ch["fees_auth"] = 1
             else:
+                sign = d.get("sign")
+                if not sign:   # 31.10: продавцям з ЄС фінансовий звіт — лише з підписом; ключ — один раз, далі з Apps Script
+                    import ebay_sign
+                    for tok in (_app_token(), ftok):
+                        try:
+                            sign = ebay_sign.create_key(tok, requests.post)
+                            back({"kind": "sign_key", **sign}, key)
+                            print("ключ підпису eBay створено")
+                            break
+                        except Exception as e:
+                            print(f"ключ підпису: {str(e)[:160]}")
                 try:
-                    costs = finances.order_costs(finances.fetch(ftok, requests.get))
+                    costs = finances.order_costs(finances.fetch(ftok, requests.get, sign=sign))
                     ch["fees"] = [dict(order_id=o["order_id"], item_id=o["item_id"], sku=o["sku"], **costs[o["order_id"]])
                                   for o in orders if o["order_id"] in costs]
                     print(f"фінанси: замовлень з витратами {len(ch['fees'])}")
@@ -1133,6 +1144,12 @@ def revise_mode(d: dict, key: str, app: str, cert: str, post, file_fn, send, bac
         lines.append("Решта — як була на eBay.")
     return send("\n".join(lines) + warn,
                 {"inline_keyboard": [[{"text": "🔗 Відкрити на eBay", "url": f"https://www.ebay.de/itm/{item_id}"}]]})
+
+
+def _app_token() -> str:
+    """Токен застосунку eBay (client credentials) — для Key Management API."""
+    from main import EbayClient
+    return EbayClient()._headers()["Authorization"].split(" ", 1)[1]
 
 
 def plan_line(title: str, cost: float | None, row=None) -> str | None:

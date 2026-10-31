@@ -33,6 +33,12 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(plan["bought"], ["4"])                    # покупка 5.10 — понад 3 тижні
         self.assertEqual(plan["other"], ["7"])                     # старе питання не від покупця
 
+    def test_sent_messages_follow_the_deal_31_10(self):
+        # розмова berwald08 лишалась у «Posteingang» через моє надіслане «Entschuldigung…» — його теж у «Verkauft – erledigt»
+        sent = [dict(MSGS[1], id="s2", sent=True), dict(MSGS[0], id="s1", sent=True)]
+        plan = em.classify(sent, SALES, BUYS, NOW)
+        self.assertEqual((plan["sold"], plan["keep"]), (["s2"], ["s1"]))
+
     def test_active_sale_guard(self):
         self.assertTrue(em.active_sale(SALES[0], NOW))
         self.assertFalse(em.active_sale(SALES[1], NOW))           # 9.10 → 21 день: подяку більше не пишемо
@@ -40,7 +46,8 @@ class TestClassify(unittest.TestCase):
 
     def test_tidy_moves_in_batches_of_ten(self):
         calls = []
-        with mock.patch.object(em, "inbox", return_value=[dict(MSGS[2], id=str(i)) for i in range(23)]), \
+        box = lambda tok, post, days=120, folder=0: [dict(MSGS[2], id=str(i)) for i in range(23)] if folder == 0 else []   # noqa: E731
+        with mock.patch.object(em, "inbox", side_effect=box), \
                 mock.patch.object(em, "purchases", return_value=[]), \
                 mock.patch.object(em, "ensure_folders", return_value={"ebay": "77", "sold": "78", "bought": "79", "other": "80"}), \
                 mock.patch.object(em.el, "trading", side_effect=lambda call, body, tok, post: calls.append((call, body)) or

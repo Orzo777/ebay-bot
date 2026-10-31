@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import ebay_list as el
 
 NS = el.NS
-ACTIVE_SALE_DAYS, ACTIVE_BUY_DAYS, FRESH_DAYS = 10, 21, 3
+ACTIVE_SALE_DAYS, ACTIVE_BUY_DAYS, FRESH_DAYS = 10, 14, 3
 FOLDERS = {"ebay": "eBay", "sold": "Verkauft – erledigt", "bought": "Gekauft – erledigt", "other": "Sonstiges"}
 _KEEP_EBAY = re.compile(r"(?i)bitte bezahlen|zahlung (?:ist )?ausstehend|bezahlen sie|noch nicht bezahlt|zahlungserinnerung")
 
@@ -32,12 +32,12 @@ def _date(s: str) -> datetime | None:
         return None
 
 
-def inbox(token: str, post, days: int = 120) -> list[dict]:
-    """Заголовки повідомлень у «Posteingang» за days днів."""
+def inbox(token: str, post, days: int = 120, folder: int = 0) -> list[dict]:
+    """Заголовки повідомлень у «Posteingang» (folder 0) чи «Gesendet» (1) за days днів."""
     now = datetime.now(timezone.utc)
     out, page = [], 1
     while page <= 5:
-        root = el.trading("GetMyMessages", "<DetailLevel>ReturnHeaders</DetailLevel><FolderID>0</FolderID>"
+        root = el.trading("GetMyMessages", f"<DetailLevel>ReturnHeaders</DetailLevel><FolderID>{folder}</FolderID>"
                           f"<StartTime>{(now - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%S.000Z')}</StartTime>"
                           f"<EndTime>{now.strftime('%Y-%m-%dT%H:%M:%S.000Z')}</EndTime>"
                           f"<Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>{page}</PageNumber></Pagination>",
@@ -106,7 +106,9 @@ def classify(msgs: list[dict], sales: list[dict], buys: list[dict], now: datetim
     bought = {b["item_id"] for b in buys}
     out = {"keep": [], "ebay": [], "sold": [], "bought": [], "other": []}
     for m in msgs:
-        if m["sender"].lower() == "ebay":
+        if m.get("sent"):   # 31.10: моє надіслане — розмова лишалась у «Posteingang» через нього (berwald08)
+            key = "keep" if not m["item_id"] or m["item_id"] in active_sale | active_buy else                 "sold" if m["item_id"] in sold else "bought" if m["item_id"] in bought else                 ("keep" if age(m["date"]) <= FRESH_DAYS else "other")
+        elif m["sender"].lower() == "ebay":
             key = "keep" if _KEEP_EBAY.search(m["subject"]) and age(m["date"]) <= ACTIVE_BUY_DAYS else "ebay"
         elif m["item_id"] and m["item_id"] in active_sale | active_buy:
             key = "keep"
@@ -122,7 +124,7 @@ def classify(msgs: list[dict], sales: list[dict], buys: list[dict], now: datetim
 
 def tidy(token: str, post, sales: list[dict]) -> dict:
     """Розкласти «Posteingang». → скільки куди перенесено."""
-    msgs = inbox(token, post)
+    msgs = inbox(token, post) + [dict(m, sent=True) for m in inbox(token, post, 60, folder=1)]
     plan = classify(msgs, sales, purchases(token, post))
     if not any(plan[k] for k in FOLDERS):
         return {}

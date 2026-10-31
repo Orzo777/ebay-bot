@@ -339,7 +339,10 @@ class ReviseModeTest(unittest.TestCase):
         back = []
         orders = [dict(item_id="336849525826", sku="", track="354502403646", carrier="DHL", shipped_at="2026-10-23", shipped=True),
                   dict(item_id="1", sku="ledger-9", track="", carrier="", shipped_at="", shipped=False)]
-        with mock.patch.object(el, "access_token", return_value="tok"), mock.patch.object(listings, "active", return_value=[]),                 mock.patch.object(ea, "recent_orders", return_value=orders):
+        import ebay_messages
+        import ebay_sign
+        import finances
+        with mock.patch.object(el, "access_token", return_value="tok"), mock.patch.object(listings, "active", return_value=[]),                 mock.patch.object(ea, "recent_orders", return_value=orders),                 mock.patch.object(ebay_messages, "tidy", return_value={}),                 mock.patch.object(ebay_sign, "create_key", side_effect=RuntimeError("без мережі")),                 mock.patch.object(finances, "fetch", return_value=[]):   # 31.10: тест не ходить в eBay
             sell.ebay_mode({"mode": "sync", "rt": "rt", "rows": []}, "k", post=lambda *a, **k: None,
                            send=lambda t, m: True, back=lambda x, k: back.append(x))
         self.assertEqual(back[0]["shipped"], [dict(item_id="336849525826", sku="", track="354502403646", carrier="DHL", date="2026-10-23")])

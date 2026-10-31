@@ -47,13 +47,17 @@ def order_costs(transactions: list[dict]) -> dict:
             if v["label"] or v["fees"]}
 
 
-def fetch(token: str, get, days: int = 45) -> list[dict]:
-    """Усі транзакції за days днів (сторінками по 200)."""
+def fetch(token: str, get, days: int = 45, sign: dict | None = None) -> list[dict]:
+    """Усі транзакції за days днів (сторінками по 200). sign — ключ підпису (research/ebay_sign.py): для продавців з ЄС
+    eBay без нього відповідає 403 «Missing x-ebay-signature…»."""
     now = datetime.now(timezone.utc)
     since = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     h = {"Authorization": f"Bearer {token}", "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE", "Accept": "application/json"}
     out, off = [], 0
     while off < 2000:
+        if sign:
+            import ebay_sign
+            h = dict(h, **ebay_sign.headers(sign, "GET", FIN_URL))
         r = get(FIN_URL, headers=h, params={"filter": f"transactionDate:[{since}..{now.strftime('%Y-%m-%dT%H:%M:%S.000Z')}]",
                                              "limit": 200, "offset": off}, timeout=30)
         if r.status_code != 200:
