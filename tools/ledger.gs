@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-01a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-01b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -570,7 +570,7 @@ const MENU = {
     '• сам напишу, коли посилка чекає у відділенні або доставлена (перевіряю раз на 3 години, 8–21)\n' +
     '• трек 3 номер — додати трек (KA шле трек лише в чат)', ['посилки']],
   money: ['📒 Гроші', '• облік — прибуток, гроші зараз, товар на руках і посилання на таблицю\n' +
-    '• продав 110 OWC — записати продаж вручну (продажі eBay записуються самі)\n' +
+    '• продав 9 — №9 продано з рук за ціною з оголошення (продав 9 20 — за 20 €); продав 110 OWC — за назвою; продажі eBay записуються самі\n' +
     '• витрата 14 перехідник DDR4 — витрата не на товар\n' +
     '• звіт — тижневий звіт (сам приходить щопонеділка)', ['облік', 'звіт']],
   other: ['⚙️ Інше', '• нагадай 20.10 текст — нагадаю того дня; нагадування — список\n' +
@@ -642,7 +642,9 @@ function notify_(text, markup, mode) {
 const CMD_SYNONYMS = { 'забрав': 'отримав', 'забрала': 'отримав', 'забрали': 'отримав', 'прийшло': 'отримав', 'прийшла': 'отримав',
   'прийшов': 'отримав', 'дійшло': 'отримав', 'дійшла': 'отримав', 'отримала': 'отримав', 'отримали': 'отримав',
   'протестував': 'перевірив', 'протестувала': 'перевірив', 'перевірила': 'перевірив', 'тест': 'перевірив',
-  'надіслав': 'відправив', 'надіслала': 'відправив', 'відіслав': 'відправив', 'відправила': 'відправив' };
+  'надіслав': 'відправив', 'надіслала': 'відправив', 'відіслав': 'відправив', 'відправила': 'відправив',
+  // 01.11 (користувач: «продано 9 Patriot…» → «не впевнений: продати чи продав?»): «продано» з назвою / ціною — це «продав»
+  'продано': 'продав', 'продали': 'продав' };
 
 // 16.10 (користувач: «міні-хелпер — розумів, що я мав на увазі, і мовчки виконував»): без ШІ й без запитів — описки
 // (відстань Левенштейна 1–2 до слова команди) і звичайні фрази → команда. Лише коли інакше було б «Не зрозумів»;
@@ -697,6 +699,7 @@ function fuzzyCmd_(text) {
 function canonCmd_(text) {
   const t = String(text || '').trim(), m = t.match(/^\/?(\S+)([\s\S]*)$/);
   const syn = m && CMD_SYNONYMS[m[1].toLowerCase()];
+  if (syn === 'продав' && /^\s+\d{1,4}\s*$/.test(m[2])) return t;   // «продано N» без нічого — кнопка «💰 Це №N» (продаж з листа)
   return syn && /^\s+\d{1,4}(?=\s|$)/.test(m[2]) ? syn + m[2] : t;   // лише з номером: «прийшло 3», не «прийшло щось»
 }
 
@@ -850,6 +853,10 @@ function ledgerCommand(msg) {
     notify_(ledgerSummary_(ledgerRows_(), expenseRows_()) + '\n\n<a href="' + ledger_().getUrl() + '">📊 Таблиця</a>', null, 'HTML');
     return true;
   }
+  if (cmd.indexOf('прода') === 0) {
+    const byN = saleByNumber_(rest);
+    if (byN) return byN === true || recordManualSale_(byN.row, byN.price, byN.src, byN.text, byN.known);
+  }
   // сума — першим словом («купив 45 OWC 2x16») або після «за» («купив OWC 2x16 за 45»), а не «2» з «2x16»
   const pm = rest.match(/^(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur\w*|євро)?(?=\s|$)/i) ||
              rest.match(/(?:^|\s)(?:за|for|für)\s+(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur\w*|євро)?(?=\s|$)/i);
@@ -876,20 +883,77 @@ function ledgerCommand(msg) {
   } else {
     const row = findRow_(null, title, true);
     if (!row) { notify_('Не знайшов у обліку непроданий товар зі словами «' + title + '». Уточни назву або впиши вручну.'); return true; }
-    const sh = ledger_().getSheetByName('Угоди');
-    const was = sh.getRange(row, COL.status).getValue();
-    sh.getRange(row, COL.sdate).setValue(new Date());
-    sh.getRange(row, COL.sto).setValue(src);
-    sh.getRange(row, COL.sprice).setValue(amount);
-    saleFee_(sh, row, src);
-    sh.getRange(row, COL.status).setValue('Продано');
-    SpreadsheetApp.flush();
-    const profit = sh.getRange(row, COL.profit).getValue();
-    notify_('💰 Записав продаж: ' + sh.getRange(row, COL.title).getValue() + ' — ' + amount + ' €' +
-            (profit !== '' ? '\nПрибуток ≈ ' + Number(profit).toFixed(2) + ' €' : ''));
-    try { packCheck_(row - LEDGER_FIRST + 1); } catch (e) { console.log('запакуй: ' + e); }
-    try { soldElsewhere_(row - LEDGER_FIRST + 1, src, false, was === 'Виставлено'); } catch (e) { console.log('зняти: ' + e); }
+    recordManualSale_(row, amount, src, rest, false);
   }
+  return true;
+}
+
+/** 01.11 (користувач: «продав 9 Patriot Viper 4» записало 9 € — а «9» це номер; ціна на KA була 20 €): «продав N [ціна]
+ *  [назва]» — перше число — номер рядка, якщо такий непроданий рядок є і назва (коли написана) про нього. Ціни немає —
+ *  беремо з KA («виставив N ka 20» або сторінка оголошення) / з виставленої на eBay; не знаємо — питаємо.
+ *  → {row, price, src, text, known} | true (уже відповіли) | null (не номер — далі як «продав ціна назва»). */
+function saleByNumber_(rest) {
+  const m = String(rest || '').match(/^(\d{1,4})(?=\s|$)\s*(?:(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur\w*|євро)?(?=\s|$))?\s*([\s\S]*)$/i);
+  if (!m) return null;
+  const n = Number(m[1]), r = rowByN_(n);
+  if (!r || ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) >= 0) return null;
+  const tail = m[3].replace(/(^|\s)(ebay|ka|ка|kleinanzeigen|самовивіз|з рук|готівкою|abholung)(?=\s|$)/ig, ' ').trim();
+  const want = words_(tail), have = words_(r.title);
+  const hit = want.filter(function (w) { return have.indexOf(w) >= 0; }).length;
+  if (want.length && hit < Math.min(2, want.length)) return null;   // «продав 110 OWC»: 110 — ціна, а не №110
+  let price = m[2] ? Number(m[2].replace(',', '.')) : 0, known = false;
+  if (!price) { price = knownPrice_(n); known = !!price; }
+  if (!price) {
+    notify_('№' + n + ' «' + r.title + '» — за скільки продав? Напиши «продав ' + n + ' ЦІНА», наприклад «продав ' + n + ' 20».');
+    return true;
+  }
+  const src = /\bebay\b/i.test(m[3]) ? 'eBay' : 'Kleinanzeigen';
+  return { row: n + LEDGER_FIRST - 1, price: price, src: src, text: m[3], known: known };
+}
+
+/** Ціна, за якою №n виставлено: KA («виставив N ka 20» / сторінка оголошення), інакше eBay. */
+function knownPrice_(n) {
+  const ev = events_()[n] || {};
+  if (Number(ev.kaPrice)) return Number(ev.kaPrice);
+  if (ev.ka && /^\d{6,}$/.test(String(ev.ka)) && typeof kaAdInfo_ === 'function') {
+    const p = Number(kaAdInfo_(String(ev.ka)).price);
+    if (p) return p;
+  }
+  return Number(JSON.parse(PropertiesService.getScriptProperties().getProperty('LISTED_PRICE') || '{}')[n]) || 0;
+}
+
+/** Продаж не з eBay, записаний вручну, — передача з рук (готівкою, самовивіз): листа KA про «Direkt kaufen» немає, отже й
+ *  пересилки немає. Інакше лише, якщо в команді — пошта / відправка. Оголошення KA «Nur Abholung» — теж з рук. */
+const SHIP_WORDS = /відправ|пошт|versand|verschick|dhl|hermes|dpd|gls|трек/i;
+function handedOver_(n, src, text) {
+  if (/ebay/i.test(String(src || '')) || SHIP_WORDS.test(String(text || ''))) return false;
+  return true;
+}
+
+function recordManualSale_(row, amount, src, text, known) {
+  const sh = ledger_().getSheetByName('Угоди'), n = row - LEDGER_FIRST + 1;
+  const was = sh.getRange(row, COL.status).getValue();
+  const handed = handedOver_(n, src, text);
+  snapshot_(n, was);
+  sh.getRange(row, COL.sdate).setValue(new Date());
+  sh.getRange(row, COL.sto).setValue(src);
+  sh.getRange(row, COL.sprice).setValue(amount);
+  if (handed) {   // з рук: ні етикетки, ні коробки
+    sh.getRange(row, COL.sship).setValue(0);
+    sh.getRange(row, COL.pack).setValue(0);
+    const today = iso_(new Date());
+    setEvents_(n, { sent: today, outDelivered: today, handed: 1 });
+  }
+  saleFee_(sh, row, src);
+  sh.getRange(row, COL.status).setValue('Продано');
+  SpreadsheetApp.flush();
+  const profit = sh.getRange(row, COL.profit).getValue();
+  notify_('💰 Записав продаж №' + n + ': ' + sh.getRange(row, COL.title).getValue() + ' — ' + amount + ' €' +
+          (known ? ' (ціна з оголошення; інша — «продав ' + n + ' ЦІНА»)' : '') +
+          (profit !== '' ? '\nПрибуток ≈ ' + Number(profit).toFixed(2) + ' €' : '') +
+          (handed ? '\n🤝 З рук — пакувати й відправляти нічого не треба. Відправляв поштою — «відправив ' + n + ' трек».' : ''));
+  if (!handed) { try { packCheck_(n); } catch (e) { console.log('запакуй: ' + e); } }
+  try { soldElsewhere_(n, src, false, was === 'Виставлено'); } catch (e) { console.log('зняти: ' + e); }
   return true;
 }
 
@@ -1411,7 +1475,7 @@ function parcelsData_() {
   });
   const outgoing = rows.filter(function (r) {
     const e = ev[r.n] || {};
-    return r.status === 'Продано' && e.sent && (!e.outDelivered || days_(e.outDelivered, today) <= 3);
+    return r.status === 'Продано' && e.sent && !e.handed && (!e.outDelivered || days_(e.outDelivered, today) <= 3);
   }).map(function (r) {
     const e = ev[r.n] || {};
     return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.outTrack || '', carrier: e.outCarrier || '', delivered: e.outDelivered || '' };
@@ -2476,6 +2540,10 @@ function statusCommand_(msg) {
   const t = trackArg_(m[3]);
   if (cmd === 'відправив') {
     if (r.status !== 'Продано') { notify_(name + ' — статус «' + r.status + '», а «відправив» — для проданого.'); return true; }
+    if (e.handed) {   // записав «з рук», а насправді відправив — пакування за замовчуванням, доставку стежимо
+      setEvents_(n, { handed: undefined, outDelivered: undefined });
+      if (Number(sh.getRange(row, COL.pack).getValue()) === 0) sh.getRange(row, COL.pack).setValue('');
+    }
     setEvents_(n, t ? { sent: today, outTrack: t.num, outCarrier: t.carrier } : { sent: today });
     notify_('📮 ' + name + ' — відправлено, більше не нагадую.' + (t ? ' Коли покупець отримає — напишу.'
       : ' Додай трек — «трек ' + n + ' номер», і я скажу, коли покупець отримає.') + shipToEbay_(n, r.title, t), t ? trackButton_(t) : null);
