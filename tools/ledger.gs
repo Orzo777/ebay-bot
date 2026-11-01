@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-10-31g';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-01a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -707,7 +707,7 @@ function officeMessage(msg) {
   const alias = KEY_ALIAS[String(msg.text || '').trim().toLowerCase()];   // кнопки клавіатури з емодзі → команда
   if (alias) msg = Object.assign({}, msg, { text: alias });
   else if (canonCmd_(msg.text) !== String(msg.text || '').trim()) msg = Object.assign({}, msg, { text: canonCmd_(msg.text) });
-  if (docMessage_(msg) || docShowCommand_(msg) ||
+  if (wantedPhoto_(msg) || docMessage_(msg) || docShowCommand_(msg) ||
       memtestReport_(msg) || photoMessage_(msg) || photoNumber_(msg) || photoShowCommand_(msg) || photoMoveCommand_(msg) ||
       photoDeleteCommand_(msg) ||
       onHandCommand_(msg)) return;
@@ -2858,6 +2858,32 @@ function processCarriers_(log, done) {
     });
   });
   return n;
+}
+
+
+// ------------------------------------------------------------------ фото до пропозиції на «Suche» (01.11)
+// Картка «📥 Пропонують пам'ять» (research/ka_wanted.py): фото з чату KA в лист не потрапляє, тож користувач відповідає на
+// картку фото / скріном наклейки → ka_reply.yml (mode=wanted) з file_id: Gemini читає наклейку, картка приходить заново.
+function wantedPhoto_(msg) {
+  const card = msg.reply_to_message, f = photoFile_(msg);
+  if (!card || !f || !/^📥/.test(String(card.text || ''))) return false;
+  const props = PropertiesService.getScriptProperties();
+  const lines = String(card.text).split('\n');
+  const de = lines.filter(function (l) { return /^🇩🇪 /.test(l); })[0] || '';
+  const who = (lines[0].match(/·\s*(.+)$/) || [])[1] || '';
+  const kb = (card.reply_markup && card.reply_markup.inline_keyboard) || [];
+  const link = ((kb[0] || [])[0] || {}).url || '';
+  const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
+  const sealed = seal_({ msg: de.replace(/^🇩🇪 /, ''), who: who, link: link, photos: [f.id], item: '', price: null },
+                       officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
+  sealed.mode = 'wanted';
+  const r = token ? UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_reply.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: 'main', inputs: sealed }) }) : null;
+  notify_(r && r.getResponseCode() === 204 ? '📷 Читаю наклейку — картка прийде заново за ~1 хв.'
+                                           : '⚠️ Не зміг передати фото на перевірку (GitHub).');
+  return true;
 }
 
 

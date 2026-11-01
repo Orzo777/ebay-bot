@@ -75,6 +75,7 @@ jobs:
       - name: Run
         env:
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # mode=wanted: наклейка на фото з чату KA
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BLOB: ${{ inputs.blob }}

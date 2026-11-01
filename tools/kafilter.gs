@@ -18,7 +18,7 @@
 
 // Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
 // разом із check() вичерпав денний Gmail-ліміт Google 01.10.
-const VER_KAFILTER = '2026-11-01a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_KAFILTER = '2026-11-01b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb OR preisvorschlag) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
@@ -283,6 +283,8 @@ function kaDigest_(m, props) {
 /** 01.11 (користувач: «ось моє оголошення»): наше оголошення «Suche Arbeitsspeicher» — нам пропонують пам'ять. Оцінка й
  *  готова відповідь — research/ka_wanted.py (ka_reply.yml, mode=wanted) у бот угод; на KA бот нічого не пише сам. */
 const KA_WANTED_ADS = ['3557879305'];
+// У чаті є фото (01.11: «DDR4 Riegel 9 €» + фото наклейки) — у лист KA воно не потрапляє; картка попросить переслати
+const KA_PIC = /\b(?:Bild|Bilder|Foto|Fotos|Anhang|Bildschirmfoto)\b/i;
 function kaWanted_(subject, text, g) {
   if (kaAdIds_(text).some(function (id) { return KA_WANTED_ADS.indexOf(id) >= 0; })) return true;
   return /\bsuche\s+arbeitsspeicher\b/i.test(String(subject || '') + ' ' + kaListing_(subject, g));
@@ -293,7 +295,8 @@ function kaWantedViaGitHub_(props, body, g, link) {
   const token = props.getProperty('GITHUB_TOKEN') || (typeof GITHUB_TOKEN === 'undefined' ? '' : GITHUB_TOKEN);
   if (!token) return false;
   const sealed = seal_({ msg: ((g && g.message) || body).slice(0, 1500), uk: (g && g.uk) || '', item: (g && g.item) || '',
-                         price: (g && Number(g.price)) || null, who: (g && g.seller) || '', link: link || '' },
+                         price: (g && Number(g.price)) || null, who: (g && g.seller) || '', link: link || '',
+                         pic: KA_PIC.test(body) },
                        officeToken_(props), Utilities.getUuid().replace(/-/g, ''));
   sealed.mode = 'wanted';
   const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/ka_reply.yml/dispatches', {

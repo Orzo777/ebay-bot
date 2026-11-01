@@ -55,6 +55,38 @@ class AssessTest(unittest.TestCase):
             self.assertEqual(kb["inline_keyboard"][1][0]["copy_text"]["text"], a["reply"])
             self.assertEqual(kb["inline_keyboard"][0][0]["url"], ka_wanted.CHATS)
 
+    def test_label_photo_one_stick(self):
+        # 01.11, перша справжня відповідь: «einem DDR4 Riegel 9 €» + фото наклейки CMK16GX4M2A2400C16 «16GB (2x8GB)»
+        msg = "Guten Morgen, haben Sie Interesse an einem DDR4 Riegel ? 9€ Inklusive Versand"
+        a = run(msg, "DDR4 Riegel", 9)
+        self.assertEqual(a["verdict"], "unknown")
+        facts = {"part_number": "CMK16GX4M2A2400C16", "label_kit": "16GB (2x8GB)", "gen": "DDR4", "form": "DIMM",
+                 "speed_mhz": 2400, "brand": "Corsair", "modules_offered": 1, "module_gb": 8, "price_eur": 9}
+        self.assertEqual(ka_wanted.label_item(facts), "Corsair DDR4 1x8GB 2400 MHz")   # номер набору не перетворює 1 планку на 2×8
+        b = ka_wanted.assess({"msg": msg, "item": "DDR4 Riegel", "price": 9, "facts": facts})
+        self.assertEqual(b["verdict"], "wrong")
+        self.assertIn("8 ГБ (1 план.)", b["text"])
+        self.assertIn("📷 З наклейки: CMK16GX4M2A2400C16", b["text"])
+
+    def test_label_kit_no_second_photo_request(self):
+        facts = {"part_number": "CMH32GX5M2B6000C30", "gen": "DDR5", "modules_offered": 2, "module_gb": 16, "speed_mhz": 6000,
+                 "brand": "Corsair", "price_eur": 180}
+        a = ka_wanted.assess({"msg": "Biete beide Riegel für 180€", "facts": facts})
+        self.assertEqual(a["verdict"], "buy")
+        self.assertNotIn("Aufkleber", a["reply"])
+
+    def test_read_label_needs_usable_answer(self):
+        self.assertIsNone(ka_wanted.read_label([b"x"], "m", ask=lambda imgs, prompt, budget: {"gen": "DDR4"}))
+        good = {"gen": "DDR4", "modules_offered": 1, "module_gb": 8}
+        self.assertEqual(ka_wanted.read_label([b"x"], "m", ask=lambda imgs, prompt, budget: good), good)
+        self.assertIsNone(ka_wanted.read_label([], "m", ask=lambda *a, **k: good))
+
+    def test_pic_hint(self):
+        a = ka_wanted.assess({"msg": "haben Sie Interesse an einem DDR4 Riegel ? 9€", "price": 9, "pic": True})
+        self.assertIn("У чаті є фото", a["text"])
+        self.assertNotIn("Aufkleber", a["reply"])
+        self.assertNotIn("preislich", a["reply"])   # ціну вже назвав
+
 
 if __name__ == "__main__":
     unittest.main()

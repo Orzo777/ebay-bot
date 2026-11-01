@@ -253,5 +253,17 @@ vm.runInContext('UrlFetchApp.fetch = (function (orig) { return function (u, o) {
 say({ message_id: 60, caption: '4', document: { file_id: 'D1', file_name: 'MemTest86-Report-20261009.html', mime_type: 'text/html' } });
 check('report → status Перевірено + summary', [deals.cells['8:11'], /№4[\s\S]*✅ MemTest86: 0 помилок, CMK32GX4M2B3200C16 → статус «Перевірено»/.test(lastSummary())], ['Перевірено', true]);
 check('report message removed', calls('deleteMessage').some((c) => c[1].message_id === 60), true);
+// 01.11: фото у відповідь на картку «📥 Пропонують пам'ять» — у GitHub (ka_wanted.py читає наклейку), не до рядка обліку
+const gh = []; store.GITHUB_TOKEN = 'g';
+vm.runInContext(`seal_ = function (d) { __gh.push(d); return { blob: 'B', mac: 'M', nonce: 'N' }; };`, Object.assign(ctx, { __gh: gh }));
+const fetch0 = ctx.UrlFetchApp.fetch, ghUrls = [];
+ctx.UrlFetchApp.fetch = (u, o) => (/api\.github\.com/.test(u) ? (ghUrls.push([u, JSON.parse(o.payload)]), { getResponseCode: () => 204 }) : fetch0(u, o));
+const sentW = sent.length, asksW = asks();
+say(photo('W1', 70, { reply_to_message: { message_id: 69, text: "📥 Пропонують пам'ять · Peter\nна твоє «Suche Arbeitsspeicher»\n\n❔ Не зрозумів\n🇩🇪 haben Sie Interesse an einem DDR4 Riegel ? 9€",
+  reply_markup: { inline_keyboard: [[{ text: 'чат', url: 'https://www.kleinanzeigen.de/m-nachrichten.html?conversationId=x' }]] } } }));
+check('wanted photo → GitHub', [gh.length, gh[0] && gh[0].photos, gh[0] && gh[0].msg, gh[0] && gh[0].who, ghUrls.length && ghUrls[0][1].inputs.mode,
+  /Читаю наклейку/.test(sent[sent.length - 1]), sent.length - sentW, asks() - asksW],
+  [1, ['W1'], 'haben Sie Interesse an einem DDR4 Riegel ? 9€', 'Peter', 'wanted', true, 1, 0]);
+
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);
