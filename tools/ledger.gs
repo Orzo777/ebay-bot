@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-03a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-03b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -303,9 +303,13 @@ function packCheck_(n) {
 }
 
 /** 31.10: продаж за назвою — лише якщо один відкритий рядок явно схожіший (≥ 2 слова відриву), інакше кандидати. */
-function saleRowByTitle_(title) {
+// 03.11: продаж оголошення X не може бути рядком, прив'язаним до іншого оголошення Y (лист про продаж №6 за назвою влучив
+// у №4: Corsair LPX 2400 і 2133, №4 щойно повернувся в продаж з власним лотом 336873413243)
+function saleRowByTitle_(title, ids) {
   const want = words_(title);
-  const scored = openRowsNotes_().filter(function (r) { return ['Отримано', 'Перевірено', 'Виставлено'].indexOf(r.status) >= 0; })
+  ids = (ids || []).filter(Boolean).map(String);
+  const scored = openRowsNotes_().filter(function (r) { return ['Отримано', 'Перевірено', 'Виставлено'].indexOf(r.status) >= 0 &&
+      !(ids.length && listingId_(r.note) && ids.indexOf(listingId_(r.note)) < 0); })
     .map(function (r) { const have = words_(r.title); return [want.filter(function (w) { return have.indexOf(w) >= 0; }).length, r.n]; })
     .filter(function (x) { return x[0] >= 2; }).sort(function (a, b) { return b[0] - a[0]; });
   if (!scored.length) return { row: 0, cands: [] };
@@ -410,6 +414,7 @@ function parseMail_(msg) {
   return { kind: kind, src: src, title: title, id: idm ? idm[1] : '', ids: ids, link: idm ? 'https://www.ebay.de/itm/' + idm[1] : (kam ? kam[0] : ''),
            price: price, ship: ship, fee: fee, total: total, date: msg.getDate(), subject: subject, from: from,
            track: kind === 'shipped' || kind === 'delivered' ? trackFrom_(subject + '\n' + body) : null,
+           order: ((subject + '\n' + body).match(/\b(\d{2}-\d{5}-\d{5})\b/) || [])[1] || '',   // 03.11: номер замовлення eBay
            snippet: body.replace(/\s+/g, ' ').slice(0, 300) };
 }
 
@@ -474,10 +479,10 @@ function processLedger() {
         // тепер — усі номери з листа, а за назвою лише однозначно, інакше питаємо кнопками
         // 03.11: звірка з eBay уже записала цей продаж (лист прийшов пізніше) — вдруге не записуємо (лот на 2 штуки: інакше
         // лист узяв би другу, ще не продану штуку)
-        const dupN = syncedSale_([p.id].concat(p.ids || []), p.date);
+        const dupN = syncedSale_([p.id].concat(p.ids || []), p.date) || knownSale_(p);
         row = dupN ? 0 : ([p.id].concat(p.ids || []).filter(Boolean).map(rowByListing_).filter(Boolean)[0] || 0);
         let cands = [];
-        if (!row && !dupN) { const f = saleRowByTitle_(p.title); row = f.row; cands = f.cands; }
+        if (!row && !dupN) { const f = saleRowByTitle_(p.title, [p.id].concat(p.ids || [])); row = f.row; cands = f.cands; }
         if (!row && cands.length) {
           const pend = JSON.parse(props.getProperty('SALE_PENDING') || '{}');
           pend.last = { date: iso_(p.date), src: p.src, price: p.total != null ? p.total : p.price, title: p.title };
@@ -518,7 +523,7 @@ function processLedger() {
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
   try { tidySheet1013_(); } catch (e) { console.log('tidySheet1013_: ' + e); }
-  try { fix1103_(); } catch (e) { console.log('fix1103_: ' + e); }
+  try { fix1103_(); fix1103b_(); } catch (e) { console.log('fix1103_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
@@ -1796,6 +1801,45 @@ function syncedSale_(ids, date) {
   return hit ? map[hit][0] : 0;
 }
 
+/** 03.11: лист про продаж, уже записаний: замовлення знає звірка (ORDER_ROW), або оголошення з листа — лише в проданих
+ *  рядках (жодного відкритого з ним) → номер рядка (-1 — скасоване замовлення), інакше 0. */
+function knownSale_(p) {
+  const m = p.order ? orderRows_()[p.order] : null;
+  if (m) return m[0] || -1;
+  const ids = [p.id].concat(p.ids || []).filter(Boolean).map(String);
+  if (!ids.length) return 0;
+  const all = ledgerRows_();
+  if (!all.length) return 0;
+  const notes = ledger_().getSheetByName('Угоди').getRange(LEDGER_FIRST, COL.note, all[all.length - 1].n, 1).getValues();
+  const withId = all.filter(function (r) {
+    const note = String((notes[r.n - 1] || [''])[0] || '');
+    return ids.some(function (id) { return note.indexOf(id) >= 0; });
+  });
+  if (!withId.length || withId.some(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; })) return 0;
+  const sold = withId.filter(function (r) { return r.status === 'Продано'; });
+  return sold.length ? sold[sold.length - 1].n : 0;
+}
+
+/** 03.11 (вечір): перший запуск обліку після 39 год простою взяв старий лист про продаж №6 і за назвою записав №4; №9 (з рук,
+ *  виправлено в таблиці вручну) нагадував «відправ». */
+function fix1103b_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('FIX1103B') || !props.getProperty('LEDGER_ID')) return;
+  props.setProperty('FIX1103B', '1');
+  const out = [], r4 = rowByN_(4);
+  if (r4 && r4.status === 'Продано' && Math.abs((r4.sprice || 0) - 169) < 0.01 && r4.sdate === '2026-11-03' &&
+      unsell_(4, { id: '336873413243', price: 163 })) {
+    out.push('№4: лист eBay про продаж №6 (169 €, замовлення 03-15393-72038) бот за назвою записав на №4 — повернув «Виставлено» ' +
+             '(лот 336873413243, 163 €). «Запакуй №4» і «Відправ №4» — не зважай, пакувати нічого не треба');
+  }
+  const r9 = rowByN_(9), e9 = events_()[9] || {};
+  if (r9 && r9.status === 'Продано' && !e9.sent) {
+    setEvents_(9, { sent: r9.sdate || '2026-11-01', outDelivered: r9.sdate || '2026-11-01', handed: 1 });
+    out.push('№9 Patriot — продано з рук, нагадування «відправ» прибрав');
+  }
+  if (out.length) notify_('🛠 Виправив:\n• ' + out.join('\n• ') + '\nЛист про вже записаний продаж більше не шукає рядок за назвою.');
+}
+
 /** sales: [{order_id, item_id, sku, price, qty, buyer, date, title}] → записані зараз {n: 1}. */
 function salesFromEbay_(list) {
   const done = {};
@@ -2287,7 +2331,7 @@ function sealedPost(s) {
   const props = PropertiesService.getScriptProperties();
   let d;
   try { d = unseal_(s, officeToken_(props)); } catch (e) { console.log('sealedPost: ' + e.message); return; }
-  try { fix1103_(); } catch (e) { console.log('fix1103_: ' + e); }
+  try { fix1103_(); fix1103b_(); } catch (e) { console.log('fix1103_: ' + e); }
   if (d.kind === 'health') return healthCheck_(d.heal);   // 03.11: відповідь — у GitHub (research/as_health.py)
   if (d.kind === 'ebay_rt' && d.rt) {
     props.setProperty('EBAY_RT', d.rt);

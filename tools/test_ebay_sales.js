@@ -32,7 +32,7 @@ const D = (s) => new Date(s + 'T12:00:00Z');
 const ROWS = {
   1: ['OWC 32GB (2x16GB) DDR4-2400 SO-DIMM', 'Продано', '2026-10-22', 103, '(eBay 336849525826)'],
   2: ['Corsair Vengeance LPX 32GB DDR4-3200', 'Продано', '2026-10-09', 149, '(eBay 336837002037)'],
-  4: ['2x Corsair Vengeance LPX DDR4 32GB 2133MHz', 'Продано', '2026-11-01', 163, 'виставлено за 163 € (eBay 336844624233)'],
+  4: ['2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz', 'Продано', '2026-11-01', 163, 'виставлено за 163 € (eBay 336844624233)'],
   5: ['Corsair Vengeance DDR4 32 GB (2 x 16GB) 2400', 'Продано', '2026-10-30', 160, '(eBay 336849011147)'],
   6: ['Corsair Vengeance DDR4 32 GB (2 x 16GB) 2400', 'Виставлено', '', '', 'друга штука лота №5 (eBay 336849011147)'],
   8: ['G.SKILL FORTIS 32GB (2x16GB) DDR4-2400', 'Виставлено', '', '', '(eBay 336849477931)'] };
@@ -151,6 +151,43 @@ check('unknown sale → asks', /Не знаю, який це рядок[\s\S]*«
 vm.runInContext('syncApply_(__p)', Object.assign(ctx, { __p: { lots: [], ask: [], ended: [],
   sales: [{ order_id: '44-1', item_id: '336849477931', sku: 'ledger-8', price: 99, qty: 1, date: '2026-10-20', title: 'x' }] } }));
 check('old orders ignored', ctx.orderRows_()['44-1'], undefined);
+
+// 6b) 03.11 вечір: перший запуск обліку після простою взяв старий лист про продаж №6 (вже «Продано») і за назвою записав №4
+// (Corsair LPX 2400 ↔ 2133; №4 щойно повернувся в продаж з власним лотом). Тепер: замовлення відоме / оголошення лише в
+// проданих / рядок з іншим лотом — не цей продаж.
+deals.cells['8:11'] = 'Виставлено'; ['sdate', 'sto', 'sprice'].forEach((c) => { deals.cells['8:' + COL[c]] = ''; });
+deals.cells['12:11'] = 'Виставлено';   // №8 знову в продажу
+store.EXPENSES_V1 = '1';
+check('known order', ctx.knownSale_({ order: '03-15393-72038' }), 6);
+check('listing only in sold rows', ctx.knownSale_({ order: '', id: '336849011147', ids: [] }), 6);
+check('listing with an open row — not known', ctx.knownSale_({ order: '', id: '336849477931', ids: [] }), 0);
+check('title never takes a row with another lot', ctx.saleRowByTitle_('Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32GX4M2A2400C16',
+  ['336849011147']).row, 0);
+const mailMsg = { getId: () => 'm6', getFrom: () => 'eBay <ebay@ebay.de>', getDate: () => new Date('2026-11-03T11:05:00Z'),
+  getSubject: () => '🎉 Artikel verkauft - Corsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32...',
+  getPlainBody: () => 'Gute Neuigkeiten - Ihr Artikel wurde verkauft!\nCorsair Vengeance LPX 32GB (2x16GB) DDR4-2400 CMK32...\nVerkauft:\n' +
+    'EUR 169,00\nBestellnummer: 03-15393-72038\nhttps://www.ebay.de/itm/336849011147', getBody: () => '' };
+const logSh = sheet();
+logSh.appendRow = (r) => { logSh.cells[(logSh.last + 1) + ':5'] = r[4]; logSh.last++; };
+logSh.last = 1;
+vm.runInContext('ledger_ = function () { return { getSheetByName: function (n) { return n === "Лог листів" ? __log : (n === "Угоди" ? __dd : null); } }; };' +
+  'GmailApp = { search: function () { return [{ getMessages: function () { return [__m6]; } }]; } };',
+  Object.assign(ctx, { __log: logSh, __dd: deals, __m6: mailMsg }));
+store.LEDGER_SCANNED = '1';
+// як у житті: №6 записала одноразова звірка (fix1103_) — без номера оголошення й позначки «sync»
+store.ORDER_ROW = JSON.stringify(Object.assign(JSON.parse(store.ORDER_ROW), { '03-15393-72038': [6, '2026-11-03', ''] }));
+const nMail = sent.length;
+try { ctx.processLedger(); } catch (e) { console.log('processLedger: ' + e); }
+check('old sale mail → nothing recorded', [cell(4, 'status'), cell(8, 'status'), logSh.cells['2:5']], ['Виставлено', 'Виставлено',
+  'продаж уже записано зі звірки eBay (№6)']);
+check('no sale card', sent.slice(nMail).some((x) => /💰 Продано №/.test(x[0])), false);
+vm.runInContext('ledger_ = function () { return { getSheetByName: () => __d }; };', ctx);
+// одноразово: №4 записаний тим листом (169 €, 03.11) → назад; №9 з рук — без «відправ»
+deals.cells['8:11'] = 'Продано'; deals.cells['8:' + COL.sprice] = 169; deals.cells['8:' + COL.sdate] = D('2026-11-03');
+deals.cells['13:3'] = 'Patriot Viper 4 2x4GB'; deals.cells['13:11'] = 'Продано'; deals.cells['13:' + COL.sdate] = D('2026-11-01'); deals.last = 13;
+delete store.FIX1103B;   // уже відпрацювала в processLedger вище (тоді ще нічого виправляти)
+ctx.fix1103b_();
+check('fix1103b', [cell(4, 'status'), cell(4, 'sprice'), ctx.events_()[9].handed, /№4: лист eBay про продаж №6/.test(last())], ['Виставлено', '', 1, true]);
 
 // 7) стан ззовні: тригерів немає / давно не працювали → перевстановити (раз на 2 год) і написати; відповідь — JSON у doPost
 store.LAST_CHECK_OK = String(Date.now() - 600 * 60000); store.LEDGER_OK = String(Date.now() - 650 * 60000);
