@@ -15,6 +15,7 @@ import uuid
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # config.py — у корені
 import config  # noqa: E402
 from sell import seal  # noqa: E402
 
