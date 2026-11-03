@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-11-03a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-11-03b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -31,6 +31,13 @@ function check() {
   const token = props.getProperty('GITHUB_TOKEN') || GITHUB_TOKEN;
   if (!token) throw new Error('Немає токена: додайте GITHUB_TOKEN у ⚙ «Властивості скрипту» (крок 2).');
 
+  // 03.11: пошта лише з запасної скриньки (MAIL_SOURCE = relay, проєкт на основному акаунті) — Gmail не читаємо;
+  // листи KA з неї запускає eBay-сторож (research/backup_mail.py)
+  if (typeof gmailOff_ === 'function' && gmailOff_()) {
+    props.setProperty('LAST_CHECK_OK', String(Date.now()));
+    console.log('пошта — запасна скринька (MAIL_SOURCE = relay), Gmail не читаю');
+    return;
+  }
   const last = Number(props.getProperty('LAST_MAIL_TS')) || Date.now() - 3600e3;   // мс найновішого вже переданого листа
   let newest = last, fresh = 0;
   GmailApp.search(QUERY + ' after:' + (Math.floor(last / 1000) - 120), 0, 20).forEach(function (thread) {
@@ -124,7 +131,7 @@ function handleUpdate_(contents, bot) {
     // 09.10: зашифроване з GitHub (ключ eBay, «виставлено») — не Telegram; перевіряє підпис sealedPost у ledger.gs
     if (update.sealed) {
       const res = typeof sealedPost === 'function' ? sealedPost(update.sealed) : null;
-      return res && typeof res === 'object' && res.triggers ? { json: res } : HtmlService.createHtmlOutput('ok');
+      return res && typeof res === 'object' && (res.triggers || res.relay !== undefined) ? { json: res } : HtmlService.createHtmlOutput('ok');
     }
     // Другий бот «Облік і продаж» (ledger.gs) приходить сюди ж з адресою …/exec?bot=office; у кожного бота свої update_id
     const office = !!(e.parameter && e.parameter.bot === 'office');

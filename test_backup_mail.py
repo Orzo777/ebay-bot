@@ -85,6 +85,88 @@ class BackupTest(unittest.TestCase):
         self.assertIn("Запасна пошта не відкривається", sent[0])
 
 
+def raw_mail(uid, frm, to, subject, text):
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"], msg["Message-ID"] = frm, to, subject, f"<{uid}@x>"
+    msg["Date"] = "Tue, 03 Nov 2026 19:00:00 +0100"
+    msg.set_content(text)
+    msg.add_alternative(f"<p>{text}</p>", subtype="html")
+    return msg.as_bytes()
+
+
+class RelayBox(Box):
+    """uid SEARCH за відправником (і TO, якщо задано) + uid FETCH."""
+    def __init__(self, mails):   # {uid: raw}
+        super().__init__([])
+        self.by_uid, self.searches = mails, []
+
+    def uid(self, cmd, *a):
+        if cmd == "SEARCH":
+            crit = a[-1]
+            self.searches.append(crit)
+            frm = crit.split('FROM "')[1].split('"')[0]
+            to = crit.split('TO "')[1].split('"')[0] if 'TO "' in crit else ""
+            hits = [u for u, raw in self.by_uid.items() if frm in raw.decode(errors="ignore").split("To:")[0]
+                    and (not to or to in raw.decode(errors="ignore"))]
+            return "OK", [" ".join(hits).encode()]
+        return "OK", [(b"1 (BODY[] {1}", self.by_uid[a[0]]), b")"]
+
+
+class RelayTest(unittest.TestCase):
+    def setUp(self):
+        self._env = {k: os.environ.pop(k, None) for k in ENV + ("MAIL_ALIAS",)}
+        os.environ.update(MAIL_USER="team@example.org", MAIL_PASSWORD="x", MAIL_ALIAS="bot@example.org")
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+    def test_only_bot_mail_relayed_alerts_without_body(self):
+        box = RelayBox({
+            "11": raw_mail(11, "eBay <ebay@ebay.de>", "bot@example.org", "Ihre Bestellung ist bestätigt: Kingston", "Gesamtbetrag 95,00 €"),
+            "12": raw_mail(12, "PayPal <service@paypal.de>", "team@example.org", "Zahlung erhalten", "інший проєкт"),   # не боту
+            "13": raw_mail(13, "Kleinanzeigen <noreply@kleinanzeigen.de>", "bot@example.org", "Neue Treffer zu deiner Suche", "оголошення"),
+            "14": raw_mail(14, "DHL <noreply@dhl.de>", "bot@example.org", "Ihre Sendung kommt heute", "00340434161094000001")})
+        posted, state = [], {}
+        n = backup_mail.relay(state, "k", connect_fn=lambda: box, send_fn=lambda d, k: posted.append(d) or {"relay": len(d["mails"])})
+        mails = posted[0]["mails"]
+        self.assertEqual(n, 3)
+        self.assertEqual([m["subject"] for m in mails], ["Ihre Bestellung ist bestätigt: Kingston", "Neue Treffer zu deiner Suche",
+                                                         "Ihre Sendung kommt heute"])
+        self.assertIn("Gesamtbetrag 95,00 €", mails[0]["text"])
+        self.assertIn("<p>Gesamtbetrag", mails[0]["html"])
+        self.assertEqual((mails[1]["text"], mails[1]["html"]), ("", ""))      # лист підписки — лише заголовок
+        self.assertTrue(all('TO "bot@example.org"' in c for c in box.searches))
+        self.assertEqual(mails[0]["id"], "<11@x>")
+        # наступного кола — нічого нового
+        self.assertEqual(backup_mail.relay(state, "k", connect_fn=lambda: box, send_fn=lambda d, k: posted.append(d) or {"relay": 0}), 0)
+        self.assertEqual(len(posted), 1)
+
+    def test_not_accepted_retried_next_round(self):
+        box = RelayBox({"21": raw_mail(21, "eBay <ebay@ebay.de>", "bot@example.org", "Artikel verkauft", "EUR 169,00")})
+        state = {}
+        self.assertEqual(backup_mail.relay(state, "k", connect_fn=lambda: box, send_fn=lambda d, k: None), 0)
+        self.assertEqual(state.get("relay_uids"), None)
+        self.assertEqual(backup_mail.relay(state, "k", connect_fn=lambda: box, send_fn=lambda d, k: {"relay": 1}), 1)
+        self.assertEqual(state["relay_uids"], ["21"])
+
+    def test_batch_limit(self):
+        box = RelayBox({str(30 + i): raw_mail(30 + i, "eBay <ebay@ebay.de>", "bot@example.org", f"Artikel verkauft {i}", "x") for i in range(8)})
+        state, posted = {}, []
+        backup_mail.relay(state, "k", connect_fn=lambda: box, send_fn=lambda d, k: posted.append(d) or {"relay": 5})
+        self.assertEqual(len(posted[0]["mails"]), 5)
+        backup_mail.relay(state, "k", connect_fn=lambda: box, send_fn=lambda d, k: posted.append(d) or {"relay": 3})
+        self.assertEqual(len(posted[1]["mails"]), 3)
+
+    def test_sleeps_without_secrets_or_key(self):
+        self.assertEqual(backup_mail.relay({}, "", connect_fn=lambda: 1 / 0), 0)
+        os.environ.pop("MAIL_USER")
+        self.assertEqual(backup_mail.relay({}, "k", connect_fn=lambda: 1 / 0), 0)
+
+
 class RunBothBoxesTest(unittest.TestCase):
     def setUp(self):
         self._env = {k: os.environ.pop(k, None) for k in ENV}

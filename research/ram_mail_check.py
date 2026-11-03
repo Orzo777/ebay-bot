@@ -700,9 +700,11 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
     # дублі (той самий лист в обох) відсікає спільний seen за Message-ID
     boxes = []
     if gmail_user and gmail_pass:
-        boxes.append(("Gmail", lambda: _gmail_login(gmail_user, gmail_pass), _gmail_folders))
+        boxes.append(("Gmail", lambda: _gmail_login(gmail_user, gmail_pass), _gmail_folders,
+                      lambda d: f'(FROM "{FROM_FILTER}" SINCE {d})'))
     if backup_mail.configured():
-        boxes.append(("запасна пошта", backup_mail.connect, backup_mail.folders))
+        boxes.append(("запасна пошта", backup_mail.connect, backup_mail.folders,
+                      lambda d: backup_mail.criteria(FROM_FILTER, d)))
     if not boxes:
         print("[SKIP] GMAIL_USER / GMAIL_APP_PASSWORD (і запасна MAIL_USER / MAIL_PASSWORD) не задані — вихід.")
         return
@@ -711,7 +713,7 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
     photo0 = dict(PHOTO_STATS)
     aborted = None
     failed = []
-    for label, connect, folders_fn in boxes:
+    for label, connect, folders_fn, crit in boxes:
         try:
             m = connect()
         except (imaplib.IMAP4.error, OSError) as e:   # 02.11: Gmail «Invalid credentials» — запасна скринька все одно читається
@@ -720,7 +722,7 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
             continue
         if dry_run:   # діагностика: скільки листів від Kleinanzeigen лежить у кожній папці
             _folder_census(m, lookback_days)
-        a, n, aborted_now = _scan(m, label, folders_fn(m), since, state, seen, seen_ads, hint_times, dry_run, pc_replay,
+        a, n, aborted_now = _scan(m, label, folders_fn(m), since, crit(since), state, seen, seen_ads, hint_times, dry_run, pc_replay,
                                   max_age_hours)
         alerts_sent += a
         new_mails += n
@@ -762,7 +764,7 @@ def _folder_census(m, lookback_days: int):
             print(f"   папка {line.split(')')[0]}) {name}: {n}")
 
 
-def _scan(m, label, folders, since, state, seen, seen_ads, hint_times, dry_run, pc_replay, max_age_hours):
+def _scan(m, label, folders, since, crit, state, seen, seen_ads, hint_times, dry_run, pc_replay, max_age_hours):
     """Одна скринька: нові листи KA у папках → картки. → (карток, нових листів, збій з'єднання або None)."""
     alerts_sent = new_mails = 0
     aborted = None
@@ -771,7 +773,7 @@ def _scan(m, label, folders, since, state, seen, seen_ads, hint_times, dry_run, 
             if m.select(folder, readonly=True)[0] != "OK":    # readonly: нічого не позначаємо прочитаним
                 print("Не відкрилась папка:", folder)
                 continue
-            ids = m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since})')[1][0].split()
+            ids = m.search(None, crit)[1][0].split()
             print(f"Папка {folder}: листів від {FROM_FILTER} з {since}: {len(ids)}")
             # 01.10: щоразу тягнули ПОВНІ тексти всіх ~400 листів за 2 доби (навіть оброблених) — ~3 хв на запуск, і Gmail
             # обривав з'єднання «System Error». Тепер одним запитом лише Message-ID, повний лист — тільки для нових.

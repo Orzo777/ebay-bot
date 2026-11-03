@@ -71,6 +71,7 @@ jobs:
           MAIL_HOST: ${{ secrets.MAIL_HOST }}
           MAIL_USER: ${{ secrets.MAIL_USER }}
           MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_ALIAS: ${{ secrets.MAIL_ALIAS }}   # bot address when the mailbox is shared with another project
           SELLER_MSG: "1"   # тексти продавцям — Gemini за описом (research/seller_msg.py)
           PYTHONIOENCODING: utf-8
         run: |

@@ -66,6 +66,7 @@ jobs:
           MAIL_HOST: ${{ secrets.MAIL_HOST }}
           MAIL_USER: ${{ secrets.MAIL_USER }}
           MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_ALIAS: ${{ secrets.MAIL_ALIAS }}   # bot address when the mailbox is shared with another project
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}   # службові сповіщення (квота, Gemini)

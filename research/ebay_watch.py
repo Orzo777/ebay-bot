@@ -835,6 +835,8 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
     if not dry_run:   # 03.11: запасна пошта (якщо задано MAIL_*) — нові листи KA → обробка, як check() в Apps Script для Gmail
         try:
             backup_mail.poll(state, now, _dispatch, send=health.office_send)
+            # решта листів (eBay, чати KA, PayPal, перевізники) — в Apps Script, у ті самі обробники, що для Gmail
+            backup_mail.relay(state, os.getenv("OFFICE_BOT_TOKEN", ""))
         except Exception as e:
             print(f"   [запасна пошта] {e.__class__.__name__}")
     if state["round"] % 20 == 0 and not dry_run:   # ~раз на годину

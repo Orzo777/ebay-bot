@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-03b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-03c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -428,7 +428,7 @@ function processLedger() {
   // Перший прохід — 45 днів; далі лише розмови з листами за останні 2 доби (Gmail-ліміт Google, 01.10)
   const props = PropertiesService.getScriptProperties();
   const full = !props.getProperty('LEDGER_SCANNED');
-  GmailApp.search(LEDGER_QUERY + (full ? '' : ' newer_than:2d'), 0, full ? 100 : 30).forEach(function (th) {
+  mailSearch_(LEDGER_QUERY + (full ? '' : ' newer_than:2d'), 0, full ? 100 : 30, 'ledger', Date.now() - (full ? 45 : 2) * 86400e3).forEach(function (th) {
     th.getMessages().forEach(function (m) { if (!done[m.getId()]) msgs.push(m); });
   });
   msgs.sort(function (a, b) { return a.getDate() - b.getDate(); });   // спершу давніші: купівля раніше за доставку
@@ -1820,6 +1820,100 @@ function knownSale_(p) {
   return sold.length ? sold[sold.length - 1].n : 0;
 }
 
+// ------------------------------------------------------------------ запасна пошта → Apps Script (03.11)
+// Друге блокування Google вимкне й цей проєкт. Запасний план — старий проєкт на основному акаунті, а пошта не з його Gmail
+// (там особиста пошта користувача!), а з запасної скриньки: GitHub (research/backup_mail.py, коло eBay-сторожа) пересилає
+// сюди зашифровано листи eBay / KA / PayPal / перевізників, адресовані боту. Вони лежать у кеші (6 год) і ДОДАЮТЬСЯ до пошуку
+// кожного обробника (mailSearch_) — той самий розбір, що й для Gmail. «Властивості скрипту» MAIL_SOURCE = relay — Gmail цього
+// акаунта не читаємо взагалі. Без пересланих листів і без MAIL_SOURCE — рівно як було.
+function relayWords_(words) { return new RegExp('(^|[^a-zäöüß0-9])(' + words + ')(?=$|[^a-zäöüß0-9])', 'i'); }
+const RELAY_KINDS = {   // ті самі умови, що в запитах Gmail (LEDGER_QUERY, CARRIER_QUERY, EBAY_MAIL_QUERY, KA_MSG_QUERY, WD_KA_QUERY)
+  ledger: function (m) {
+    return /ebay|kleinanzeigen|paypal/i.test(m.from) && !relayWords_('suchauftrag|neue anzeigen').test(m.subject) &&
+      relayWords_('bestellbestätigung|bestellung|gekauft|verkauft|versandt|versendet|verschickt|unterwegs|zugestellt|geliefert|' +
+        'storniert|abgebrochen|erstattet|rückerstattung|gewonnen|bestätigt|zahlung|authorized|autorisiert|payment').test(m.subject);
+  },
+  carrier: function (m) {
+    return /dhl\.de|dhl\.com|deutschepost\.de|myhermes\.de|hermesworld\.com|hermes-europe\.de|dpd\.de|dpd\.com|gls-pakete\.de|gls-group\.eu|gls-group\.com|ups\.com/i.test(m.from);
+  },
+  ebaymail: function (m) {
+    return /ebay/i.test(m.from) && !relayWords_('bestellbestätigung').test(m.subject) &&
+      relayWords_('frage|nachricht|preisvorschlag|gegenangebot|rückgabe|zurückgeben|rücksendung|fall|anfrage|auszahlung|garantie|' +
+        'nicht erhalten|versandetikett').test(m.subject);
+  },
+  kamsg: function (m) {
+    return /kleinanzeigen/i.test(m.from) && relayWords_('nachricht|antwort|anfrage|geschrieben|schrieb|preisvorschlag').test(m.subject) &&
+      !relayWords_('gekauft|verkauft|bestellung|zahlung|versand|suchauftrag').test(m.subject);
+  },
+  ka: function (m) {
+    return /noreply@kleinanzeigen\.de/i.test(m.from) && !relayWords_('nachricht|antwort|anfrage|geschrieben|schrieb').test(m.subject);
+  }
+};
+
+function gmailOff_() { return PropertiesService.getScriptProperties().getProperty('MAIL_SOURCE') === 'relay'; }
+
+/** Пошук листів для обробника: Gmail (як було) + переслані з запасної скриньки (kind — умова з RELAY_KINDS, sinceMs — як
+ *  newer_than / after у запиті). Пересланих немає — той самий масив, що від GmailApp.search. */
+function mailSearch_(query, start, max, kind, sinceMs) {
+  const own = gmailOff_() ? [] : GmailApp.search(query, start, max);
+  let relay = [];
+  try { relay = relayThreads_(kind, sinceMs); } catch (e) { console.log('запасна пошта: ' + e); }
+  return relay.length ? own.concat(relay) : own;
+}
+
+/** {kind: 'mail', mails: [{id, from, to, subject, date, text, html}]} → у кеш (6 год), індекс — у властивостях. */
+function relayStore_(mails) {
+  const props = PropertiesService.getScriptProperties(), cache = CacheService.getScriptCache();
+  const idx = JSON.parse(props.getProperty('RELAY_IDX') || '[]');
+  let seq = Number(props.getProperty('RELAY_SEQ') || 0), n = 0;
+  (mails || []).forEach(function (x) {
+    if (!x || !x.id || idx.some(function (e) { return e.id === String(x.id); })) return;
+    const m = { id: String(x.id), from: String(x.from || ''), to: String(x.to || ''), subject: String(x.subject || ''),
+      date: String(x.date || new Date().toISOString()), text: String(x.text || '').slice(0, 30000), html: String(x.html || '').slice(0, 60000) };
+    const k = 'RLY_' + (++seq);
+    try { cache.put(k, JSON.stringify(m), 21600); } catch (e) {   // > 100 КБ — без HTML (розбір бере текст)
+      m.html = '';
+      cache.put(k, JSON.stringify(m), 21600);
+    }
+    idx.push({ id: m.id, k: k, d: m.date });
+    n++;
+  });
+  props.setProperty('RELAY_IDX', JSON.stringify(idx.slice(-150)));
+  props.setProperty('RELAY_SEQ', String(seq));
+  if (n) props.setProperty('RELAY_AT', String(Date.now()));
+  return { relay: n };
+}
+
+/** Переслані листи (новіші — першими) як «розмови» Gmail: getMessages / getLastMessageDate; «в кошик» — більше не бачимо. */
+function relayThreads_(kind, sinceMs) {
+  if (typeof CacheService === 'undefined') return [];
+  const props = PropertiesService.getScriptProperties(), idx = JSON.parse(props.getProperty('RELAY_IDX') || '[]');
+  if (!idx.length) return [];
+  const trashed = JSON.parse(props.getProperty('RELAY_TRASH') || '[]'), pred = RELAY_KINDS[kind];
+  const live = idx.filter(function (e) { return trashed.indexOf(e.id) < 0 && (!sinceMs || new Date(e.d).getTime() >= sinceMs); });
+  if (!live.length) return [];
+  const got = CacheService.getScriptCache().getAll(live.map(function (e) { return e.k; })) || {};
+  return live.map(function (e) { return got[e.k] ? JSON.parse(got[e.k]) : null; })
+    .filter(function (m) { return m && (!pred || pred(m)); })
+    .sort(function (a, b) { return new Date(b.date) - new Date(a.date); })
+    .map(relayThread_);
+}
+
+function relayThread_(m) {
+  const d = new Date(m.date), text = m.text || String(m.html || '').replace(/<[^>]+>/g, ' ');
+  const msg = { getId: function () { return 'relay:' + m.id; }, getFrom: function () { return m.from; }, getTo: function () { return m.to; },
+    getSubject: function () { return m.subject; }, getDate: function () { return d; }, getPlainBody: function () { return text; },
+    getBody: function () { return m.html || m.text; }, getAttachments: function () { return []; } };
+  return { relay: true, getMessages: function () { return [msg]; }, getLastMessageDate: function () { return d; },
+    getFirstMessageSubject: function () { return m.subject; }, addLabel: function () { return this; },
+    moveToTrash: function () {
+      const props = PropertiesService.getScriptProperties(), t = JSON.parse(props.getProperty('RELAY_TRASH') || '[]');
+      if (t.indexOf(m.id) < 0) t.push(m.id);
+      props.setProperty('RELAY_TRASH', JSON.stringify(t.slice(-150)));
+      return this;
+    } };
+}
+
 /** 03.11 (вечір): перший запуск обліку після 39 год простою взяв старий лист про продаж №6 і за назвою записав №4; №9 (з рук,
  *  виправлено в таблиці вручну) нагадував «відправ». */
 function fix1103b_() {
@@ -2333,6 +2427,7 @@ function sealedPost(s) {
   try { d = unseal_(s, officeToken_(props)); } catch (e) { console.log('sealedPost: ' + e.message); return; }
   try { fix1103_(); fix1103b_(); } catch (e) { console.log('fix1103_: ' + e); }
   if (d.kind === 'health') return healthCheck_(d.heal);   // 03.11: відповідь — у GitHub (research/as_health.py)
+  if (d.kind === 'mail') return relayStore_(d.mails);    // 03.11: листи з запасної скриньки (research/backup_mail.py)
   if (d.kind === 'ebay_rt' && d.rt) {
     props.setProperty('EBAY_RT', d.rt);
     props.setProperty('EBAY_RT_DATE', iso_(new Date()));
@@ -3228,7 +3323,7 @@ function processCarriers_(log, done) {
   const keys = Object.keys(tracks);
   if (!keys.length) return 0;   // нічого не чекаємо — пошту перевізників навіть не відкриваємо
   let n = 0;
-  GmailApp.search(CARRIER_QUERY, 0, 20).forEach(function (th) {
+  mailSearch_(CARRIER_QUERY, 0, 20, 'carrier', Date.now() - 3 * 86400e3).forEach(function (th) {
     th.getMessages().forEach(function (m) {
       if (done[m.getId()]) return;
       const body = m.getPlainBody() || '', flat = (m.getSubject() + ' ' + body).replace(/\s+/g, '').toUpperCase();
@@ -4086,7 +4181,7 @@ function ebayMailText_(g, subject, link) {
 
 function processEbayMail_(log, done) {
   let n = 0;
-  GmailApp.search(EBAY_MAIL_QUERY, 0, 15).forEach(function (th) {
+  mailSearch_(EBAY_MAIL_QUERY, 0, 15, 'ebaymail', Date.now() - 3 * 86400e3).forEach(function (th) {
     th.getMessages().forEach(function (m) {
       if (done[m.getId()] || !/ebay/i.test(m.getFrom())) return;
       done[m.getId()] = 1;

@@ -18,7 +18,7 @@
 
 // Лише розмови з новими листами після попереднього проходу (after:) — щохвилинний перегляд 50 розмов за 3 дні
 // разом із check() вичерпав денний Gmail-ліміт Google 01.10.
-const VER_KAFILTER = '2026-11-01b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_KAFILTER = '2026-11-03a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const KA_MSG_QUERY = 'from:kleinanzeigen subject:(nachricht OR antwort OR anfrage OR geschrieben OR schrieb OR preisvorschlag) ' +
   '-subject:(gekauft OR verkauft OR bestellung OR zahlung OR versand OR Suchauftrag) -label:"KA скам"';
 
@@ -59,7 +59,9 @@ function kaFilter_(dry) {
   const since = dry ? started - 3 * 86400e3 : (Number(props.getProperty('KA_FILTER_TS')) || started - 86400e3) - 5 * 60e3;
   let label = null;
   let n = 0;
-  GmailApp.search(KA_MSG_QUERY + ' after:' + Math.floor(since / 1000), 0, dry ? 50 : 20).forEach(function (th) {
+  // 03.11: + листи з запасної скриньки (ledger.gs, mailSearch_), якщо є
+  (typeof mailSearch_ === 'function' ? mailSearch_(KA_MSG_QUERY + ' after:' + Math.floor(since / 1000), 0, dry ? 50 : 20, 'kamsg', since)
+    : GmailApp.search(KA_MSG_QUERY + ' after:' + Math.floor(since / 1000), 0, dry ? 50 : 20)).forEach(function (th) {
     const msgs = th.getMessages();
     const last = msgs[msgs.length - 1];
     const reason = kaScamReason_(kaMessageText_(last.getPlainBody()));
@@ -70,8 +72,10 @@ function kaFilter_(dry) {
     n++;
     console.log((dry ? '[перевірка] ' : '') + 'скам (' + reason + '): ' + last.getSubject());
     if (!dry) {
-      label = label || GmailApp.getUserLabelByName('KA скам') || GmailApp.createLabel('KA скам');
-      th.addLabel(label);
+      if (!th.relay) {   // пересланий з запасної скриньки — без міток Gmail (там може бути особиста пошта)
+        label = label || GmailApp.getUserLabelByName('KA скам') || GmailApp.createLabel('KA скам');
+        th.addLabel(label);
+      }
       th.moveToTrash();
     }
   });

@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-11-03a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-11-03b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -127,8 +127,10 @@ function wdDayHours_(from, now) {
 function wdKaMail_(st, now, msgs) {
   const props = PropertiesService.getScriptProperties();
   const limit = Number(props.getProperty('WD_KA_HOURS')) || 6;
-  const th = GmailApp.search(WD_KA_QUERY, 0, 1);
-  const last = th.length ? th[0].getLastMessageDate() : null;
+  // 03.11: + листи KA з запасної скриньки (ledger.gs, mailSearch_) — найновіший з усіх
+  const th = typeof mailSearch_ === 'function' ? mailSearch_(WD_KA_QUERY, 0, 1, 'ka', now.getTime() - 3 * 86400e3)
+    : GmailApp.search(WD_KA_QUERY, 0, 1);
+  const last = th.length ? new Date(Math.max.apply(null, th.map(function (t) { return t.getLastMessageDate().getTime(); }))) : null;
   const ageH = last ? (now.getTime() - last.getTime()) / 3600e3 : 72;
   const dayH = last ? wdDayHours_(last, now) : 72;
   const h = wdBerlinHour_(now);
