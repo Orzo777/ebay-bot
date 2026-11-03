@@ -170,6 +170,30 @@ class ActionsTest(unittest.TestCase):
         self.assertEqual(back, [{"kind": "carrier", "row": 5, "carrier": "Hermes"}])
         self.assertIn("Перевізник за eBay — Hermes", sent[0])
 
+    def test_orders_price_and_cancelled_03_11(self):
+        # 03.11: продаж без листа — ціна товару, разом з пересилкою покупця (Total), дата; скасовані — окремим запитом
+        xml = ("<OrderArray><Order><OrderID>27-1</OrderID><CreatedTime>2026-10-22T05:43:28.000Z</CreatedTime>"
+               "<Total currencyID=\"EUR\">109.49</Total><TransactionArray><Transaction><TransactionID>T1</TransactionID>"
+               "<TransactionPrice currencyID=\"EUR\">103.0</TransactionPrice><QuantityPurchased>1</QuantityPurchased>"
+               "<Item><ItemID>336849525826</ItemID><Title>OWC</Title><SKU>ledger-1</SKU></Item></Transaction></TransactionArray></Order>"
+               "</OrderArray>")
+        post = lambda url, headers=None, data=None, timeout=None, files=None: resp("GetOrders", xml)
+        o = ea.recent_orders("tok", post)[0]
+        self.assertEqual([o["price"], o["total"], o["qty"], o["created"], o["sku"]], [103.0, 109.49, 1, "2026-10-22", "ledger-1"])
+        posted = []
+        post2 = lambda url, headers=None, data=None, timeout=None, files=None: posted.append(data.decode()) or resp("GetOrders", xml)
+        c = ea.cancelled_orders("tok", post2)[0]
+        self.assertIn("<OrderStatus>Cancelled</OrderStatus>", posted[0])
+        self.assertEqual([c["order_id"], c["price"], c["total"], c["created"]], ["27-1", 103.0, 109.49, "2026-10-22"])
+
+    def test_pick_order_same_track_03_11(self):
+        # 03.11: лот на 2 штуки — у старого (№5) і нового (№6) замовлення той самий номер оголошення; трек — точно це
+        orders = [dict(order_id="old", item_id="111", sku="ledger-5", shipped=True, track="02304112003507"),
+                  dict(order_id="new", item_id="111", sku="ledger-5", shipped=True, track="02307144017733")]
+        self.assertEqual(ea.pick_order(orders, "111", 6, "", track="0230 7144 017733")["order_id"], "new")
+        self.assertEqual(ea.pick_order(orders, "111", 6, "")["order_id"], "old")   # без треку — як раніше
+        self.assertIsNone(ea.pick_order(orders, "999", 7, "", track="02307144017733"))   # чужий номер і SKU — ні
+
     def test_ship_no_order(self):
         sent, _, f = run({"action": "ship", "row": 9, "title": "PlayStation 5 Slim", "track": "H1000000000001", "carrier": "Hermes"})
         self.assertNotIn("CompleteSale", [c[0] for c in f.calls])

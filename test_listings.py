@@ -130,6 +130,24 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(listings.sync([lot], self.ROWS)["lots"][:0], [])   # №5 ще відкритий — як раніше (не twin)
         self.assertNotIn("twin_of", (listings.sync([lot], self.ROWS)["lots"] or [{}])[0])
 
+    def test_relisted_lot_same_sku_03_11(self):
+        # 03.11: №4 купили й скасували — eBay перевиставив лот з новим номером, SKU той самий → той самий рядок, не «питати»
+        lot = dict(id="336873413243", title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133 CL13 getestet", price=163.0, sku="ledger-4")
+        ch = listings.sync([lot], self.ROWS)
+        self.assertEqual(ch["lots"], [dict(n=4, id="336873413243", price=163.0, title=lot["title"])])
+        self.assertEqual(ch["ask"], [])
+        # старий лот №4 ще живий — новий з тим самим SKU не перехоплює рядок
+        old = dict(id="306000000004", title="x", price=168.0)
+        self.assertEqual([x["id"] for x in listings.sync([old, lot], self.ROWS)["lots"] if x["n"] == 4], ["306000000004"])
+
+    def test_sold_row_with_live_lot_03_11(self):
+        # 03.11: №4 у таблиці «Продано» (не серед відкритих), а лот ledger-4 живий і другої такої штуки немає → спитати
+        rows = [r for r in self.ROWS if r["n"] != 4]
+        lot = dict(id="336873413243", title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133 CL13 getestet", price=163.0, sku="ledger-4")
+        ch = listings.sync([lot], rows)
+        self.assertEqual(ch["sold_active"], [dict(n=4, id="336873413243", price=163.0, title=listings.short(lot["title"], 60))])
+        self.assertEqual((ch["lots"], ch["ask"]), ([], []))
+
 
 if __name__ == "__main__":
     unittest.main()

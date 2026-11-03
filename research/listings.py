@@ -113,7 +113,7 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
     rows — відкриті рядки {n, title, status, note}. → {"lots": [{n, id, price}] — лот відомого рядка (номер у нотатках або
     однозначно за назвою: Apps Script записує «Виставлено» / нову ціну), "ask": [{id, title, price, cands}] — не однозначно
     (спитати кнопками), "ended": [{n, id}] — «Виставлено» з номером, якого вже немає серед активних}."""
-    known, ask = [], []
+    known, ask, sold_active = [], [], []
     active_ids = {lot["id"] for lot in lots if lot.get("id")}
     linked = {_last_id(r.get("note")) for r in rows} - {""}
     for lot in lots:
@@ -124,9 +124,15 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
             known.append(dict(n=r["n"], id=lot["id"], price=lot.get("price"), title=lot.get("title") or ""))
             continue
         free = [r for r in rows if r.get("status") in SYNC_FREE and not _last_id(r.get("note"))]
+        sku = re.match(r"^ledger-(\d{1,4})$", str(lot.get("sku") or ""))
+        # 03.11: перевиставлений лот (№4: продаж скасовано, eBay виставив знову) — новий номер, той самий SKU відкритого рядка,
+        # чий старий лот уже не активний
+        own = next((r for r in rows if sku and int(r["n"]) == int(sku.group(1))), None)
+        if own and _last_id(own.get("note")) not in active_ids:
+            known.append(dict(n=own["n"], id=lot["id"], price=lot.get("price"), title=lot.get("title") or ""))
+            continue
         # 31.10: лот на кілька штук (№5 і №6 — однакові кіти, SKU ledger-5): №5 продали — решта лота тепер №6. SKU рядка,
         # якого вже немає серед відкритих, → один відкритий рядок з тими самими обсягом, поколінням, типом і частотою
-        sku = re.match(r"^ledger-(\d{1,4})$", str(lot.get("sku") or ""))
         if sku and not any(int(r["n"]) == int(sku.group(1)) for r in rows):
             twin = _same_kit(lot["title"], [r for r in rows if r.get("status") in SYNC_FREE and (not _last_id(r.get("note"))
                                                                                              or _last_id(r.get("note")) == lot["id"])])
@@ -134,6 +140,9 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
                 known.append(dict(n=twin["n"], id=lot["id"], price=lot.get("price"), title=lot.get("title") or "",
                                   twin_of=int(sku.group(1))))
                 continue
+            # 03.11: рядок SKU у таблиці вже не відкритий (мабуть, «Продано»), а лот живий — Apps Script перевірить і спитає
+            sold_active.append(dict(n=int(sku.group(1)), id=lot["id"], price=lot.get("price"), title=short(lot["title"], 60)))
+            continue
         if lot["id"] in linked:
             continue
         want = _words(lot["title"])
@@ -149,7 +158,7 @@ def sync(lots: list[dict], rows: list[dict]) -> dict:
                             cands=[r["n"] for sc, r in scored if sc >= max(2, best - 2)][:4]))
     ended = [dict(n=r["n"], id=_last_id(r.get("note"))) for r in rows
              if r.get("status") == "Виставлено" and _last_id(r.get("note")) and _last_id(r.get("note")) not in active_ids]
-    return {"lots": known, "ask": ask, "ended": ended}
+    return {"lots": known, "ask": ask, "ended": ended, "sold_active": sold_active}
 
 
 MARKET_MIN_DAYS, MARKET_GAP = 5, 3.0   # 19.10: користувач — порада з 5-го дня

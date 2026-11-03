@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-10-18a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-11-03a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -83,14 +83,17 @@ function doPost(e) {
       e.postData.contents);   // ключ — час і update_id: порядок альбому зберігається
     return HtmlService.createHtmlOutput('ok');
   }
+  let out = null;
   try {
-    handleUpdate_(e.postData.contents, bot);
+    out = handleUpdate_(e.postData.contents, bot);
     drainQueued_(true);
   } catch (err) {
     console.log('doPost: ' + err);
   } finally {
     lock.releaseLock();
   }
+  // 03.11: зашифрований запит стану з GitHub (research/as_health.py) — відповідь JSON
+  if (out && out.json) return ContentService.createTextOutput(JSON.stringify(out.json)).setMimeType(ContentService.MimeType.JSON);
   return HtmlService.createHtmlOutput('ok');
 }
 
@@ -120,8 +123,8 @@ function handleUpdate_(contents, bot) {
     const update = JSON.parse(e.postData.contents);
     // 09.10: зашифроване з GitHub (ключ eBay, «виставлено») — не Telegram; перевіряє підпис sealedPost у ledger.gs
     if (update.sealed) {
-      if (typeof sealedPost === 'function') sealedPost(update.sealed);
-      return HtmlService.createHtmlOutput('ok');
+      const res = typeof sealedPost === 'function' ? sealedPost(update.sealed) : null;
+      return res && typeof res === 'object' && res.triggers ? { json: res } : HtmlService.createHtmlOutput('ok');
     }
     // Другий бот «Облік і продаж» (ledger.gs) приходить сюди ж з адресою …/exec?bot=office; у кожного бота свої update_id
     const office = !!(e.parameter && e.parameter.bot === 'office');

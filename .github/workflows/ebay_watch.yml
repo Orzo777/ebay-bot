@@ -47,6 +47,17 @@ jobs:
           key: ebaywatch-${{ github.run_id }}
           restore-keys: ebaywatch-
 
+      # 03.11: після розблокування Google таймери Apps Script мовчали, а сторож усередині Apps Script про себе сказати не може —
+      # раз на коло (~щогодини) питаємо стан звідси; давно не працювали — Apps Script сам перевстановлює тригери й пише в бот
+      - name: Apps Script health
+        if: ${{ inputs.dry_run != true }}
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          PYTHONIOENCODING: utf-8
+        run: python research/as_health.py
+
       - name: Watch eBay
         env:
           EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}

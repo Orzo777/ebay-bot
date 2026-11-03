@@ -926,11 +926,29 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
         try:
             import ebay_actions as ea
             orders = ea.recent_orders(token, post)
-            ch["shipped"] = [dict(item_id=o["item_id"], sku=o["sku"], track=o["track"], carrier=o["carrier"], date=o["shipped_at"])
-                             for o in orders if o["shipped"]]
+            ch["shipped"] = [dict(item_id=o["item_id"], sku=o["sku"], track=o["track"], carrier=o["carrier"], date=o["shipped_at"],
+                                  **({"order_id": o["order_id"]} if o.get("order_id") else {})) for o in orders if o["shipped"]]
+            # 03.11 (лист eBay про продаж №6 не дійшов — пошту блокували): оплачені замовлення останніх 14 днів → облік
+            # записує продаж сам, якщо рядок ще не «Продано»
+            from datetime import datetime, timedelta, timezone
+            since = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d")
+            # ціна — з пересилкою від покупця (як у колонці «Ціна продажу»); замовлення з кількох товарів — ціна товару
+            single = {}
+            for o in orders:
+                single[o.get("order_id")] = single.get(o.get("order_id"), 0) + 1
+            ch["sales"] = [dict(order_id=o["order_id"], item_id=o["item_id"], sku=o["sku"], qty=o.get("qty") or 1,
+                                price=(o.get("total") if single[o["order_id"]] == 1 and o.get("total") else o.get("price")) or 0,
+                                buyer=o.get("buyer") or "", date=o["created"], title=o.get("title") or "")
+                           for o in orders if o.get("order_id") and (o.get("created") or "") >= since]
         except Exception as e:
             print(f"замовлення: {e.__class__.__name__}")
-            ch["shipped"] = []
+            ch["shipped"], ch["sales"] = [], []
+        try:   # 03.11: покупець скасував (№4: «не побачив частоту») — рядок назад у продаж, без листа
+            ch["cancelled"] = [dict(c, date=c.get("created") or "") for c in ea.cancelled_orders(token, post)]
+        except Exception as e:
+            print(f"скасовані: {e.__class__.__name__}")
+            ch["cancelled"] = []
+        print(f"продажі eBay за 14 днів: {len(ch['sales'])}, скасованих: {len(ch['cancelled'])}")
         # 31.10 (користувач: «у повідомленнях eBay бардак»): «Posteingang» — лише активні покупці / продавці, решта — у папки
         try:
             import ebay_messages
@@ -979,7 +997,8 @@ def ebay_mode(d: dict, key: str, post=None, file_fn=tg_file, send=None, back=pos
                 audit.save_cache(cache)
             except Exception as e:
                 print(f"перевірка оголошень: {e.__class__.__name__}")
-        if (ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market") or ch.get("shipped")
+        if (ch["lots"] or ch["ask"] or ch["ended"] or d.get("manual") or ch.get("market") or ch.get("shipped") or ch.get("sales")
+                or ch.get("cancelled") or ch.get("sold_active")
                 or ch.get("audit") or ch.get("ka_links") or ch.get("fees") or ch.get("fees_auth") or ch.get("tidy")):   # 19.10: «звірити» — відповідь і коли все збігається
             back({"kind": "sync", "manual": d.get("manual") or 0, "count": len(lots), **ch}, key)
         return True

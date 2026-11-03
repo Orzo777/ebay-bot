@@ -1,0 +1,37 @@
+name: as-health
+
+# 03.11: стан Apps Script ззовні (research/as_health.py) — на вимогу й запасний розклад. Основний виклик — на початку
+# кожного кола eBay-сторожа (ebay_watch.yml); cron у GitHub для публічного репозиторію запізнюється на години.
+# У лог — лише хвилини з останнього запуску check / processLedger / watchdog і назви тригерів.
+
+on:
+  workflow_dispatch:
+    inputs:
+      no_heal:
+        description: "Лише подивитися, тригери не перевстановлювати"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "41 */3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Ask Apps Script
+        env:
+          OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
+          PYTHONIOENCODING: utf-8
+        run: python research/as_health.py ${{ inputs.no_heal && '--no-heal' || '' }}

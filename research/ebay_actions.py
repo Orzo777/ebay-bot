@@ -80,17 +80,53 @@ def recent_orders(token: str, post) -> list[dict]:
                             shipped_at=_t(o, "ShippedTime")[:10],
                             track=_t(tr, "ShippingDetails/ShipmentTrackingDetails/ShipmentTrackingNumber"),
                             carrier=_t(tr, "ShippingDetails/ShipmentTrackingDetails/ShippingCarrierUsed"),
-                            feedback_left=tr.find(NS + "FeedbackLeft") is not None))
+                            feedback_left=tr.find(NS + "FeedbackLeft") is not None,
+                            # 03.11: ціна товару (без пересилки) і дата — звірка записує продаж сама, якщо лист eBay не дійшов
+                            price=round(_money(tr, "TransactionPrice") * _qty(tr), 2), qty=_qty(tr),
+                            total=_money(o, "Total"), created=_t(o, "CreatedTime")[:10]))
     return out
+
+
+def cancelled_orders(token: str, post) -> list[dict]:
+    """03.11: скасовані продажі за 14 днів (покупець передумав, гроші повернуто) — облік повертає рядок у продаж."""
+    root = el.trading("GetOrders", f"<CreateTimeFrom>{_iso(14)}</CreateTimeFrom><CreateTimeTo>{_iso()}</CreateTimeTo>"
+                      "<OrderRole>Seller</OrderRole><OrderStatus>Cancelled</OrderStatus>", token, post)
+    out = []
+    for o in root.iter(NS + "Order"):
+        for tr in o.iter(NS + "Transaction"):
+            out.append(dict(order_id=_t(o, "OrderID"), item_id=_t(tr, "Item/ItemID"), sku=_t(tr, "Item/SKU"),
+                            title=_t(tr, "Item/Title"), created=_t(o, "CreatedTime")[:10],
+                            price=round(_money(tr, "TransactionPrice") * _qty(tr), 2), total=_money(o, "Total")))
+    return out
+
+
+def _money(node, path: str) -> float:
+    try:
+        return round(float(_t(node, path) or 0), 2)
+    except ValueError:
+        return 0.0
+
+
+def _qty(node) -> int:
+    try:
+        return max(1, int(_t(node, "QuantityPurchased") or 1))
+    except ValueError:
+        return 1
 
 
 def orders_to_ship(token: str, post) -> list[dict]:
     return [o for o in recent_orders(token, post) if not o["shipped"]]
 
 
-def pick_order(orders: list[dict], item_id: str = "", row=None, title: str = "") -> dict | None:
+def pick_order(orders: list[dict], item_id: str = "", row=None, title: str = "", track: str = "") -> dict | None:
     """Спершу серед невідправлених, потім — серед усіх (етикетка eBay вже позначила відправленим). Лише за номером
-    оголошення або SKU «ledger-N»: покупцю пишемо — схожа назва не доказ (31.10)."""
+    оголошення або SKU «ledger-N»: покупцю пишемо — схожа назва не доказ (31.10).
+    03.11: лот на 2 штуки (№5 і №6) — у старого й нового замовлення той самий номер оголошення; той самий трек — точно це."""
+    norm = lambda t: str(t or "").replace(" ", "").upper()
+    hit = next((o for o in orders if track and o.get("track") and norm(o["track"]) == norm(track)
+                and ((item_id and o.get("item_id") == str(item_id)) or (row and o.get("sku") == f"ledger-{row}"))), None)
+    if hit:
+        return hit
     return (pick([o for o in orders if not o["shipped"]], item_id, row, title, strict=True)
             or pick(orders, item_id, row, title, strict=True))
 
@@ -256,7 +292,7 @@ def run(d: dict, token: str, post, send, back, key: str, get=None) -> bool:
     what = f"№{row}" if row else f"«{html.escape(title[:50])}»"
     if a == "ship":
         orders = recent_orders(token, post)
-        line = pick_order(orders, d.get("item_id") or "", row, title)
+        line = pick_order(orders, d.get("item_id") or "", row, title, track=d["track"])
         carrier, track = d.get("carrier") or "DHL", d["track"]
         if not line:
             return send(f"📮 Трек {what} в eBay не передав: не знайшов такого продажу за 45 днів (продажів: {len(orders)}). "

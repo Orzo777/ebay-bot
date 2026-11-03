@@ -327,7 +327,7 @@ class ReviseModeTest(unittest.TestCase):
             sell.ebay_mode({"mode": "sync", "rt": "rt", "rows": rows}, "k", post=lambda *a, **k: None,
                            send=lambda t, m: sent.append(t) or True, back=lambda x, k: back.append(x))
         self.assertEqual(back, [{"kind": "sync", "manual": 0, "count": 1, "lots": [dict(n=4, id="306000000004", price=159.0, title="x")], "ask": [],
-                                 "ended": [], "shipped": []}])
+                                 "ended": [], "sold_active": [], "shipped": [], "sales": [], "cancelled": []}])
         self.assertEqual(sent, [])
 
     def test_sync_reports_shipped_orders(self):
