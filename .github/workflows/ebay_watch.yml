@@ -67,6 +67,10 @@ jobs:
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}   # службові сповіщення (квота, Gemini)
           GH_API_TOKEN: ${{ github.token }}   # сторож: чи запускає Apps Script KA-пошту
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # 03.11: backup mailbox (research/backup_mail.py) - off until these secrets exist; address only in secrets
+          MAIL_HOST: ${{ secrets.MAIL_HOST }}
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
           SELLER_MSG: "1"   # тексти продавцям — Gemini за описом (research/seller_msg.py)
           PYTHONIOENCODING: utf-8
         run: |

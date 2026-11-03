@@ -32,6 +32,7 @@ sys.path.insert(0, "research")
 import config
 from console_alert import alerts_on as console_alerts_on, evaluate_console
 from ka_listing_check import check_listing, risk_lines
+import backup_mail
 import cardmap
 import quiet
 import health
@@ -695,30 +696,75 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
     hint_times = {} if dry_run else dict(state.get("hint_times", {}))
     gmail_user = os.getenv("GMAIL_USER", "")
     gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
-    if not gmail_user or not gmail_pass:
-        print("[SKIP] GMAIL_USER / GMAIL_APP_PASSWORD не задані — вихід.")
+    # 03.11 (Gmail блокували 02–03.11): скриньки по черзі — Gmail і запасна (research/backup_mail.py, якщо задано MAIL_*);
+    # дублі (той самий лист в обох) відсікає спільний seen за Message-ID
+    boxes = []
+    if gmail_user and gmail_pass:
+        boxes.append(("Gmail", lambda: _gmail_login(gmail_user, gmail_pass), _gmail_folders))
+    if backup_mail.configured():
+        boxes.append(("запасна пошта", backup_mail.connect, backup_mail.folders))
+    if not boxes:
+        print("[SKIP] GMAIL_USER / GMAIL_APP_PASSWORD (і запасна MAIL_USER / MAIL_PASSWORD) не задані — вихід.")
         return
+    since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
+    alerts_sent = new_mails = 0
+    photo0 = dict(PHOTO_STATS)
+    aborted = None
+    failed = []
+    for label, connect, folders_fn in boxes:
+        try:
+            m = connect()
+        except (imaplib.IMAP4.error, OSError) as e:   # 02.11: Gmail «Invalid credentials» — запасна скринька все одно читається
+            print(f"{label}: не вдалося увійти ({e.__class__.__name__}: {str(e)[:80]})")
+            failed.append((label, e))
+            continue
+        if dry_run:   # діагностика: скільки листів від Kleinanzeigen лежить у кожній папці
+            _folder_census(m, lookback_days)
+        a, n, aborted_now = _scan(m, label, folders_fn(m), since, state, seen, seen_ads, hint_times, dry_run, pc_replay,
+                                  max_age_hours)
+        alerts_sent += a
+        new_mails += n
+        aborted = aborted or aborted_now
+        try:
+            m.logout()
+        except Exception:
+            pass
+    if len(failed) == len(boxes):   # жодна скринька не відкрилась — як раніше: збій запуску (сторож побачить)
+        raise failed[0][1]
+    _after_scan(state, state_path, seen, seen_ads, hint_times, dry_run, pc_replay, alerts_sent, new_mails, photo0, aborted)
+
+
+def _gmail_login(user: str, password: str):
     m = imaplib.IMAP4_SSL("imap.gmail.com")
-    m.login(gmail_user, gmail_pass)
-    if dry_run:   # діагностика: скільки листів від Kleinanzeigen лежить у кожній папці
-        since_d = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
-        for f in m.list()[1] or []:
-            line = f.decode(errors="ignore")
-            if "\\Noselect" in line:
-                continue
-            name = line.rsplit(' "/" ', 1)[-1].strip()
-            name = name if name.startswith('"') else f'"{name}"'
-            if m.select(name, readonly=True)[0] == "OK":
-                n = len(m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since_d})')[1][0].split())
-                print(f"   папка {line.split(')')[0]}) {name}: {n}")
+    m.login(user, password)
+    return m
+
+
+def _gmail_folders(m) -> list[str]:
     # «Уся пошта» + кошик: користувач видаляє переглянуті сповіщення, а кошик у «Усю пошту» не входить.
     folders = [_all_mail_folder(m)]
     trash = _special_folder(m, "\\Trash", None)
     if trash:
         folders.append(trash)
-    since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
+    return folders
+
+
+def _folder_census(m, lookback_days: int):
+    since_d = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
+    for f in m.list()[1] or []:
+        line = f.decode(errors="ignore")
+        if "\\Noselect" in line:
+            continue
+        name = line.rsplit(' "/" ', 1)[-1].strip()
+        name = name if name.startswith('"') else f'"{name}"'
+        if m.select(name, readonly=True)[0] == "OK":
+            n = len(m.search(None, f'(FROM "{FROM_FILTER}" SINCE {since_d})')[1][0].split())
+            print(f"   папка {line.split(')')[0]}) {name}: {n}")
+
+
+def _scan(m, label, folders, since, state, seen, seen_ads, hint_times, dry_run, pc_replay, max_age_hours):
+    """Одна скринька: нові листи KA у папках → картки. → (карток, нових листів, збій з'єднання або None)."""
     alerts_sent = new_mails = 0
-    photo0 = dict(PHOTO_STATS)
     aborted = None
     try:
         for folder in folders:
@@ -752,11 +798,11 @@ def run(state_path: str, dry_run: bool = False, max_age_hours: float = 6.0, look
                     health.bump(state, "sub_cards|" + sub, sent_now)
     except (imaplib.IMAP4.abort, imaplib.IMAP4.error, OSError) as e:   # оброблене до збою зберігаємо — без дублів карток
         aborted = e
-        print(f"Gmail IMAP обірвав з'єднання: {e} — оброблене збережу, решту візьме наступний запуск")
-    try:
-        m.logout()
-    except Exception:
-        pass
+        print(f"{label} IMAP обірвав з'єднання: {e} — оброблене збережу, решту візьме наступний запуск")
+    return alerts_sent, new_mails, aborted
+
+
+def _after_scan(state, state_path, seen, seen_ads, hint_times, dry_run, pc_replay, alerts_sent, new_mails, photo0, aborted):
     if pc_replay and not alerts_sent and PC_BOT_TOKEN:   # листів про ПК ще не було — перевіряємо сам зв'язок
         import requests
 

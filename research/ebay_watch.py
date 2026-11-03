@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from console_alert import alerts_on as console_alerts_on, evaluate_console
 from ka_listing_check import _CONTACT, _PAYMENT
+import backup_mail
 import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import ebay_images, photo_line
@@ -831,6 +832,11 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
         print(f"   перший запуск: запам'ятав {len(state.get('items', {}))} оголошень, сповіщення — з наступного кругу")
     prune(state, now)
     track_round(state, len(jobs), api_errors, sent, auctions_sent, CALLS["n"] - calls0, photo0, now)
+    if not dry_run:   # 03.11: запасна пошта (якщо задано MAIL_*) — нові листи KA → обробка, як check() в Apps Script для Gmail
+        try:
+            backup_mail.poll(state, now, _dispatch, send=health.office_send)
+        except Exception as e:
+            print(f"   [запасна пошта] {e.__class__.__name__}")
     if state["round"] % 20 == 0 and not dry_run:   # ~раз на годину
         ka_dispatch_check(state, now)
         price_refresh_check(state, now)

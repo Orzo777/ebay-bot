@@ -62,6 +62,10 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.NEW_GMAIL_USER }}   # 18.10: окрема пошта проєкту
           GMAIL_APP_PASSWORD: ${{ secrets.NEW_GMAIL_APP_PASSWORD }}
+          # 03.11: backup mailbox (research/backup_mail.py) - off until these secrets exist; address only in secrets
+          MAIL_HOST: ${{ secrets.MAIL_HOST }}
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}   # службові сповіщення (квота, Gemini)
