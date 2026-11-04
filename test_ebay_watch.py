@@ -200,6 +200,52 @@ class TestPass7(unittest.TestCase):
             self.assertEqual(ebay_watch.fetch_desc(mock.Mock(), "1"), "Ich suche eine PS5")
 
 
+class TestEuropeanUnion(unittest.TestCase):
+    """04.11 (користувач: «шукати по всьому ЄС з урахуванням доставки в Гамбург»)."""
+
+    def test_search_whole_eu_with_hamburg_shipping(self):
+        from unittest import mock
+        import ebay_watch
+        client = mock.Mock()
+        client._headers.return_value = {"Authorization": "x"}
+        with mock.patch("main._request_with_backoff", return_value={"itemSummaries": []}) as rq:
+            ebay_watch.fetch_new(client, "ddr5", "170083", 50, 900)
+            ebay_watch.fetch_new(client, "ddr5", "170083", 50, 900, pickup=True)
+            ebay_watch.fetch_auctions(client, "ddr5", "170083", 50, 900)
+        bin_, pick, auc = [c.kwargs["params"]["filter"] for c in rq.call_args_list]
+        self.assertIn("itemLocationRegion:EUROPEAN_UNION,deliveryCountry:DE", bin_)
+        self.assertNotIn("itemLocationCountry", bin_)
+        self.assertIn("itemLocationCountry:DE", pick)                      # самовивіз — лише Німеччина
+        self.assertIn("itemLocationRegion:EUROPEAN_UNION", auc)
+        self.assertTrue(all("zip%3D20095" in c.kwargs["headers"]["X-EBAY-C-ENDUSERCTX"] for c in rq.call_args_list))
+
+    def _it(self, cc, zip_, ship="18.00"):
+        it = dict(itemId="v1|9|0", title="Kingston FURY Beast DDR5 32GB (2x16GB) 6000MHz", price={"value": "250", "currency": "EUR"},
+                  itemWebUrl="https://www.ebay.de/itm/9", itemCreationDate="2026-09-27T13:50:00.000Z", buyingOptions=["FIXED_PRICE"],
+                  conditionId="3000", seller={"username": "venditore", "feedbackScore": 300, "feedbackPercentage": "100.0"},
+                  itemLocation={"postalCode": zip_, "country": cc})
+        if ship is not None:
+            it["shippingOptions"] = [{"shippingCost": {"value": ship, "currency": "EUR"}}]
+        return listing_of(it)
+
+    def test_milan_pickup_is_not_hamburg(self):
+        import ebay_watch
+        r = evaluate_ebay(self._it("IT", "20121", ship=None))   # Мілан: індекс «20…», але не Гамбург
+        self.assertEqual(r["verdict"], "SKIP")
+        self.assertIn("самовивіз", r["reason"])
+        self.assertTrue(ebay_watch.in_eu(self._it("IT", "20121")))
+        self.assertFalse(ebay_watch.in_eu(self._it("GB", "SW1A")))
+        self.assertFalse(ebay_watch.in_eu(self._it("CH", "8001")))
+
+    def test_card_says_country_and_shipping(self):
+        lst = self._it("IT", "20121")
+        r = evaluate_ebay(lst)
+        card = format_card(r, lst, risk_of(lst, "", r.get("quick_sale", 0)), "new", NOW)
+        self.assertIn("🌍 Продавець: Італія — доставка до Гамбурга 18.00 € уже врахована", card)
+        lst_de = self._it("DE", "10115", ship="6.99")
+        self.assertNotIn("🌍", format_card(evaluate_ebay(lst_de), lst_de, risk_of(lst_de, "", 300), "new", NOW))
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-03c';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-04a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -572,7 +572,7 @@ const MENU = {
     '• виставив 3 124 — якщо виставив сам; виставив 3 ka 129 — лот ще й на Kleinanzeigen (продасться там — з eBay зніму сам)\n' +
     '• зняти 3 — зняти лот з eBay (кількість −1 або завершити)\n' +
     '• продати 3 ka — готове оголошення для Kleinanzeigen: назва, опис, ціна, пороги пропозицій, фото; своя ціна — продати 3 ka 159\n' +
-    '• виставлено — що зараз на продажу: ціна, дні, перегляди, спостерігачі, посилання (eBay; KA — «Мої оголошення»)\n' +
+    '• виставлено — що зараз на продажу: eBay (ціна, дні, перегляди, спостерігачі) і KA (ціна з оголошення, зняте), посилання\n' +
     '• звірити — звірити eBay з таблицею зараз (саме — раз на 3 години): нові оголошення, ціни, завершені\n' +
     '• спостерігачам 3 155 — пропозиція ціни всім, хто спостерігає лот №3; безкоштовна 3 / платна 3 — доставка\n' +
     '• питання й пропозиції ціни від покупців приходять сюди з кнопками відповіді', ['продати', 'виставлено', 'звірити']],
@@ -2150,7 +2150,8 @@ function healthCheck_(heal) {
   const names = HEAL_EVERY.map(function (t) { return t[0]; }).concat(['dailyReport']);
   const missing = names.filter(function (f) { return have.indexOf(f) < 0; });
   const res = { triggers: have, check: age(Number(props.getProperty('LAST_CHECK_OK')) || 0),
-    ledger: age(Number(props.getProperty('LEDGER_OK')) || 0), watchdog: age(Number(wd.at) || 0), healed: [] };
+    ledger: age(Number(props.getProperty('LEDGER_OK')) || 0), watchdog: age(Number(wd.at) || 0), healed: [],
+    slow: JSON.parse(props.getProperty('SLOW_POSTS') || '[]').filter(function (x) { return now - x[0] < 86400e3; }) };   // 04.11
   res.stale = missing.length > 0 || res.check > 15 || res.ledger > 60 || res.watchdog > 40;
   if (!res.stale) { props.deleteProperty('HEAL_N'); return res; }
   if (!heal || now - Number(props.getProperty('HEAL_AT') || 0) < 2 * 3600e3) return res;

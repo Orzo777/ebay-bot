@@ -47,6 +47,7 @@ const ctx = {
     getUserLabelByName: () => { throw new Error('Gmail labels must not be touched for relayed mail'); } },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ setMimeType: () => ({ json: JSON.parse(t) }) }) },
   HtmlService: { createHtmlOutput: (t) => ({ html: t }) },
+  ScriptApp: { getProjectTriggers: () => [] },
 };
 vm.createContext(ctx);
 vm.runInContext(['gmail_trigger.gs', 'ledger.gs', 'kafilter.gs', 'watchdog.gs'].map((f) => fs.readFileSync(__dirname + '/' + f, 'utf8')).join('\n'), ctx);
@@ -110,6 +111,14 @@ delete store.MAIL_SOURCE;
 
 // 6) Telegram і запит стану — як було
 check('telegram update still html', ctx.doPost({ postData: { contents: JSON.stringify({ update_id: 5 }) }, parameter: {} }).html, 'ok');
+
+// 7) 04.11: повільний запит (> 20 с) — у SLOW_POSTS: бот, перше слово команди / тип кнопки, мс; без тексту повідомлення
+ctx.slowPost_(Date.now() - 25000, JSON.stringify({ message: { text: 'виставлено будь-що приватне' } }), 'office');
+ctx.slowPost_(Date.now() - 1000, JSON.stringify({ message: { text: 'швидко' } }), 'office');
+ctx.slowPost_(Date.now() - 31000, JSON.stringify({ callback_query: { data: 'c|непродано|4' } }), 'office');
+const slow = JSON.parse(store.SLOW_POSTS);
+check('slow posts', slow.map((x) => [x[1], x[2], x[3] >= 20000]), [['office', 'виставлено', true], ['office', 'кнопка c|непродано', true]]);
+check('health shows slow', ctx.healthCheck_(0).slow.length, 2);
 
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

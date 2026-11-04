@@ -16,7 +16,7 @@
  * Скрипт приватний у вашому Google-акаунті; не діліться ним, поки в ньому токен.
  */
 const GITHUB_TOKEN = '';   // лише запасний варіант — токен тримайте у «Властивостях скрипту» (крок 2)
-const VER_CODE = '2026-11-03b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_CODE = '2026-11-04a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const REPO = 'Orzo777/ebay-bot';
 const WORKFLOW = 'ram_mail_alert.yml';
 // Лише листи, новіші за останній оброблений (after: у секундах). 01.10: давній запит «newer_than:1d» + getMessages()
@@ -91,17 +91,36 @@ function doPost(e) {
     return HtmlService.createHtmlOutput('ok');
   }
   let out = null;
+  const t0 = Date.now();
   try {
     out = handleUpdate_(e.postData.contents, bot);
-    drainQueued_(true);
+    // 04.11 («помилка вебзастосунку: Read timeout expired»): Telegram довго не чекає — якщо вже повільно, черга почекає check()
+    if (Date.now() - t0 < 15000) drainQueued_(true);
   } catch (err) {
     console.log('doPost: ' + err);
   } finally {
     lock.releaseLock();
   }
+  try { slowPost_(t0, e.postData.contents, bot); } catch (err) { console.log('повільно: ' + err); }
   // 03.11: зашифрований запит стану з GitHub (research/as_health.py) — відповідь JSON
   if (out && out.json) return ContentService.createTextOutput(JSON.stringify(out.json)).setMimeType(ContentService.MimeType.JSON);
   return HtmlService.createHtmlOutput('ok');
+}
+
+/** 04.11: запит довше 20 с — у SLOW_POSTS (10 останніх): коли, який бот, яка дія (лише перше слово команди / тип кнопки,
+ *  без тексту), скільки мс. Видно в перевірці стану ззовні (research/as_health.py). */
+function slowPost_(t0, contents, bot) {
+  const ms = Date.now() - t0;
+  if (ms < 20000) return;
+  let what = '?';
+  try {
+    const u = JSON.parse(contents);
+    what = u.sealed ? 'github' : u.callback_query ? 'кнопка ' + String(u.callback_query.data || '').split('|').slice(0, 2).join('|')
+      : u.message ? (u.message.photo ? 'фото' : String(u.message.text || '').trim().split(/\s+/)[0].slice(0, 16)) : 'інше';
+  } catch (err) { what = '?'; }
+  const props = PropertiesService.getScriptProperties(), list = JSON.parse(props.getProperty('SLOW_POSTS') || '[]');
+  list.push([t0, bot || 'main', what, ms]);
+  props.setProperty('SLOW_POSTS', JSON.stringify(list.slice(-10)));
 }
 
 /** Повідомлення з черги (не дочекались замка) — по черзі, найстаріші першими. held — замок уже взято. */

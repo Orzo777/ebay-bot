@@ -49,6 +49,21 @@ FRESH_HOURS = 6        # старіше оголошення без здешев
 KEEP_DAYS = 7
 BAD_CONDITIONS = {"7000"}   # «als Ersatzteil / defekt»
 HAMBURG_ZIP = re.compile(r"^(?:20|21|22)")   # API маскує індекс: «22***»
+# 04.11 (користувач: «шукати по всьому ЄС з урахуванням доставки в Гамбург»): усередині ЄС — без мита й ПДВ, eBay-захист
+# той самий; ціна доставки — до Гамбурга (заголовок нижче), вона й так у кожній оцінці. Великобританія, Швейцарія — ні (мито).
+EU_CC = {"AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT",
+         "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"}
+EU_FILTER = "itemLocationRegion:EUROPEAN_UNION,deliveryCountry:DE"
+HAMBURG_CTX = {"X-EBAY-C-ENDUSERCTX": "contextualLocation=country%3DDE%2Czip%3D20095"}
+COUNTRY_UK = {"AT": "Австрія", "BE": "Бельгія", "BG": "Болгарія", "HR": "Хорватія", "CY": "Кіпр", "CZ": "Чехія", "DK": "Данія",
+              "EE": "Естонія", "FI": "Фінляндія", "FR": "Франція", "GR": "Греція", "HU": "Угорщина", "IE": "Ірландія",
+              "IT": "Італія", "LV": "Латвія", "LT": "Литва", "LU": "Люксембург", "MT": "Мальта", "NL": "Нідерланди",
+              "PL": "Польща", "PT": "Португалія", "RO": "Румунія", "SK": "Словаччина", "SI": "Словенія", "ES": "Іспанія",
+              "SE": "Швеція"}
+
+
+def in_eu(lst: dict) -> bool:
+    return lst.get("country") in (None, "") or lst["country"] in EU_CC
 # Самовивіз у Гамбурзі (27.09): оголошення з опцією «Abholung» у радіусі 30 км — ціна + дорога, без пересилки.
 # Окремі 2 запити (консолі разом, RAM разом) — через раз, щоб тримати квоту (~2 900 викликів/добу).
 PICKUP_QUERIES = [
@@ -115,7 +130,8 @@ def listing_of(it: dict) -> dict:
 def evaluate_ebay(lst: dict) -> dict:
     """Оцінка тими самими функціями, що й KA, але з eBay-вартістю купівлі: ціна + пересилка, без збору KA."""
     ship, pickup = lst["ship"], False
-    can_pickup = lst.get("pickup_ok") or (ship is None and HAMBURG_ZIP.match(lst["zip"]))
+    # 04.11: самовивіз — лише в Німеччині (міланський індекс 20121 теж «20…»)
+    can_pickup = lst.get("pickup_ok") or (ship is None and lst.get("country") in (None, "", "DE") and HAMBURG_ZIP.match(lst["zip"]))
     if ship is None and not can_pickup:
         return dict(verdict="SKIP", reason="лише самовивіз, не в Гамбурзі", title=lst["title"], price=lst["price"])
     if can_pickup and (ship is None or PICKUP_COST < ship):   # забрати самому дешевше за пересилку
@@ -363,6 +379,9 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
     money += [f"📏 Бери до {r['cap']:.0f} € разом · вигідно до {r['good']:.0f} €",
               f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}"]
     checks = [f"👤 {seller}" + (f" · {_age_label(lst, now)}" if _age_label(lst, now) else "")]
+    if lst.get("country") and lst["country"] != "DE":   # 04.11: з іншої країни ЄС — доставка вже в ціні, мита немає
+        checks.append(f"🌍 Продавець: {COUNTRY_UK.get(lst['country'], lst['country'])} — доставка до Гамбурга "
+                      f"{(lst['ship'] or 0):.2f} € уже врахована; мита й ПДВ немає (ЄС), захист покупця eBay діє; йде ~4–7 днів")
     checks += [f"⚠️ {esc(s)}" for s in risk["soft"]]
     f = desc_facts(r.get("desc"), r)
     if f["works"] is False:
@@ -383,11 +402,13 @@ def _client():
 
 def fetch_new(client, q: str, cat: str, lo: int, hi: int, pickup: bool = False) -> list[dict]:
     from main import _request_with_backoff
-    flt = f"buyingOptions:{{FIXED_PRICE}},itemLocationCountry:DE,price:[{lo}..{hi}],priceCurrency:EUR"
+    # самовивіз — лише Німеччина (Гамбург); решта — увесь ЄС з доставкою в Німеччину (04.11)
+    where = "itemLocationCountry:DE" if pickup else EU_FILTER
+    flt = f"buyingOptions:{{FIXED_PRICE}},{where},price:[{lo}..{hi}],priceCurrency:EUR"
     params = {"q": q, "category_ids": cat, "sort": "newlyListed", "limit": 100,
               "filter": flt + ("," + PICKUP_FILTER if pickup else "")}
     CALLS["n"] += 1
-    d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=client._headers(), params=params)
+    d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=dict(client._headers(), **HAMBURG_CTX), params=params)
     return d.get("itemSummaries") or []
 
 
@@ -595,7 +616,7 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
     now = now or datetime.now(timezone.utc)
     client = client or _client()
     try:
-        it = _request_with_backoff("GET", ITEM_URL + "get_item_by_legacy_id", headers=client._headers(),
+        it = _request_with_backoff("GET", ITEM_URL + "get_item_by_legacy_id", headers=dict(client._headers(), **HAMBURG_CTX),
                                    params={"legacy_item_id": item_id})
     except Exception as e:
         return f"⚫ Оголошення eBay не відкривається ({e.__class__.__name__}) — можливо, його вже зняли.", None, None
@@ -673,9 +694,9 @@ def active(queries: list) -> list:
 def fetch_auctions(client, q: str, cat: str, lo: int, hi: int) -> list[dict]:
     from main import _request_with_backoff
     params = {"q": q, "category_ids": cat, "sort": "endingSoonest", "limit": 100,
-              "filter": f"buyingOptions:{{AUCTION}},itemLocationCountry:DE,price:[{lo}..{hi}],priceCurrency:EUR"}
+              "filter": f"buyingOptions:{{AUCTION}},{EU_FILTER},price:[{lo}..{hi}],priceCurrency:EUR"}
     CALLS["n"] += 1
-    d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=client._headers(), params=params)
+    d = _request_with_backoff("GET", config.EBAY_BROWSE_SEARCH_URL, headers=dict(client._headers(), **HAMBURG_CTX), params=params)
     return d.get("itemSummaries") or []
 
 
@@ -692,7 +713,7 @@ def auction_candidate(it: dict, state: dict, now: datetime) -> tuple[dict, dict]
         return None
     it = dict(it, price=it.get("currentBidPrice") or it.get("price"))
     lst = listing_of(it)
-    if lst["price"] is None or lst["country"] not in (None, "DE"):
+    if lst["price"] is None or not in_eu(lst):
         return None
     r = auction_eval(lst)
     # На останніх хвилинах запас не потрібен: максимальна ставка = межа; переб'ють — нічого не втрачаєш (30.09; було 0.9×)
@@ -728,7 +749,7 @@ def poll_once(client, state: dict, dry_run: bool, now: datetime | None = None) -
             else:
                 merged[lst["id"]] = lst
     for lst in merged.values():
-        if lst["price"] is None or lst["country"] not in (None, "DE"):
+        if lst["price"] is None or not in_eu(lst):
             continue
         why = decide(lst, state, now)
         if first_run or why is None:   # перший запуск лише запам'ятовує, що вже висить

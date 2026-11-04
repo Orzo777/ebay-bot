@@ -77,6 +77,8 @@ def main() -> int:
         res = ask(url, key, heal="--no-heal" not in sys.argv)
         if res:
             print(("⚠️ " if res.get("stale") else "✅ ") + line(res))
+            for t0, bot, what, ms in res.get("slow") or []:   # 04.11: повільні запити вебзастосунку за добу
+                print(f"   повільно: {round((time.time() * 1000 - t0) / 60000)} хв тому · бот {bot} · {what} · {ms / 1000:.0f} с")
             return 0
         time.sleep(20)
     print("Apps Script не відповів станом (зайнятий або ще стара версія)")
