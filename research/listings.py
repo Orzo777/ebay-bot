@@ -231,8 +231,42 @@ def tip(days: int | None, views: int | None, watch: int, questions: int, price: 
     return ""
 
 
-def report(d: dict, token: str | None, post, now: datetime | None = None, lots: list | None = None) -> tuple[str, dict]:
-    """→ (повідомлення HTML, клавіатура з посиланнями). lots — уже отримані активні лоти (інакше запит тут)."""
+KA_AD = "https://www.kleinanzeigen.de/s-anzeige/{}"
+
+
+def ka_ad(ad_id: str, get=None) -> dict | None:
+    """04.11 (користувач: «виставлено показує тільки eBay, мої оголошення на KA ні»): сторінка оголошення KA → ціна зараз
+    або «зняте». Помилка мережі → None (у звіті — без ціни)."""
+    import ka_listing_check as kc
+    try:
+        if get is None:
+            import requests
+            get = requests.get
+        r = get(KA_AD.format(ad_id), headers={"User-Agent": kc.UA, "Accept-Language": "de-DE"}, timeout=10)
+    except Exception:
+        return None
+    if r.status_code in (404, 410):
+        return {"gone": True, "price": None}
+    if r.status_code != 200:
+        return None
+    return {"gone": False, "price": kc.page_price(r.text)}
+
+
+def _ka_line(r: dict, get) -> tuple[str, list]:
+    """Рядок про оголошення KA цього номера (і кнопка) — або ("", []), якщо KA немає."""
+    if not r.get("ka"):
+        return "", []
+    info = ka_ad(str(r["ka"]), get)
+    if info and info["gone"]:
+        return "KA: ⚫ оголошення зняте / продане — якщо продав, «продав " + str(r["n"]) + " ЦІНА»", []
+    price = f"💶 {info['price']:.0f} €" if info and info.get("price") else "ціну не видно"
+    return (f"KA: {price} · перегляди й повідомлення — у застосунку KA",
+            [{"text": f"🔗 №{r['n']} на KA", "url": KA_AD.format(r["ka"])}])
+
+
+def report(d: dict, token: str | None, post, now: datetime | None = None, lots: list | None = None, get=None) -> tuple[str, dict]:
+    """→ (повідомлення HTML, клавіатура з посиланнями). lots — уже отримані активні лоти (інакше запит тут).
+    04.11: номер, що стоїть і на KA (у рядку обліку є оголошення KA), — і рядок KA з ціною й кнопкою."""
     now = now or datetime.now(timezone.utc)
     rows = [r for r in d.get("rows") or [] if r.get("status") == "Виставлено"]
     err = ""
@@ -261,8 +295,10 @@ def report(d: dict, token: str | None, post, now: datetime | None = None, lots: 
                                         f"👁 {views}" if views is not None else "",
                                         f"⭐ {lot['watch']}", f"💬 {lot['questions']}" if lot["questions"] else ""] if x)
         t = tip(days, views, lot["watch"], lot["questions"], lot["price"])
-        body.append(f"<b>{name}</b> · eBay\n<blockquote>{stats}" + (f"\n{t}" if t else "") + "</blockquote>")
-        kb.append([{"text": f"🔗 {('№' + str(r['n']) + ' ') if r else ''}на eBay", "url": lot["url"]}])
+        ka_txt, ka_btn = _ka_line(r, get) if r else ("", [])
+        body.append(f"<b>{name}</b> · eBay" + (" + KA" if ka_txt else "") + f"\n<blockquote>{stats}" + (f"\n{t}" if t else "") +
+                    (f"\n{ka_txt}" if ka_txt else "") + "</blockquote>")
+        kb.append([{"text": f"🔗 {('№' + str(r['n']) + ' ') if r else ''}на eBay", "url": lot["url"]}] + ka_btn)
         if r and lot["price"] and lot["watch"] and days is not None and days >= 5:   # 18.10: пропозиція — кнопкою
             kb.append([{"text": f"💌 №{r['n']}: спостерігачам {nice(lot['price'] * 0.95)} €",
                         "callback_data": f"w|{r['n']}|{nice(lot['price'] * 0.95)}"}])
@@ -271,9 +307,15 @@ def report(d: dict, token: str | None, post, now: datetime | None = None, lots: 
                        {"text": f"♻️ Перевиставити №{r['n']}", "callback_data": f"c|перевиставити|{r['n']}"}])
     other = [r for r in rows if r["n"] not in used]
     for r in other:
-        body.append(f"<b>№{r['n']} {html.escape(short(r['title']))}</b> · KA / вручну\n"
-                    "<blockquote>статистики KA бот не бачить — перегляди й повідомлення в «Мої оголошення»</blockquote>")
-    if other:
+        ka_txt, ka_btn = _ka_line(r, get)
+        if ka_txt:
+            body.append(f"<b>№{r['n']} {html.escape(short(r['title']))}</b> · KA\n<blockquote>{ka_txt}</blockquote>")
+            kb.append(ka_btn) if ka_btn else None
+        else:
+            body.append(f"<b>№{r['n']} {html.escape(short(r['title']))}</b> · KA / вручну\n"
+                        "<blockquote>оголошення KA в обліку не прив'язане — «виставив " + str(r["n"]) + " ka ЦІНА» або посилання на нього; "
+                        "перегляди й повідомлення — в «Мої оголошення»</blockquote>")
+    if other or any(r.get("ka") for r in rows):
         kb.append([{"text": "🔗 Мої оголошення на KA", "url": KA_MINE}])
     n = len(lots) + len(other)
     out = [f"🏷 <b>Виставлено</b> · {n}" if n else "🏷 <b>Виставлено</b>"] + (body or ["Нічого не виставлено. Продати — «💶 Продати»."])

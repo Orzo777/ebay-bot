@@ -49,6 +49,20 @@ def line(res: dict) -> str:
                                                                         if res.get("healed") else ""))
 
 
+def hook_info(key: str, get=requests.get, now: float | None = None) -> str:
+    """04.11 («помилка вебзастосунку: Read timeout expired»): що Telegram знає про вебхук — черга й остання помилка (без адреси)."""
+    try:
+        r = (get(f"{config.TELEGRAM_API_BASE}/bot{key}/getWebhookInfo", timeout=20).json() or {}).get("result") or {}
+    except Exception as e:
+        return f"вебхук: {e.__class__.__name__}"
+    now = now or time.time()
+    err = r.get("last_error_date")
+    line = (f"вебхук бота «Облік і продаж»: у черзі {r.get('pending_update_count', 0)}" +
+            (f", остання помилка {round((now - err) / 60)} хв тому: {str(r.get('last_error_message') or '')[:80]}" if err else ", помилок немає"))
+    print(line)
+    return line
+
+
 def main() -> int:
     key = os.getenv("OFFICE_BOT_TOKEN", "")
     if not key:
@@ -58,6 +72,7 @@ def main() -> int:
     if not url:
         print("немає адреси Apps Script у вебхуку бота «Облік і продаж»")
         return 0
+    hook_info(key)
     for i in range(2):   # вебзастосунок зайнятий (інший запит тримає замок) — ще раз за 20 с
         res = ask(url, key, heal="--no-heal" not in sys.argv)
         if res:

@@ -47,6 +47,34 @@ class ListingsTest(unittest.TestCase):
         self.assertIn("w|4|164", [b.get("callback_data") for row in kb["inline_keyboard"] for b in row])   # 18.10: 💌 кнопкою
         self.assertEqual(urls, ["https://www.ebay.de/itm/1234567890", "https://www.ebay.de/itm/555", listings.KA_MINE])
 
+    def test_ka_ads_shown_04_11(self):
+        # 04.11 (користувач: «виставлено показує тільки eBay, мої оголошення на KA ні»): №4 — і eBay, і KA; №9 — лише KA;
+        # №7 — оголошення KA зняте; №8 — KA без прив'язки
+        class G:
+            def __init__(self, code, page=""):
+                self.status_code, self.text = code, page
+        pages = {"3551005398": G(200, '"ad_price":"159"'), "3552222222": G(200, 'adPrice: 99'), "3553333333": G(404)}
+        get = lambda url, **k: pages[url.rsplit("/", 1)[1]]
+        d = {"rows": [{"n": 4, "title": "2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz", "status": "Виставлено",
+                       "note": "(eBay 1234567890)", "ka": "3551005398"},
+                      {"n": 9, "title": "G.Skill Fortis 2x16 DDR4 2400", "status": "Виставлено", "note": "", "ka": "3552222222"},
+                      {"n": 7, "title": "Kingston Fury 2x16", "status": "Виставлено", "note": "", "ka": "3553333333"},
+                      {"n": 8, "title": "OWC 2x16 SO-DIMM", "status": "Виставлено", "note": ""}]}
+        text, kb = listings.report(d, "tok", post, NOW, get=get)
+        self.assertIn("№4 2x Corsair Vengeance LPX DDR4 RAM 32GB</b> · eBay + KA", text)
+        self.assertIn("KA: 💶 159 €", text)
+        self.assertIn("<b>№9 G.Skill Fortis 2x16 DDR4 2400</b> · KA\n<blockquote>KA: 💶 99 €", text)
+        self.assertIn("<b>№7 Kingston Fury 2x16</b> · KA\n<blockquote>KA: ⚫ оголошення зняте / продане — якщо продав, «продав 7 ЦІНА»", text)
+        self.assertIn("<b>№8 OWC 2x16 SO-DIMM</b> · KA / вручну", text)
+        urls = [b["url"] for row in kb["inline_keyboard"] for b in row if "url" in b]
+        self.assertIn("https://www.kleinanzeigen.de/s-anzeige/3551005398", urls)
+        self.assertIn("https://www.kleinanzeigen.de/s-anzeige/3552222222", urls)
+        self.assertNotIn("https://www.kleinanzeigen.de/s-anzeige/3553333333", urls)
+        self.assertEqual(urls[-1], listings.KA_MINE)
+        # мережа впала — без ціни, але оголошення видно
+        text, kb = listings.report({"rows": d["rows"][1:2]}, None, post, NOW, get=lambda *a, **k: 1 / 0)
+        self.assertIn("KA: ціну не видно", text)
+
     def test_no_ebay(self):
         text, kb = listings.report({"rows": []}, None, post, NOW)
         self.assertIn("Нічого не виставлено", text)
