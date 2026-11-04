@@ -19,13 +19,15 @@ SPEEDS = {
 # Завжди не модуль пам'яті (або пам'ять разом з дорожчою залізякою).
 JUNK = re.compile(
     r"\b(rgb[- ]?(strip|licht)|light\s*(?:enhancement\s*)?kit|beleuchtungs?-?kit|halter|blende|leer|dummy|attrappe|festplatte|ssd|hdd|nvme|mainboard|motherboard|"
-    r"grafikkarte|gpu|rtx|gtx|radeon|smartphone|handy|komplett|barebone|gehaeuse|netzteil|tester|testkarte|"
+    r"grafikkarte|gpu|rtx|gtx|radeon|rx\s?[5-9]\d{3}|smartphone|handy|komplett|barebone|gehaeuse|netzteil|tester|testkarte|"
     r"box only|sticker)\b|\bnur\s+(?:die\s+)?(?:ovp|verpackung|karton)|\bleere?\s+(?:ovp|verpackung|karton)", re.I)
 # Не модуль, лише якщо стоїть ДО першого «DDR»: «Gaming PC 7800X3D 64GB DDR5» — ПК, а «32 GB DDR4 … – Gaming PC»,
 # «DDR5 … für Ryzen», «… + UDIMM Adapter» — сама пам'ять (28.09: такі оголошення бот відкидав).
 JUNK_BEFORE_DDR = re.compile(
     r"\b(k[uü]e?hler|heatsink|heat ?spreader|cooler|kabel|adapter|cpu|prozessor|core (?:i\d|ultra)|ryzen|xeon e?\d|"
-    r"windows|win ?1[01]|display|bildschirm|tablet|gaming[- ]?pc|pc[- ]?bundle|aufr[uü]e?st)\b", re.I)
+    r"windows|win ?1[01]|display|bildschirm|tablet|gaming[- ]?pc|pc[- ]?bundle|aufr[uü]e?st|"
+    # 04.11: «PC Intel i5 13400F 32GB DDR5 RAM RX 7800 XT» — цілий ПК (категорія KA «PCs»); модель процесора до DDR
+    r"intel\s+i\d|i[3579][- ]?\d{4,5}[a-z]{0,2}|\d{4}x3d)\b", re.I)
 DEFECT = re.compile(r"\b(defekt|bastler|ersatzteil|kaputt|nicht funktionsf|for parts|not working|funktioniert nicht|teildefekt)\b", re.I)
 # «2 Stk», «2 Stück» — це кіт, а не лот (28.09); лот — від 5 штук або слова «Konvolut», «Posten»…
 LOTS = re.compile(r"\b(lot|konvolut|posten|sammlung|gemischt|mixed|verschiedene|diverse|paket|bundle)\b|(?<![a-z] )(?<![a-z])\b\d{2,3}\s?x\b|"

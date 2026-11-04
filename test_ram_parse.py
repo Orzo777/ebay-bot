@@ -55,6 +55,12 @@ class ParseTitleTests(unittest.TestCase):
     def test_rejects_non_modules_lots_and_defects(self):
         self.assertIn("не модуль", P("RAM Kühler Heatsink DDR5"))
         self.assertIn("не модуль", P("Lenovo ThinkPad T480 16GB DDR4 RAM 256GB SSD"))
+        # 04.11: цілі ПК з категорії KA «PCs» — модель процесора до DDR / відеокарта AMD; пам'ять «für 7800X3D» — пам'ять
+        self.assertIn("не модуль", P("PC Intel i5 13400F 32GB DDR5 RAM RX 7800 XT"))
+        self.assertIn("не модуль", P("Office PC i5-10400 16GB DDR4"))
+        self.assertIn("не модуль", P("Gaming Rechner 7800X3D 32GB DDR5"))
+        self.assertEqual(P("Kingston Fury 32GB DDR5 6000 für Ryzen 7 7800X3D")["total"], 32)
+        self.assertEqual(P("PC Arbeitsspeicher DDR4 2x16GB 3200")["total"], 32)
         self.assertIn("лот", P("10x 8GB DDR4 RAM Lot"))
         self.assertIn("лот", P("Konvolut DDR3 RAM 4GB"))
         self.assertIn("дефект", P("16GB DDR5 5600 defekt"))

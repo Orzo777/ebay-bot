@@ -180,6 +180,10 @@ class TestProcess(unittest.TestCase):
         # 03.10: «HP Gaming PC» за 549 € — i7-11700F / RTX 3060 Ti / 64 ГБ DDR4 лише в описі; підписка з ключовим словом
         self.assertTrue(rmc.IGNORE_SEARCH_RE.search("Neue Treffer zu deiner Suche „PCs - gaming in Hamburg (+20 km)“"))
         self.assertFalse(rmc.IGNORE_SEARCH_RE.search("Neue Treffer zu deiner Suche „PC-Zubehör & Software - ddr4 in Hamburg“"))
+        # 04.11: пам'ять, яку продавці кладуть у категорію «PCs» (Pallas II DDR5) — підписка «PCs - ddr5» йде в оцінку пам'яті
+        self.assertFalse(rmc.IGNORE_SEARCH_RE.search("Neue Treffer zu deiner Suche „PCs - ddr5 in Hamburg (+30 km)“"))
+        self.assertFalse(rmc.IGNORE_SEARCH_RE.search("Neue Treffer zu deiner Suche „PCs - DDR4 in Hamburg (+30 km)“"))
+        self.assertTrue(rmc.IGNORE_SEARCH_RE.search("Neue Treffer zu deiner Suche „PCs in Hamburg (+20 km)“"))
         desc = ("Verkaufe meinen HP Gaming-PC. Technische Daten: * Intel Core i7-11700F (8 Kerne / 16 Threads) * NVIDIA GeForce "
                 "RTX 3060 Ti (8 GB) * 64 GB DDR4 3200 MHz RAM (2x 32 GB Patriot) * 1 TB SSD * 1 TB HDD * Windows 11")
         pcs, old = [], (rmc.send_pc_card, rmc.PC_BOT_TOKEN)

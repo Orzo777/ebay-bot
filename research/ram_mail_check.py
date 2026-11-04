@@ -81,7 +81,9 @@ _SEARCH_RE = re.compile(r"m-suche-verwenden\.html\?id=(\d+)")
 # «Мухи окремо, котлети окремо»: дешеві ПК на розбірку (підписка «PCs in Hamburg») йдуть в ОКРЕМИЙ
 # Telegram-бот (секрет PC_BOT_TOKEN, той самий chat_id), без оцінки RAM-логікою.
 # Підписки ПК-бота: «PCs in Hamburg (+20 km)», з ключовим словом — «PCs - gaming in Hamburg (+20 km)» (03.10)
-IGNORE_SEARCH_RE = re.compile(r"„PCs(?: - [^“”]{1,60})? in ")
+# 04.11: Pallas II DDR5 2×16 (+99 €) продавець виклав у категорію «PCs» — підписки пам'яті (PC-Zubehör) його не бачили.
+# Підписка KA у «PCs» з ключовим словом пам'яті («PCs - ddr5 in Hamburg») — це пам'ять, а не ПК-бот.
+IGNORE_SEARCH_RE = re.compile(r"„PCs(?: - (?!(?:ddr[45]|ram|arbeitsspeicher)\b)[^“”]{1,60})? in ", re.I)
 PC_BOT_TOKEN = os.getenv("PC_BOT_TOKEN", "")
 # 02.10 (досвід користувача + замір): з KA шлемо лише оголошення з «Direkt kaufen» (оплата через KA із захистом покупця,
 # шахраям не підходить; ~20% оголошень) або з підписок «самовивіз у Гамбурзі» (готівка після огляду). Решта — майже завжди
