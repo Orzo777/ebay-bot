@@ -16,7 +16,7 @@ sys.path.insert(0, ".")
 sys.path.insert(0, "research")
 from console_alert import SHIP_IN as SHIP_IN_CONSOLE
 from console_alert import evaluate_console
-from ka_listing_check import UA, parse_listing, risk_lines
+from ka_listing_check import UA, parse_listing, risk_lines, with_seller_ads
 from ram_mail_check import _NO_PICKUP
 from ram_alert import (SEND_VERDICTS, SHIP_IN_RAM, apply_pickup, broken_reason, card_seller_text, evaluate, format_html,
                        item_for_cost, offer_template,
@@ -97,7 +97,7 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
     if info["reserved"]:
         notes.append("Оголошення позначене «Reserviert».")
     if res["verdict"] in SEND_VERDICTS:
-        risk = parse_listing(page, info["price"], res.get("quick_sale", 0))
+        risk = with_seller_ads(parse_listing(page, info["price"], res.get("quick_sale", 0)))
         if risk.get("block"):   # вигідна ціна не рятує: без захисту покупця це лотерея
             lines = [f"⛔ <b>Не бери — схоже на шахрая</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €"]
             return "\n".join(lines + ["   • " + escape(h) for h in risk["hard"]]), res
@@ -129,7 +129,7 @@ def evaluate_listing(page: str, url: str) -> tuple[str, dict | None]:
     head = f"⏭ <b>Не бери</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €" + (" VB" if info["vb"] else "")
     if res.get("cap"):
         # продавця перевіряємо й тут (29.09: PS5 за 310 € — «дорого», а насправді акаунт 0 дн. і 71% ринку = шахрай)
-        risk = parse_listing(page, info["price"], res.get("quick_sale", 0))
+        risk = with_seller_ads(parse_listing(page, info["price"], res.get("quick_sale", 0)))
         if risk.get("block"):
             lines = [f"⛔ <b>Не бери — схоже на шахрая</b> · <i>{escape(info['title'][:90])}</i> — {info['price']:.0f} €"]
             return "\n".join(lines + ["   • " + escape(h) for h in risk["hard"]]), res

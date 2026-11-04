@@ -22,6 +22,52 @@ HONEST = ("Verkaufe meine Xbox Series X, 1 TB, mit OVP und Controller. Läuft ei
           "Bezahlung bar bei Abholung oder per Sicher bezahlen mit Versand.")
 
 
+class TestHijackedAccount(unittest.TestCase):
+    """04.11: Corsair DDR5 6400 «ungeöffnet» за 280 € від акаунта з 2014 — обидва оголошення сьогодні, у «Dienstleistungen»,
+    друге — PS5 Pro (зламаний старий акаунт); Pallas II з «PCs» від акаунта 2024 — чесний."""
+
+    @staticmethod
+    def cat(name):
+        return f'<span itemprop="name">Kleinanzeigen</span><span itemprop="name">{name}</span>'
+
+    def test_services_category_blocks(self):
+        import ka_listing_check as kc
+        r = parse_listing(self.cat("Dienstleistungen") + page(HONEST, since="26.09.2014"), 290, 509, TODAY)
+        self.assertTrue(r["block"])
+        self.assertIn("Dienstleistungen", r["hard"][0])
+        r = parse_listing(self.cat("Elektronik") + page(HONEST, since="26.09.2014"), 290, 509, TODAY)
+        self.assertFalse(r["block"])
+        self.assertEqual(kc.category_of(self.cat("Elektronik")), "Kleinanzeigen > Elektronik")
+
+    def test_seller_ads_parsed_from_list_page(self):
+        import ka_listing_check as kc
+        item = ('<article data-adid="1"><div class="aditem-main--top--right"> <i class="icon icon-small icon-calendar-open" '
+                'aria-hidden="true"></i>\n  {d}\n </div><h2><a class="ellipsis"\n      \n      href="/s-anzeige/x/1">{t}</a></h2></article>')
+        b = item.format(d="Heute, 18:09", t="PS5 Pro inkl. Controller") + item.format(d="16.10.2026", t="Corsair 32GB DDR5")
+        self.assertEqual(kc.seller_ads(b), [("PS5 Pro inkl. Controller", "Heute, 18:09"), ("Corsair 32GB DDR5", "16.10.2026")])
+
+    def test_old_account_all_ads_today(self):
+        import ka_listing_check as kc
+        base = parse_listing(page("Kit in OVP, unbenutzt, voll funktionsfähig.", since="26.09.2014"), 280, 395, TODAY)
+        own = "Corsair Vengeance RGB DDR5 32GB"
+        r = kc.hijack_check(base, [("PS5 Pro inkl. Controller", "Heute, 18:09"), (own, "Heute, 18:05")], own)
+        self.assertTrue(r["block"])
+        self.assertIn("зламаний акаунт; серед них «PS5 Pro", r["hard"][-1])
+        # без приманки й без «нове» — лише підозра (🔴), не блок
+        r = kc.hijack_check(base, [("Schrank weiß", "Gestern, 10:00"), (own, "Heute, 18:05")], own)
+        self.assertFalse(r["block"])
+        self.assertGreaterEqual(r["score"], 3)
+        # хоч одне давнє оголошення — звичайний продавець
+        r = kc.hijack_check(base, [("PS5 Pro", "Heute, 18:09"), (own, "12.03.2025")], own)
+        self.assertEqual(r, base)
+        # «ungeöffnet» без приманки — блок
+        new = parse_listing(page("Neu und originalverpackt, ungeöffnet.", since="26.09.2014"), 280, 395, TODAY)
+        self.assertTrue(kc.hijack_check(new, [(own, "Heute, 18:05")], own)["block"])
+        # молодий акаунт — ця перевірка не потрібна (там свої правила)
+        young = parse_listing(page("Kit unbenutzt.", since="01.05.2026"), 280, 395, TODAY)
+        self.assertEqual(kc.hijack_check(young, [(own, "Heute, 18:05")], own), young)
+
+
 class TestRisk(unittest.TestCase):
     def test_old_account_honest_text_is_low(self):
         r = parse_listing(page(HONEST), 290, 509, TODAY)

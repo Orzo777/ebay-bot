@@ -61,12 +61,57 @@ _TITLE_RE = re.compile(r'<h1[^>]*id="viewad-title"[^>]*>(.*?)</h1>', re.S)
 
 def _title_of(page: str) -> str:
     m = _TITLE_RE.search(page)
-    return html.unescape(re.sub(r"<[^>]+>", " ", m.group(1))) if m else ""
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))).strip() if m else ""
 
 
 # «Neu / OVP / versiegelt» дешевше ринку — улюблена приманка (PS5 Slim «unausgepackt» за €280 від акаунта 15 дн., 27.09)
 _NEW_BAIT = re.compile(r"(?<!nicht )\bneu\b(?!wertig)|originalverpackt|versiegelt|ungeöffnet|unausgepackt|sealed|"
                        r"(?:noch\s+)?in\s+(?:der\s+)?(?:original)?folie|nie\s+(?:benutzt|ausgepackt)", re.I)
+
+
+# 04.11 (користувач: Corsair DDR5 6400 «нові» за 280 € від акаунта з 2014, обидва його оголошення — сьогодні, у
+# «Dienstleistungen», друге — PS5 Pro): зламані старі акаунти. Товар у категорії «послуги» — так обходять фільтри KA.
+_BREADCRUMB_RE = re.compile(r'<span itemprop="name">([^<]+)</span>')
+_USER_RE = re.compile(r"userId=(\d+)")
+_BAIT_TITLE = re.compile(r"\b(ps ?5|playstation ?5|xbox series|switch ?2|iphone ?1[3-9]|macbook|steam ?deck|airpods|apple watch|"
+                         r"ipad pro|rtx ?[45]0[6-9]0)\b", re.I)
+_LIST_ITEM_RE = re.compile(r'class="ellipsis"\s+href="[^"]+"\s*>\s*([^<]+?)\s*</a>|icon-calendar-open[^>]*>\s*</i>\s*([^<]+?)\s*<', re.S)
+
+
+def category_of(page: str) -> str:
+    """Хлібні крихти сторінки: «Kleinanzeigen > Elektronik > PCs»."""
+    return " > ".join(html.unescape(x).strip() for x in _BREADCRUMB_RE.findall(page or "")[:6])
+
+
+def seller_ads(page: str) -> list[tuple[str, str]]:
+    """Сторінка «усі оголошення продавця» (s-bestandsliste) → [(назва, дата як на KA: «Heute, 18:09» / «16.10.2026»)]."""
+    titles, dates = [], []
+    for t, d in _LIST_ITEM_RE.findall(page or ""):
+        if t:
+            titles.append(html.unescape(t).strip())
+        elif d:
+            dates.append(d.strip())
+    return list(zip(titles, dates)) if len(titles) == len(dates) else [(t, "") for t in titles]
+
+
+def hijack_check(res: dict, ads: list[tuple[str, str]], own_title: str) -> dict:
+    """Старий акаунт (≥ 180 дн.), а всі його оголошення (до 6) з'явились сьогодні / вчора — схоже на зламаний: такі
+    «прокидаються» з ходовими речами нижче ринку. Приманка серед них (PS5, iPhone…) або «нове, запаковане» — блок."""
+    if not res or res.get("age_days", 0) < 180 or not ads or len(ads) > 6:
+        return res
+    if not all(re.match(r"(heute|gestern)\b", d, re.I) for _, d in ads):
+        return res
+    others = [t for t, _ in ads if t != own_title]
+    bait = [t for t in others if _BAIT_TITLE.search(t)]
+    new = bool(_NEW_BAIT.search((res.get("desc") or "") + " " + own_title))
+    why = (f"старий акаунт (з {res.get('since_year')}), але всі {len(ads)} оголошення виставлено сьогодні/вчора — схоже на "
+           f"зламаний акаунт" + (f"; серед них «{bait[0][:40]}»" if bait else ""))
+    res = dict(res, reasons=res["reasons"] + [why], score=res["score"] + 3)
+    if bait or new:
+        res["hard"] = res["hard"] + [why + (" і товар «новий, запакований»" if new and not bait else "")]
+    res["level"] = "high" if res["score"] >= 4 else res["level"]
+    res["block"] = bool(res["hard"])
+    return res
 
 
 def parse_listing(page: str, price: float, quick_sale: float, today: date | None = None) -> dict:
@@ -78,11 +123,17 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
         return dict(level="unknown", score=0, reasons=["сторінку не вдалося прочитати — можливо, оголошення вже зняте"],
                     seller="")
     reasons, hard, score = [], [], 0
+    age_days, since_year = 0, None
+    cat = category_of(page)
+    if re.search(r"dienstleistungen", cat, re.I):
+        score += 3
+        reasons.append("товар у категорії «Dienstleistungen» (послуги) — так шахраї обходять фільтри KA")
+        hard.append("товар виставлено в «Dienstleistungen» (послуги), а не в електроніці")
     m = _SINCE_RE.search(page)
     seller = "комерційний" if _COMMERCIAL_RE.search(page) else "приватний"
     if m:
         since = date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
-        age_days = (today - since).days
+        age_days, since_year = (today - since).days, since.year
         seller += f", на KA з {since.year}" if age_days >= 365 else f", на KA {age_days} дн."
         if age_days < 14:
             score += 3
@@ -150,8 +201,10 @@ def parse_listing(page: str, price: float, quick_sale: float, today: date | None
         hard.append("забагато ознак шахрайства разом")
     # block: у підписках картки не буде зовсім; лишаються 🟢 і 🟡 лише з «м'яких» ознак (молодий акаунт, короткий опис)
     from photo_check import ka_images
+    um = _USER_RE.search(page)
     return dict(level=level, score=score, reasons=reasons, seller=seller, block=bool(hard), hard=hard, desc=desc,
-                buy_now=bool(_BUY_NOW_RE.search(page)), images=ka_images(page), page_price=page_price(page))
+                buy_now=bool(_BUY_NOW_RE.search(page)), images=ka_images(page), page_price=page_price(page),
+                age_days=age_days, since_year=since_year, user_id=um.group(1) if um else "", category=cat, title=_title_of(page))
 
 
 _PAGE_PRICE = re.compile(r'ad_price"\s*:\s*"(\d+(?:\.\d+)?)"|adPrice:\s*(\d+(?:\.\d+)?)')
@@ -177,9 +230,26 @@ def check_listing(link: str | None, price: float, quick_sale: float) -> dict | N
             return dict(level="gone", score=0, reasons=["оголошення вже зняте"], seller="")
         if r.status_code != 200:
             return None
-        return parse_listing(r.text, price, quick_sale)
+        return with_seller_ads(parse_listing(r.text, price, quick_sale))
     except Exception:
         return None
+
+
+def with_seller_ads(res: dict, get=None) -> dict:
+    """04.11: старий акаунт — ще одна сторінка: усі його оголошення (чи не «прокинувся» він сьогодні з PS5). Мережа впала — як є."""
+    if not res or res.get("age_days", 0) < 180 or not res.get("user_id"):
+        return res
+    try:
+        if get is None:
+            import requests
+            get = requests.get
+        b = get(f"https://www.kleinanzeigen.de/s-bestandsliste.html?userId={res['user_id']}",
+                headers={"User-Agent": UA, "Accept-Language": "de-DE"}, timeout=10)
+        if b.status_code == 200:
+            return hijack_check(res, seller_ads(b.text), res.get("title") or "")
+    except Exception:
+        pass
+    return res
 
 
 LABEL = {"unknown": "⚪ невідомо", "low": "🟢 низький", "medium": "🟡 середній", "high": "🔴 ВИСОКИЙ", "gone": "⚫ оголошення зняте"}
