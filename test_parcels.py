@@ -95,6 +95,24 @@ class ParcelsTest(unittest.TestCase):
         self.assertIn("✅ доставлено 11.10", lines[7])
         self.assertIn('href="https://www.dhl.de/', t)
 
+    def test_outgoing_never_matched_by_title_06_11(self):
+        # 06.11: №4 (Corsair LPX 2133) щойно відправлено — бот узяв «доставлено» в старого замовлення Corsair LPX 3200
+        old = dict(order_id="23-1", item_id="111", sku="", title="Corsair Vengeance LPX 32GB (2x16GB) DDR4 3200", status="Completed",
+                   shipped="2026-10-10", track=("354500707179", "DHL"), eta_min="", eta_max="", delivered="2026-10-14T10:00:00.000Z")
+        cancelled = dict(old, order_id="13-1", item_id="222", sku="ledger-4", status="Cancelled", delivered="", track=("", ""))
+        new = dict(old, order_id="99-1", item_id="333", sku="ledger-4", title="Corsair Vengeance LPX 32GB (2x16GB) DDR4-2133",
+                   track=("02307144099999", "Hermes"), delivered="")
+        row = {"n": 4, "title": "2x Corsair Vengeance LPX DDR4 RAM 32GB (2x16GB) 2133MHz", "src": "Kleinanzeigen", "id": "", "track": ""}
+        self.assertIs(parcels._match_out(dict(row, order="99-1"), [old, cancelled, new]), new)
+        self.assertIs(parcels._match_out(dict(row, track="0230 7144 099999"), [old, cancelled, new]), new)
+        self.assertIs(parcels._match_out(row, [old, cancelled, new]), new)                     # SKU; скасоване не рахується
+        self.assertIs(parcels._match_out(dict(row, listing="333"), [old, new]), new)
+        self.assertIsNone(parcels._match_out(row, [old]))                                       # лише схожа назва — ні
+        self.assertIsNone(parcels._match_out(dict(row, track="X1"), [old, new]))                # свій трек, чужі замовлення — ні
+        twin = dict(new, order_id="99-2", item_id="333")
+        self.assertIsNone(parcels._match_out(dict(row, listing="333"), [new, twin]))            # неоднозначно — краще нічого
+        self.assertIsNone(parcels._event(row, parcels._match_out(row, [old]), None, True))      # і жодної події «доставлено»
+
     def test_ledger_delivery_beats_ebay_shipped(self):
         r = {"n": 2, "title": "Corsair", "src": "eBay", "delivered": "2026-10-11"}
         o = {"track": ("00340434", "DHL"), "shipped": "2026-10-10T09:00:00.000Z", "eta_min": "", "eta_max": "", "delivered": ""}

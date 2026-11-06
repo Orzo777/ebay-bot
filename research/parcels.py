@@ -222,6 +222,7 @@ def ebay_orders(token: str, post, role: str) -> list[dict]:
                       for t in tr.iter(ns + "ShipmentTrackingDetails")]
             pk = next(iter(list(tr.iter(ns + "ShippingPackageInfo")) + list(o.iter(ns + "ShippingPackageInfo"))), None)
             out.append(dict(item_id=_t(tr, "Item/ItemID", ns), title=_t(tr, "Item/Title", ns), status=_t(o, "OrderStatus", ns),
+                            order_id=_t(o, "OrderID", ns), sku=_t(tr, "Item/SKU", ns),
                             shipped=_t(o, "ShippedTime", ns), track=(tracks[0] if tracks else ("", "")),
                             eta_min=_t(pk, "EstimatedDeliveryTimeMin", ns) if pk is not None else "",
                             eta_max=_t(pk, "EstimatedDeliveryTimeMax", ns) if pk is not None else "",
@@ -241,6 +242,22 @@ def _match(row: dict, orders: list[dict]) -> dict | None:
     want = _words(row.get("title", ""))
     best = max(orders, key=lambda o: len(want & _words(o["title"])), default=None)
     return best if best and len(want & _words(best["title"])) >= 3 else None
+
+
+def _match_out(row: dict, orders: list[dict]) -> dict | None:
+    """06.11 (користувач: «пише одразу, що доставлено, хоча воно тільки відправлено»): посилка покупцю — лише за точними
+    ознаками: номер замовлення, трек, SKU рядка, номер оголошення. За схожою назвою №4 (Corsair LPX) брав статус і трек
+    давно доставленого замовлення іншого Corsair LPX. Неоднозначно — краще нічого, ніж чужа доставка."""
+    norm = lambda t: str(t or "").replace(" ", "").upper()
+    live = [o for o in orders if str(o.get("status") or "").lower() != "cancelled"]
+    if row.get("order"):
+        hit = next((o for o in live if o.get("order_id") == row["order"]), None)
+        if hit:
+            return hit
+    if row.get("track"):   # свій трек відомий: замовлення з іншим треком — точно не це
+        return next((o for o in live if norm(o["track"][0]) == norm(row["track"])), None)
+    cands = [o for o in live if (row.get("listing") and o["item_id"] == str(row["listing"])) or o.get("sku") == f"ledger-{row['n']}"]
+    return cands[0] if len(cands) == 1 else None
 
 
 def line_for(row: dict, order: dict | None, live: dict | None, outgoing: bool, short: bool = False) -> str:
@@ -312,7 +329,7 @@ def check(d: dict, token: str | None, post, get, photos: bool = False) -> tuple:
     plan = []
     for title, rows, orders, outgoing in (("⬇️ До тебе", rows_in, buy, False), ("⬆️ Від тебе покупцям", rows_out, sell, True)):
         for i, r in enumerate(rows):
-            order = _match(r, orders) if (outgoing or "ebay" in str(r.get("src", "")).lower()) else None
+            order = _match_out(r, orders) if outgoing else _match(r, orders) if "ebay" in str(r.get("src", "")).lower() else None
             num = r.get("track") or (order or {}).get("track", ("", ""))[0]
             carrier = r.get("carrier") or (order or {}).get("track", ("", ""))[1]
             plan.append((title if i == 0 else None, r, order, num, carrier, outgoing))

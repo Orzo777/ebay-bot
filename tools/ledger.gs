@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-06a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-06b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -523,7 +523,7 @@ function processLedger() {
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
   try { tidySheet1013_(); } catch (e) { console.log('tidySheet1013_: ' + e); }
-  try { fix1103_(); fix1103b_(); } catch (e) { console.log('fix1103_: ' + e); }
+  try { fix1103_(); fix1103b_(); fix1106_(); } catch (e) { console.log('fix1103_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
   try { enableButtons_(); } catch (e) { console.log('кнопки: ' + e); }
   if (full) props.setProperty('LEDGER_SCANNED', '1');
@@ -1478,6 +1478,10 @@ function parcelsData_() {
   let links = [];   // 16.10: посилання на оголошення — для головного фото посилки (не вийшло — посилки й без фото)
   try { if (rows.length) links = ledger_().getSheetByName('Угоди').getRange(LEDGER_FIRST, COL.link, rows[rows.length - 1].n, 1).getValues(); }
   catch (e) { console.log('посилання: ' + e); }
+  let notes = [];
+  try { if (rows.length) notes = ledger_().getSheetByName('Угоди').getRange(LEDGER_FIRST, COL.note, rows[rows.length - 1].n, 1).getValues(); }
+  catch (e) { console.log('нотатки: ' + e); }
+  const orders = orderRows_();
   const incoming = rows.filter(function (r) { return ['Оплачено', 'В дорозі'].indexOf(r.status) >= 0; }).map(function (r) {
     const e = ev[r.n] || {};
     return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.track || '', carrier: e.carrier || '', date: r.date,
@@ -1488,7 +1492,10 @@ function parcelsData_() {
     return r.status === 'Продано' && e.sent && !e.handed && (!e.outDelivered || days_(e.outDelivered, today) <= 3);
   }).map(function (r) {
     const e = ev[r.n] || {};
-    return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.outTrack || '', carrier: e.outCarrier || '', delivered: e.outDelivered || '' };
+    // 06.11: точні ознаки замовлення (parcels._match_out) — за назвою №4 брав доставку чужого Corsair LPX
+    const order = Object.keys(orders).filter(function (o) { return orders[o] && orders[o][0] === r.n; }).pop() || '';
+    return { n: r.n, title: r.title, src: r.src, id: r.id, track: e.outTrack || '', carrier: e.outCarrier || '', delivered: e.outDelivered || '',
+      order: order, listing: listingId_((notes[r.n - 1] || [''])[0]) };
   });
   return { incoming: incoming, outgoing: outgoing };
 }
@@ -1912,6 +1919,18 @@ function relayThread_(m) {
       props.setProperty('RELAY_TRASH', JSON.stringify(t.slice(-150)));
       return this;
     } };
+}
+
+/** 06.11: №4 щойно відправлено, а посилки за схожою назвою взяли доставку іншого Corsair LPX — зняти хибне «доставлено». */
+function fix1106_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('FIX1106') || !props.getProperty('LEDGER_ID')) return;
+  props.setProperty('FIX1106', '1');
+  const r = rowByN_(4), e = events_()[4] || {};
+  if (!r || r.status !== 'Продано' || !e.outDelivered || String(r.sdate) < '2026-11-05') return;
+  setEvents_(4, { outDelivered: undefined });
+  notify_('🛠 №4: «доставлено» було помилкове — бот узяв статус іншого, вже доставленого Corsair LPX. Прибрав: посилка в дорозі, ' +
+          'напишу, коли покупець справді отримає. Посилки покупцям тепер звіряються лише за замовленням і треком, не за назвою.');
 }
 
 /** 03.11 (вечір): перший запуск обліку після 39 год простою взяв старий лист про продаж №6 і за назвою записав №4; №9 (з рук,
@@ -2434,7 +2453,7 @@ function sealedPost(s) {
   const props = PropertiesService.getScriptProperties();
   let d;
   try { d = unseal_(s, officeToken_(props)); } catch (e) { console.log('sealedPost: ' + e.message); return; }
-  try { fix1103_(); fix1103b_(); } catch (e) { console.log('fix1103_: ' + e); }
+  try { fix1103_(); fix1103b_(); fix1106_(); } catch (e) { console.log('fix1103_: ' + e); }
   if (d.kind === 'health') return healthCheck_(d.heal);   // 03.11: відповідь — у GitHub (research/as_health.py)
   if (d.kind === 'mail') return relayStore_(d.mails);    // 03.11: листи з запасної скриньки (research/backup_mail.py)
   if (d.kind === 'ebay_rt' && d.rt) {
