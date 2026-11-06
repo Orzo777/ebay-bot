@@ -115,6 +115,26 @@ vm.runInContext('syncApply_(__p)', Object.assign(ctx, { __p: { lots: [], ask: []
 check('fees on №6', [cell(6, 'sship'), cell(6, 'comm'), cell(5, 'comm')], [5.79, 10.06, 9.52]);
 check('shipped №6', [ctx.events_()[6].outTrack, (ctx.events_()[5] || {}).outTrack], ['02307144017733', undefined]);
 
+// 3b) 06.11: «відправив» натиснули раніше за звірку — відправка без треку; звірка дописує трек з eBay, один раз
+ctx.setEvents_(5, { sent: '2026-10-31' });
+vm.runInContext('syncApply_(__p)', Object.assign(ctx, { __p: { lots: [], ask: [], ended: [],
+  shipped: [{ order_id: '12-15361-67725', item_id: '336849011147', sku: 'ledger-5', track: '02304112003507', carrier: 'Hermes', date: '2026-10-31' }] } }));
+check('track filled after manual sent', [ctx.events_()[5].outTrack, ctx.events_()[5].outCarrier, ctx.events_()[5].sent], ['02304112003507', 'Hermes', '2026-10-31']);
+check('track message', /📮 №5 .*трек з eBay: 02304112003507 \(Hermes\), записав/.test(last()), true);
+const nTrack = sent.length;
+vm.runInContext('syncApply_(__p)', Object.assign(ctx, { __p: { lots: [], ask: [], ended: [],
+  shipped: [{ order_id: '12-15361-67725', item_id: '336849011147', sku: 'ledger-5', track: '02304112003507', carrier: 'Hermes', date: '2026-10-31' }] } }));
+check('track once', sent.length, nTrack);
+// «відправив 1» без треку, продаж на eBay: звірка одразу, замість «додай трек» — «візьму з eBay сам»
+const disp = [];
+store.EBAY_RT = 'rt';
+vm.runInContext('sellDispatch_ = function (d) { __disp.push(d); return 204; };', Object.assign(ctx, { __disp: disp }));
+say('відправив 1');
+check('sent without track pulls from eBay', [disp.map((d) => d.mode), /Трек візьму з eBay сам/.test(last()), /Додай трек/.test(last())], [['sync'], true, false]);
+say('відправив 1 02304112003507');
+check('sent with track — no extra sync', disp.filter((d) => d.mode === 'sync').length, 1);
+delete store.EBAY_RT;
+
 // 4) скасоване замовлення → рядок назад у продаж (та сама дата й ціна); вже скасоване — вдруге не чіпаємо
 deals.cells['12:11'] = 'Продано'; deals.cells['12:' + COL.sdate] = D('2026-11-02'); deals.cells['12:' + COL.sprice] = 169;   // №8
 deals.cells['12:' + COL.sto] = 'eBay';

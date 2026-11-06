@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-04a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-06a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -2188,7 +2188,15 @@ function shippedFromEbay_(list, out) {
     const bySku = (String(x.sku || '').match(/^ledger-(\d{1,4})$/) || [])[1];
     const r = m ? rows.filter(function (y) { return y.n === m[0]; })[0] : rows.filter(function (y) { return bySku ? y.n === Number(bySku)
       : x.item_id && String((notes[y.n - 1] || [''])[0]).indexOf(String(x.item_id)) >= 0; })[0];
-    if (!r || (ev[r.n] || {}).sent) return;
+    if (!r) return;
+    const e = ev[r.n] || {};
+    if (e.sent) {   // 06.11: натиснув «відправив» раніше за звірку — відправка є, а трек візьмемо з eBay (етикетка eBay)
+      if (!x.track || e.outTrack || e.outDelivered || e.handed) return;
+      setEvents_(r.n, { outTrack: x.track, outCarrier: x.carrier || '' });
+      out.push('📮 №' + r.n + ' ' + h_(String(listTitle_(r.n, r.title)).slice(0, 40).trim()) + ' — трек з eBay: ' + h_(x.track) +
+               (x.carrier ? ' (' + h_(x.carrier) + ')' : '') + ', записав; коли покупець отримає — напишу');
+      return;
+    }
     setEvents_(r.n, x.track ? { sent: x.date || today, outTrack: x.track, outCarrier: x.carrier || '' } : { sent: x.date || today });
     out.push('📮 №' + r.n + ' ' + h_(String(listTitle_(r.n, r.title)).slice(0, 40).trim()) + ' — в eBay «Versendet»' +
              (x.track ? ' (трек ' + h_(x.track) + ')' : '') + ', записав відправку' + (x.track ? '; коли покупець отримає — напишу' : ''));
@@ -2959,7 +2967,12 @@ function statusCommand_(msg) {
       if (Number(sh.getRange(row, COL.pack).getValue()) === 0) sh.getRange(row, COL.pack).setValue('');
     }
     setEvents_(n, t ? { sent: today, outTrack: t.num, outCarrier: t.carrier } : { sent: today });
+    // 06.11 (користувач: «раніше він сам підтягував трек з eBay»): продаж на eBay без треку — звірка зараз, трек із замовлення
+    const rt = props.getProperty('EBAY_RT') || '';
+    const pull = !t && !e.outTrack && rt && /ebay/i.test(String(sh.getRange(row, COL.sto).getValue())) &&
+      sellDispatch_({ mode: 'sync', rt: rt, rows: rowsForGithub_(openRowsNotes_()), sign: signKey_() }) === 204;
     notify_('📮 ' + name + ' — відправлено, більше не нагадую.' + (t ? ' Коли покупець отримає — напишу.'
+      : pull ? ' Трек візьму з eBay сам — напишу за хвилину-дві. Етикетка не з eBay — «трек ' + n + ' номер».'
       : ' Додай трек — «трек ' + n + ' номер», і я скажу, коли покупець отримає.') + shipToEbay_(n, r.title, t), t ? trackButton_(t) : null);
     return true;
   }
