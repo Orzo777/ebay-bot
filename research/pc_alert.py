@@ -75,6 +75,9 @@ FEE, ORDER_FEE, PACK = 0.0, 0.0, 4.0
 SHIP_OFFICE, SHIP_GAMING, SHIP_PART = 10.49, 19.99, 6.19   # DHL до 10 кг / до 31,5 кг / 2 кг
 PICKUP = 5.0   # дорога на самовивіз (HVV)
 NEGOTIATE_FROM = 150   # дорожчі ПК: якщо вигідно після торгу до −25% — картка «торгуйся до X €»
+# Продавець торгу не хоче: «Festpreis!», «Preis ist fest», «nicht verhandelbar», «keine Preisverhandlung» (але не «kein Festpreis»)
+FIXED_PRICE = re.compile(r"(?<!kein )(?<!keine )\bfest(?:preis|er\s+preis)\b|preis\s+(?:ist\s+)?(?:fix|fest)\b|"
+                         r"nicht\s+verhandelbar|keine?\s+(?:preis)?verhandlung|keine\s+preisvorschl[äa]ge", re.I)
 
 _INTEL = re.compile(r"\bi([3579])[\s-]?(\d{4,5})[a-z]{0,2}\b", re.I)
 _INTEL_GEN = re.compile(r"\bi([3579])\b[^,/|]{0,20}?\b(\d{1,2})\.?\s?(?:gen|generation|th)\b", re.I)
@@ -233,7 +236,12 @@ def evaluate_pc(title: str, price: float) -> dict:
     out = dict(verdict=verdict, parsed=p, cost=cost, how=how, net=net, profit=profit, roi=roi)
     max_price = int((net / 1.3 - PICKUP) // 5 * 5)   # ціна, за якої заробіток — 30% від вкладеного
     if verdict == "SKIP" and price >= NEGOTIATE_FROM and max_price >= 0.75 * price:
-        out.update(verdict="NEGOTIATE", max_price=max_price)
+        # 11.11 (користувач: «чому бот казав торгуйся, якщо це не вигідно»): у описі «Festpreis!» — торгу не буде, а за
+        # повну ціну заробіток малий → просто «не вигідно», без картки
+        if FIXED_PRICE.search(title):
+            out["reason"] = "Festpreis — торгу не буде, а за повну ціну невигідно"
+            return out
+        out.update(verdict="NEGOTIATE", max_price=max_price, profit_max=net - (max_price + PICKUP), price=price)
     return out
 
 
@@ -243,7 +251,10 @@ def pc_card_lines(r: dict) -> list[str]:
         return ["❔ Оцінити не вдалося: " + r["reason"]]
     how = f"🔧 {r['how']} → чистими ≈ {r['net']:.0f} €"
     if r["verdict"] == "NEGOTIATE":
-        return [f"🤝 <b>ТОРГУЙСЯ</b> · бери до <b>{r['max_price']} €</b> · за цією ціною ≈ {r['profit']:.0f} €", how]
+        # 11.11: заробіток — за ціною «бери до», а не за ціною оголошення (було «за цією ціною ≈ 20 €» — це за повну ціну)
+        at_max = r.get("profit_max", r["profit"])
+        return [f"🤝 <b>ТОРГУЙСЯ</b> · бери до <b>{r['max_price']} €</b> → заробіток ≈ {at_max:.0f} €"
+                + (f" (за {r['price']:.0f} € — лише ≈ {r['profit']:.0f} €)" if r.get("price") else ""), how]
     tag = "🟢 <b>ВИГІДНО</b>" if r["verdict"] == "BUY-GOOD" else "🟡 <b>БЕРИ</b>" if r["verdict"] == "BUY" else "⏭ не вигідно"
     return [f"{tag} · заробіток ≈ <b>{r['profit']:.0f} €</b> (з дорогою {r['cost']:.0f} €)", how]
 

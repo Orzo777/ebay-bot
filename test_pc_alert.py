@@ -46,6 +46,20 @@ class TestEvaluate(unittest.TestCase):
         self.assertIn("ТОРГУЙСЯ", pc_card_lines(r)[0])
         self.assertEqual(evaluate_pc("Gaming PC i7-11700F RTX 3060 Ti 64GB DDR4 1TB SSD", 900)["verdict"], "SKIP")   # торг не врятує
 
+    def test_negotiate_card_and_fixed_price(self):
+        # 11.11: KA 3568109675 — «торгуйся до 125 € · за цією ціною ≈ 20 €», а 20 € — це за 150 €; і в описі «Festpreis!»
+        t = "günstiger Gaming PC Computer für Einsteiger I5 6400 GTX1060 SSD"
+        r = evaluate_pc(t, 150)
+        self.assertEqual(r["verdict"], "NEGOTIATE")
+        line = pc_card_lines(r)[0]
+        self.assertIn(f"бери до <b>{r['max_price']} €</b> → заробіток ≈ {r['profit_max']:.0f} €", line)
+        self.assertIn(f"(за 150 € — лише ≈ {r['profit']:.0f} €)", line)
+        self.assertGreater(r["profit_max"], r["profit"])
+        fixed = evaluate_pc(t + " | Keine Garantie oder Rücknahme. Nur an Selbstabholer! Kein Tausch! Festpreis!", 150)
+        self.assertEqual((fixed["verdict"], fixed["reason"][:10]), ("SKIP", "Festpreis "))
+        self.assertEqual(evaluate_pc(t + " | kein Festpreis, VB", 150)["verdict"], "NEGOTIATE")
+        self.assertEqual(evaluate_pc(t + " | Preis ist nicht verhandelbar", 150)["verdict"], "SKIP")
+
     def test_card_shows_profit_and_route(self):
         lines = pc_card_lines(evaluate_pc("Gaming PC Ryzen 5 3600 RTX 3060 16GB", 60))
         self.assertRegex(lines[0], r"ВИГІДНО|БЕРИ")
