@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-11a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-11b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -2160,6 +2160,39 @@ function fix1103_() {
 // працював — сторож усередині сам про себе сказати не міг. GitHub (research/as_health.py, щогодини) питає стан; давно не
 // працювали — перевстановлюємо тригери тут (не частіше разу на 2 год) і пишемо в бот.
 const HEAL_EVERY = [['check', 1], ['kaFilter', 5], ['processLedger', 15], ['watchdog', 10]];
+/** 11.11 (користувач: «листи КА не обробляються, хоча пошта приходить»): які листи KA (крім підписок) були за 3 дні і що
+ *  з ними зробив бот. Репозиторій публічний, тож у відповідь іде лише знеособлене: у темі лишаються тільки слова шаблонів KA
+ *  (решта — «•»), адреса відправника — лише домен і службова частина, без імен і текстів. */
+const PROBE_WORDS = ('nachricht nachrichten neue neuer neues neuen antwort anfrage anfragen zu zur zum deiner deine deinem deinen dein ' +
+  'anzeige anzeigen von hat haben dir dich du hast geschrieben geantwortet schrieb preisvorschlag angebot kleinanzeigen ist sind online ' +
+  'jetzt wurde wurden veröffentlicht aktiviert gelöscht deaktiviert abgelaufen läuft bald ab verlängert verlängern gekauft verkauft ' +
+  'bestellung zahlung bezahlt versand versendet sicher bezahlen artikel erhalten bestätigt bestätige ihre re aw fwd wg für den die das ' +
+  'der ein eine einen suchauftrag und mit interesse reserviert bewertung bewerte nutzer mitglied konto bitte wichtig hinweis sicherheit ' +
+  'im auf an über noch mehr gemerkt merkliste preis gesenkt reduziert kaufen gebot vorschlag gesendet dein deiner').split(' ');
+function mailProbe_() {
+  const props = PropertiesService.getScriptProperties(), now = Date.now();
+  const mask = function (s) {
+    return String(s || '').split(/\s+/).map(function (w) {
+      const k = w.toLowerCase().replace(/[^a-zäöüß]/g, '');
+      return /^\d+$/.test(w) ? '#' : k && PROBE_WORDS.indexOf(k) >= 0 ? w.replace(/[„“"«»]/g, '') : '•';
+    }).join(' ').replace(/•(?: •)+/g, '•…').slice(0, 90);
+  };
+  const ids = function (q) { return GmailApp.search(q, 0, 40).map(function (t) { return t.getId(); }); };
+  const msgQ = typeof KA_MSG_QUERY === 'string' ? ids(KA_MSG_QUERY + ' newer_than:3d') : [];
+  const ledQ = ids(LEDGER_QUERY.replace('newer_than:45d', 'newer_than:3d'));
+  const seen = JSON.parse(props.getProperty('KA_DIGESTED') || '[]');
+  const list = GmailApp.search('from:kleinanzeigen in:anywhere newer_than:3d -subject:Suchauftrag -subject:"neue Anzeigen"', 0, 25).map(function (th) {
+    const ms = th.getMessages(), m = ms[ms.length - 1];
+    const addr = (String(m.getFrom()).match(/<([^>]+)>/) || [0, String(m.getFrom())])[1].toLowerCase();
+    const at = addr.split('@');
+    return { h: Math.round((now - m.getDate().getTime()) / 3600e3), from: (/\d|^.{17,}$/.test(at[0]) ? '*' : at[0]) + '@' + (at[1] || ''),
+      subj: mask(m.getSubject()), n: ms.length, msgq: msgQ.indexOf(th.getId()) >= 0, ledger: ledQ.indexOf(th.getId()) >= 0,
+      digested: seen.indexOf(m.getId()) >= 0, inbox: th.isInInbox(), spam: th.isInSpam(), trash: th.isInTrash() };
+  });
+  return { list: list, filterTs: Math.round((now - Number(props.getProperty('KA_FILTER_TS') || 0)) / 60000),
+    digested: seen.length, gmailOff: gmailOff_(), gemini: !!props.getProperty('GEMINI_API_KEY') };
+}
+
 function healthCheck_(heal) {
   const props = PropertiesService.getScriptProperties(), now = Date.now();
   const age = function (ms) { return ms ? Math.round((now - ms) / 60000) : -1; };
@@ -2457,7 +2490,11 @@ function sealedPost(s) {
   let d;
   try { d = unseal_(s, officeToken_(props)); } catch (e) { console.log('sealedPost: ' + e.message); return; }
   try { fix1103_(); fix1103b_(); fix1106_(); } catch (e) { console.log('fix1103_: ' + e); }
-  if (d.kind === 'health') return healthCheck_(d.heal);   // 03.11: відповідь — у GitHub (research/as_health.py)
+  if (d.kind === 'health') {   // 03.11: відповідь — у GitHub (research/as_health.py)
+    const res = healthCheck_(d.heal);
+    if (d.mail) { try { res.mail = mailProbe_(); } catch (e) { res.mail = { error: String(e).slice(0, 160) }; } }
+    return res;
+  }
   if (d.kind === 'mail') return relayStore_(d.mails);    // 03.11: листи з запасної скриньки (research/backup_mail.py)
   if (d.kind === 'ebay_rt' && d.rt) {
     props.setProperty('EBAY_RT', d.rt);

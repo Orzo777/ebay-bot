@@ -26,11 +26,11 @@ def webapp_url(key: str, get=requests.get) -> str:
     return url if url.startswith("https://script.google.com/") else ""
 
 
-def ask(url: str, key: str, heal: bool = True, post=requests.post, get=requests.get) -> dict | None:
+def ask(url: str, key: str, heal: bool = True, post=requests.post, get=requests.get, mail: bool = False) -> dict | None:
     """→ відповідь Apps Script (dict) або None (зайнятий / стара версія без «health»). Apps Script відповідає
     перенаправленням 302 на googleusercontent — відповідь там."""
     nonce = uuid.uuid4().hex
-    blob, mac = seal({"kind": "health", "heal": 1 if heal else 0}, key, nonce)
+    blob, mac = seal({"kind": "health", "heal": 1 if heal else 0, **({"mail": 1} if mail else {})}, key, nonce)
     r = post(url, data=json.dumps({"sealed": {"blob": blob, "mac": mac, "nonce": nonce}}),
              headers={"Content-Type": "application/json"}, timeout=60, allow_redirects=False)
     if r.status_code in (301, 302, 303) and r.headers.get("Location"):
@@ -47,6 +47,19 @@ def line(res: dict) -> str:
     return (f"тригери: {', '.join(sorted(res.get('triggers') or [])) or 'немає'}; пошта KA (check) — {age('check')}, "
             f"облік — {age('ledger')}, сторож — {age('watchdog')}" + (f"; перевстановив: {', '.join(res['healed'])}"
                                                                         if res.get("healed") else ""))
+
+
+def mail_lines(m: dict) -> list[str]:
+    """11.11: знеособлений огляд листів KA (крім підписок) за 3 дні — що з ними зробив бот."""
+    if m.get("error"):
+        return [f"пошта: помилка {m['error']}"]
+    out = [f"листи KA за 3 дні (без підписок): {len(m.get('list') or [])}; фільтр повідомлень — {m.get('filterTs')} хв тому; "
+           f"у дайджесті {m.get('digested')}; Gmail вимкнено: {m.get('gmailOff')}; Gemini: {m.get('gemini')}"]
+    for x in m.get("list") or []:
+        where = "спам" if x.get("spam") else "кошик" if x.get("trash") else "вхідні" if x.get("inbox") else "архів"
+        out.append(f"   {x['h']} год · {x['from']} · «{x['subj']}» · {x['n']} лист. · {where} · "
+                   f"повідомл.:{'так' if x['msgq'] else 'ні'} облік:{'так' if x['ledger'] else 'ні'} оброблено:{'так' if x['digested'] else 'ні'}")
+    return out
 
 
 def hook_info(key: str, get=requests.get, now: float | None = None) -> str:
@@ -74,9 +87,11 @@ def main() -> int:
         return 0
     hook_info(key)
     for i in range(2):   # вебзастосунок зайнятий (інший запит тримає замок) — ще раз за 20 с
-        res = ask(url, key, heal="--no-heal" not in sys.argv)
+        res = ask(url, key, heal="--no-heal" not in sys.argv, mail="--mail" in sys.argv)
         if res:
             print(("⚠️ " if res.get("stale") else "✅ ") + line(res))
+            if res.get("mail"):
+                print("\n".join(mail_lines(res["mail"])))
             for t0, bot, what, ms in res.get("slow") or []:   # 04.11: повільні запити вебзастосунку за добу
                 print(f"   повільно: {round((time.time() * 1000 - t0) / 60000)} хв тому · бот {bot} · {what} · {ms / 1000:.0f} с")
             return 0

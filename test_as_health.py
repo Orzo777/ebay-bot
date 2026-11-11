@@ -52,6 +52,15 @@ class HealthTest(unittest.TestCase):
         get = lambda url, timeout=None: R(js={"result": {"url": "https://script.google.com/macros/s/X/exec?bot=office"}})
         self.assertEqual(as_health.webapp_url("k", get=get), "https://script.google.com/macros/s/X/exec?bot=office")
 
+    def test_mail_lines(self):
+        m = {"filterTs": 4, "digested": 12, "gmailOff": False, "gemini": True, "list": [
+            {"h": 3, "from": "*@mail.kleinanzeigen.de", "subj": "• zu deiner Anzeige •…", "n": 2, "msgq": True, "ledger": False,
+             "digested": False, "inbox": False, "spam": True, "trash": False}]}
+        out = as_health.mail_lines(m)
+        self.assertIn("листи KA за 3 дні (без підписок): 1", out[0])
+        self.assertIn("спам · повідомл.:так облік:ні оброблено:ні", out[1])
+        self.assertEqual(as_health.mail_lines({"error": "x"}), ["пошта: помилка x"])
+
 
 if __name__ == "__main__":
     unittest.main()

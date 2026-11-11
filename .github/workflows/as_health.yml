@@ -11,6 +11,10 @@ on:
         description: "Лише подивитися, тригери не перевстановлювати"
         type: boolean
         default: false
+      mail:
+        description: "Ще й знеособлений огляд листів KA за 3 дні"
+        type: boolean
+        default: false
   schedule:
     - cron: "41 */3 * * *"
 
@@ -34,4 +38,4 @@ jobs:
         env:
           OFFICE_BOT_TOKEN: ${{ secrets.OFFICE_BOT_TOKEN }}
           PYTHONIOENCODING: utf-8
-        run: python research/as_health.py ${{ inputs.no_heal && '--no-heal' || '' }}
+        run: python research/as_health.py ${{ inputs.no_heal && '--no-heal' || '' }} ${{ inputs.mail && '--mail' || '' }}
