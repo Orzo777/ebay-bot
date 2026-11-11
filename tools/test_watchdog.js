@@ -179,6 +179,19 @@ check('not again within the hour', (w.text().match(/у черзі 37/g) || []).l
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { TELEGRAM_BOT_TOKEN: 'M' } }, okMail));
 w.run();
 check('healthy webhooks → silence', w.sent.length, 0);
+// 11.11: разовий мережевий збій Google — тиша; три запуски поспіль — повідомлення, але без ключа бота в тексті
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { TELEGRAM_BOT_TOKEN: '8797:AAF_x-Y' },
+  hook: (u) => { throw new Error('Exception: Address unavailable: ' + u); } }, okMail));
+const again = () => { const s = JSON.parse(w.store.WD_STATE); delete s.hookAt; w.store.WD_STATE = JSON.stringify(s); w.run(); };
+w.run(); again();
+check('network blip → silence', w.sent.length, 0);
+again();
+check('repeated network error told, token hidden', [/помилка перевірки wdWebhooks_/.test(w.text()), /8797|AAF_x|\bO\//.test(w.text())], [true, false]);
+let blip = true;
+w = setup(Object.assign({ ebay: [run('in_progress', null, ago(5))], props: { TELEGRAM_BOT_TOKEN: 'M' },
+  hook: (u) => { if (blip) throw new Error('Address unavailable: ' + u); return { url: 'https://x/exec', pending_update_count: 0 }; } }, okMail));
+w.run(); again(); blip = false; again(); blip = true; again(); again();
+check('counter resets after success', w.sent.length, 0);
 
 // 10.10: прибирання відповідей KA — щогодини звідси (cron GitHub спрацьовує раз на 6–7 год)
 w = setup(Object.assign({ ebay: [run('in_progress', null, ago(30))] }, okMail));

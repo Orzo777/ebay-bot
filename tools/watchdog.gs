@@ -14,7 +14,7 @@
  * Поріг «немає листів KA» можна змінити властивістю скрипту WD_KA_HOURS (за замовчуванням 6).
  */
 
-const VER_WATCHDOG = '2026-11-03b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_WATCHDOG = '2026-11-11a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const WD_BAD = ['failure', 'timed_out', 'startup_failure'];
 const WD_ACTIVE = ['queued', 'in_progress', 'waiting', 'requested', 'pending'];
 const WD_KA_QUERY = 'from:noreply@kleinanzeigen.de in:anywhere newer_than:3d ' +
@@ -253,8 +253,15 @@ function watchdog() {
   const now = new Date();
   const msgs = [];
   st.at = now.getTime();   // 03.11: коли сторож востаннє відпрацював — для перевірки ззовні (healthCheck_ у ledger.gs)
+  st.net = st.net || {};
   [wdEbay_, wdFailures_, wdCheckAlive_, wdKaMail_, wdTriggers_, wdTokenExpiry_, wdAutoDeploy_, wdLedger_, wdWebhooks_, wdKaSweep_, wdClaudeToken_].forEach(function (f) {
-    try { f(st, now, msgs); } catch (e) {
+    try { f(st, now, msgs); delete st.net[f.name]; } catch (e0) {
+      // 11.11: ключ бота з адреси запиту (bot123:ABC…) — ніколи в текст помилки
+      const e = String(e0).replace(/bot\d+:[\w-]+/g, 'bot…');
+      // 11.11 (користувач: «тепер ще й помилка»): разовий мережевий збій Google («Address unavailable», DNS, тайм-аут) —
+      // не поломка; пишемо лише якщо повторюється 3 запуски поспіль (~30 хв)
+      if (/Address unavailable|DNS error|timed? ?out|Timeout|Bad Gateway|Service Unavailable|unexpected error while getting/i.test(e) &&
+          (st.net[f.name] = (st.net[f.name] || 0) + 1) < 3) { console.log(f.name + ' (мережа, ' + st.net[f.name] + '): ' + e); return; }
       if (/GH_AUTH/.test(String(e))) {
         wdOnce_(st, 'gh_auth', 12, (/GH_AUTH немає/.test(String(e))
                 ? '🔑 В Apps Script немає GitHub-токена. Без нього картки з Kleinanzeigen і «поділитися» не працюють. '

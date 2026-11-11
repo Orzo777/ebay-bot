@@ -4,15 +4,15 @@
   "sha": "ca77744660a01402"
  },
  "ledger.gs": {
-  "ver": "2026-11-06b",
-  "sha": "2f89df014af413af"
+  "ver": "2026-11-11a",
+  "sha": "4bf18e76a56cb14a"
  },
  "kafilter.gs": {
   "ver": "2026-11-03a",
   "sha": "9f02e8e4dff632cf"
  },
  "watchdog.gs": {
-  "ver": "2026-11-03b",
-  "sha": "74ffff2891d4a462"
+  "ver": "2026-11-11a",
+  "sha": "696069976e22d95f"
  }
 }

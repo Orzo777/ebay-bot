@@ -125,6 +125,15 @@ const nTrack = sent.length;
 vm.runInContext('syncApply_(__p)', Object.assign(ctx, { __p: { lots: [], ask: [], ended: [],
   shipped: [{ order_id: '12-15361-67725', item_id: '336849011147', sku: 'ledger-5', track: '02304112003507', carrier: 'Hermes', date: '2026-10-31' }] } }));
 check('track once', sent.length, nTrack);
+// 3c) 11.11: продаж старший за 30 днів — події вже стерто ранковим оглядом; eBay ще віддає «Versendet» — не записуємо знову
+const was5 = deals.cells['9:' + COL.sdate];
+deals.cells['9:' + COL.sdate] = D(new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10));
+ctx.setEvents_(5, { sent: undefined, outTrack: undefined, outCarrier: undefined });
+vm.runInContext('syncApply_(__p)', Object.assign(ctx, { __p: { lots: [], ask: [], ended: [],
+  shipped: [{ order_id: '12-15361-67725', item_id: '336849011147', sku: 'ledger-5', track: '02304112003507', carrier: 'Hermes', date: '2026-10-31' }] } }));
+check('old sale: no daily re-ship', [ctx.events_()[5].sent, sent.length], [undefined, nTrack]);
+deals.cells['9:' + COL.sdate] = was5;
+ctx.setEvents_(5, { sent: '2026-10-31', outTrack: '02304112003507', outCarrier: 'Hermes' });
 // «відправив 1» без треку, продаж на eBay: звірка одразу, замість «додай трек» — «візьму з eBay сам»
 const disp = [];
 store.EBAY_RT = 'rt';

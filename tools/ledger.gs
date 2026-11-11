@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-06b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-11a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -2208,6 +2208,9 @@ function shippedFromEbay_(list, out) {
     const r = m ? rows.filter(function (y) { return y.n === m[0]; })[0] : rows.filter(function (y) { return bySku ? y.n === Number(bySku)
       : x.item_id && String((notes[y.n - 1] || [''])[0]).indexOf(String(x.item_id)) >= 0; })[0];
     if (!r) return;
+    // 11.11 (користувач: «щодня одне і те саме»): ранковий огляд стирає події продажу, старшого за 30 днів, а eBay ще
+    // віддає це замовлення як «Versendet» — і щодня знову «записав відправку», «доставлено». Старий продаж закрито — не чіпаємо.
+    if (r.sdate && days_(r.sdate, today) > 30) return;
     const e = ev[r.n] || {};
     if (e.sent) {   // 06.11: натиснув «відправив» раніше за звірку — відправка є, а трек візьмемо з eBay (етикетка eBay)
       if (!x.track || e.outTrack || e.outDelivered || e.handed) return;
