@@ -92,6 +92,8 @@ def main() -> int:
             print(("⚠️ " if res.get("stale") else "✅ ") + line(res))
             if res.get("mail"):
                 print("\n".join(mail_lines(res["mail"])))
+            elif "--mail" in sys.argv:
+                print("огляд листів не прийшов; поля відповіді: " + ", ".join(sorted(res)))
             for t0, bot, what, ms in res.get("slow") or []:   # 04.11: повільні запити вебзастосунку за добу
                 print(f"   повільно: {round((time.time() * 1000 - t0) / 60000)} хв тому · бот {bot} · {what} · {ms / 1000:.0f} с")
             return 0
