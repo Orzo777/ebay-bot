@@ -192,6 +192,14 @@ class TestPerUnitPrice(unittest.TestCase):
         self.assertFalse(_D_PER_UNIT.search("Kapazität je Riegel: 16GB"))
         self.assertTrue(_D_PER_UNIT.search("Preis je Riegel"))
         self.assertTrue(_D_PER_UNIT.search("120 € je Riegel"))
+        # 13.11: EU-пошук — ціна за штуку іншими мовами (eBay 366807863160: 2×32 DDR5 з Італії «390 €» — за одну планку)
+        for s in ("Completamente funzionanti, prezzo riferito al singolo banco.", "the price listed is for a single module",
+                  "Price is per stick", "prezzo per un banco", "190€ cadauno", "Prix pour une barrette", "prix unitaire",
+                  "El precio es por unidad", "precio por módulo", "120 € per module"):
+            self.assertTrue(_D_PER_UNIT.search(s), s)
+        for s in ("2 banchi da 16GB per banco", "16GB per module, 32GB total", "2 x 16 Go par barrette", "16GB por módulo",
+                  "each stick tested with MemTest", "kit da 2 banchi, prezzo per il kit"):
+            self.assertFalse(_D_PER_UNIT.search(s), s)
 
 
 

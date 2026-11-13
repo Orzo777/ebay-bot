@@ -536,7 +536,20 @@ _D_PER_UNIT = re.compile(r"preis\s+(?:ist\s+)?(?:pro|je|für\s+(?:einen|ein|eine
                          r"(?:ein(?:en|e|s)?|1|einzelne[nrs]?|den|das|die)\s+(?:[\w-]+\s+){0,2}"
                          r"(?:riegel|stück|modul|stick|ram|speicher\w*|\d+\s*gb\w*)\b|"
                          r"(?:pro|je)\s+(?:\d+\s*gb\s+)?(?:ram|speicherriegel|einzelnen?\s+riegel)\b|"
-                         r"\b(?:einzeln|einzelverkauf|auch\s+einzeln)\b", re.I)
+                         r"\b(?:einzeln|einzelverkauf|auch\s+einzeln)\b|"
+                         # 13.11 (EU-пошук; користувач: «срочно, перевір» — 2×32 DDR5 з Італії за 390 €, а в описі «prezzo
+                         # riferito al singolo banco» / «the price listed is for a single module»): англ., італ., фр., ісп.
+                         r"price\s+(?:\w+\s+){0,2}(?:is\s+)?(?:for|per)\s+(?:a\s+|one\s+|1\s+|each\s+|the\s+)?(?:single\s+)?"
+                         r"(?:module|stick|piece|unit|dimm|ram)\b|\bprice\s+each\b|\bsold\s+(?:separately|individually)\b|"
+                         r"\d+\s*(?:€|eur\w*)\s*(?:per|each|for\s+one)\s+(?:module|stick|piece)\b|"
+                         r"prezzo\s+(?:\w+\s+){0,2}(?:al|per|a|ad)\s+(?:singol[oa]|un[oa]?|1|ogni|ciascun[oa]?)\s+(?:\w+\s+)?"
+                         r"(?:banco|banchi|modulo|pezzo|stick|ram)\b|\d+\s*(?:€|euro)\s*(?:cad(?:auno|\.)|al\s+pezzo|a\s+banco)|"
+                         r"prix\s+(?:\w+\s+){0,2}(?:par|pour)\s+(?:une?\s+|1\s+|chaque\s+)?(?:seule?\s+)?"
+                         r"(?:barrette|module|pi[eè]ce|unit[eé])\b|prix\s+unitaire|\bvendu\w*\s+[àa]\s+l'unit[eé]|"
+                         r"\d+\s*(?:€|euros?)\s*(?:la|par)\s+barrette|"
+                         r"precio\s+(?:\w+\s+){0,2}(?:por|de|para)\s+(?:una?\s+|1\s+|cada\s+)?(?:sol[oa]\s+)?"
+                         r"(?:unidad|m[oó]dulo|pieza|memoria)\b|precio\s+unitario|\d+\s*(?:€|euros?)\s*(?:por|cada)\s+(?:unidad|m[oó]dulo)",
+                         re.I)
 # 28.10: у назві кіт («(64GB Kit) 2x 32GB»), а опис — про ОДНУ планку («dieses Modul», «Der Riegel ist …», «ein … modul»)
 # і жодного слова про пару — ціна, найімовірніше, за одну. Множник — кількість планок з назви.
 _D_ONE_STICK = re.compile(r"\bdieses?\s+(?:[\w-]+\s+)?(?:modul|riegel|stick)\b|\bder\s+riegel\s+(?:ist|war|wurde|läuft|lief|hat)\b|"
