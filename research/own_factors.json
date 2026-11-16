@@ -1,3 +1,5 @@
 {
- "factors": {}
+ "factors": {
+  "ddr4|udimm|0|32|2": 0.85
+ }
 }
