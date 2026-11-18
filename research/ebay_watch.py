@@ -380,8 +380,10 @@ def format_card(r: dict, lst: dict, risk: dict, why: str, now: datetime) -> str:
               f"🏷 Продаси за {r['quick_sale']}–{r['median_sale']} € · {_speed_label(r['sell_through']).replace('продається ', '')}"]
     checks = [f"👤 {seller}" + (f" · {_age_label(lst, now)}" if _age_label(lst, now) else "")]
     if lst.get("country") and lst["country"] != "DE":   # 04.11: з іншої країни ЄС — доставка вже в ціні, мита немає
+        # 18.11 (користувач: «пише доставка врахована, а там +15 € з-за кордону»): врахована — означає вже в «разом» вище
         checks.append(f"🌍 Продавець: {COUNTRY_UK.get(lst['country'], lst['country'])} — доставка до Гамбурга "
-                      f"{(lst['ship'] or 0):.2f} € уже врахована; мита й ПДВ немає (ЄС), захист покупця eBay діє; йде ~4–7 днів")
+                      f"{(lst['ship'] or 0):.2f} € уже додана: разом {r['buy_cost']:.0f} € (ціна {lst['price']:.0f} € + доставка); "
+                      f"мита й ПДВ немає (ЄС), захист покупця eBay діє; йде ~4–7 днів")
     checks += [f"⚠️ {esc(s)}" for s in risk["soft"]]
     f = desc_facts(r.get("desc"), r)
     if f["works"] is False:

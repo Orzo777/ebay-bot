@@ -241,7 +241,7 @@ class TestEuropeanUnion(unittest.TestCase):
         lst = self._it("IT", "20121")
         r = evaluate_ebay(lst)
         card = format_card(r, lst, risk_of(lst, "", r.get("quick_sale", 0)), "new", NOW)
-        self.assertIn("🌍 Продавець: Італія — доставка до Гамбурга 18.00 € уже врахована", card)
+        self.assertIn("🌍 Продавець: Італія — доставка до Гамбурга 18.00 € уже додана: разом ", card)
         lst_de = self._it("DE", "10115", ship="6.99")
         self.assertNotIn("🌍", format_card(evaluate_ebay(lst_de), lst_de, risk_of(lst_de, "", 300), "new", NOW))
 
