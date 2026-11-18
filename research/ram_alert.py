@@ -213,8 +213,13 @@ def apply_pickup(r: dict) -> dict:
         return r
     cost = r["price"] + PICKUP_COST
     r.update(pickup=True, buy_cost=cost, ship_in=0.0, profit_est=r["net_q"] - cost,
-             verdict=tier(cost, r["cap"], r["good"], r["excellent"], r.get("vb", False), r["net_q"]))
+             verdict=no_haggle(tier(cost, r["cap"], r["good"], r["excellent"], r.get("vb", False), r["net_q"]), r.get("no_haggle")))
     return r
+
+
+def no_haggle(verdict: str, on) -> str:
+    """18.11: одна настільна планка — без «торгуйся»: або вигідно за ціною оголошення, або пропускаємо."""
+    return "SKIP" if on and verdict == "NEGOTIATE" else verdict
 
 
 # Ціна-заглушка (28.09: «RAM 1x32Gb 2x16Gb DDR 4» за 1 € → «ВІДМІННО»): дешевше 10 € або 15% ринку — не ціна.
@@ -341,6 +346,14 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
         if two and (p.get("kit_word") or (big and (not real or key == ("ddr5", "udimm", False, 32, 1)))):
             real, kit_unknown = two, True
             key = key[:4] + (2,)   # далі (сегмент фірмовий / звичайні) — як для набору
+    # 18.11 (рішення користувача): настільна (UDIMM) ОДНА планка — у ПК ставлять пари, одну беруть лише докупити: продається
+    # повільно (Terapeak: DDR5 1×16 — 6% продано, 1×32 — 15%, кіт 2×16 — 19%). 16 ГБ і менше — не купуємо зовсім; більші —
+    # від ціни ШВИДКОГО продажу (p25) і без «торгуйся». Ноутбучні одиночні (там часто один слот) — як були.
+    desk_single = p["form"] == "udimm" and key[4] == 1
+    if desk_single and p["total"] <= 16:
+        return dict(verdict="SKIP", reason=f"{p['gen'].upper()} настільна, одна планка {p['total']} ГБ — не купуємо: "
+                                           f"продається дуже повільно (рішення 18.11)",
+                    title=title, price=total_price, wrong_type=True)
     if not real:
         return dict(verdict="SKIP",
                     reason=f"{p['gen'].upper()} {'ноутбучна' if p['form'] == 'sodimm' else p['form'].upper()} "
@@ -371,6 +384,9 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     slow4 = p["gen"] == "ddr4" and speed_bucket(p["gen"], title, p.get("speed")) == "slow"
     qb = sale_basis(quad["p25"], quad["med"]) if quad else None
     rb = sale_basis(real["p25"], real["med"])
+    if desk_single:   # 18.11: одна настільна планка — від ціни швидкого продажу
+        rb = float(real["p25"])
+        real = dict(real, name=real["name"] + f" · одна планка — рахую за швидким продажем ≈ {rb:.0f} €")
     if slow4:   # 28.10: повільна DDR4 — від цін, з якими ми в топ-3–5 найдешевших, а не від середини p25–медіана
         cell = ("oem" if ecc_udimm else "brand" if BRANDED.search(title) else "oem") + "_slow"
         kstr = "|".join(str(int(x) if isinstance(x, bool) else x) for x in (key[:3] + (p["total"] // 2, 2) if quad else key))
@@ -386,7 +402,7 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
     cap, good, excellent = caps_from(net_q)
     cost = buy_cost(price, ship_in)
     profit_est = net_q - cost
-    verdict = tier(cost, cap, good, excellent, vb, net_q)
+    verdict = no_haggle(tier(cost, cap, good, excellent, vb, net_q), desk_single)
     brand_flag = "невідомий/сумнівний бренд" if (p["brand"] in NOISE_BRANDS or not p["brand"]) else p["brand"]
     # Одна планка (modules==1) — назва каже лише сумарний обсяг, і за текстом НЕМОЖЛИВО
     # перевірити, чи це справді одна фізична планка, чи продавець просто не написав "2x8"
@@ -403,7 +419,7 @@ def evaluate(title: str, price: float, shipping: float | None = None, vb: bool =
                 quick_sale=real["p25"], median_sale=real["med"], sell_through=real["st"], profit_est=profit_est,
                 net_q=net_q, brand=brand_flag, title=title, single_module_warning=single_module_warning,
                 total=p["total"], kit_unknown=kit_unknown, buy_cost=cost, ship_in=ship_in, vb=vb,
-                **({"slow_basis": round(qb or rb)} if slow4 else {}),
+                **({"slow_basis": round(qb or rb)} if slow4 else {}), **({"no_haggle": True} if desk_single else {}),
                 **({"ecc_udimm": True, "notes": [ECC_UDIMM_NOTE]} if ecc_udimm else {}))
 
 

@@ -206,7 +206,8 @@ class TestProcess(unittest.TestCase):
 
     def test_right_type_but_pricier_gives_no_hint(self):
         # випадок 26.09: Corsair DDR5 16GB, дорожче стелі — у тій пачці більше нічого не було, підказка — шум
-        sent = rmc._process(ka_mail("Corsair Vengeance 16GB DDR5 6000 RAM", 190), 6, False, set(), {})
+        # 18.11: одна настільна 16 ГБ тепер «тип не купуємо» — беремо кіт, що просто дорожчий за стелю
+        sent = rmc._process(ka_mail("Corsair Vengeance 32GB (2x16GB) DDR5 6000 RAM", 700), 6, False, set(), {})
         self.assertEqual((sent, len(self.hints)), (0, 0))
 
     def test_negotiate_card_has_offer_button(self):

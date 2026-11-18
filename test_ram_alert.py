@@ -120,10 +120,26 @@ class TestNewTypes(unittest.TestCase):
         self.assertIn("не купуємо", evaluate("Crucial DDR5 96GB Kit 2x48GB 5600", 200)["reason"])
 
     def test_ddr5_single_16_desktop(self):
-        r = evaluate("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", 85)
-        self.assertEqual(r["type"], "DDR5 UDIMM 16 ГБ (одна планка)")
-        self.assertTrue(r["verdict"].startswith("BUY"))
-        self.assertTrue(r["single_module_warning"])
+        # 18.11 (рішення користувача): настільна одна планка 16 ГБ (DDR4 і DDR5) — не купуємо: Terapeak 6% продано
+        for t in ("Kingston FURY Beast DDR5 16GB 5200MT/s CL40 DIMM", "Corsair Vengeance LPX 16GB DDR4 3200 1x16GB"):
+            r = evaluate(t, 40)
+            self.assertEqual(r["verdict"], "SKIP", t)
+            self.assertIn("одна планка 16 ГБ — не купуємо", r["reason"])
+        self.assertNotEqual(evaluate("Samsung 16 GB DDR5-4800 SO-DIMM", 60)["verdict"], "SKIP")   # ноутбучна — як була
+        self.assertTrue(evaluate("Kingston FURY 16GB DDR5 (2x8GB) 5200 DIMM", 120)["verdict"].startswith("BUY"))   # кіт — як був
+
+    def test_desktop_single_32_fast_price_no_haggle(self):
+        # 18.11: більша настільна одна планка — від ціни швидкого продажу (p25) і без «торгуйся»
+        import ram_alert
+        real = ram_alert.REAL[("ddr5", "udimm", False, 32, 1)]
+        r = evaluate("Kingston FURY Beast 32GB DDR5 DIMM 1x32GB", 100)
+        self.assertIn("рахую за швидким продажем", r["type"])
+        self.assertAlmostEqual(r["net_q"], real["p25"] - ram_alert.costs(real["p25"]), places=2)
+        self.assertTrue(r.get("no_haggle"))
+        above = r["cap"] + 3   # трохи дорожче за межу: раніше «торгуйся», тепер — пропуск
+        self.assertEqual(evaluate("Kingston FURY Beast 32GB DDR5 DIMM 1x32GB", above - r["ship_in"], vb=True)["verdict"], "SKIP")
+        self.assertEqual(ram_alert.no_haggle("NEGOTIATE", True), "SKIP")
+        self.assertEqual(ram_alert.no_haggle("NEGOTIATE", None), "NEGOTIATE")
 
     def test_not_added_types_still_skip(self):
         for t, p in [("Samsung 8GB DDR5-5600 SO-DIMM", 20),

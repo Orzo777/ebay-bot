@@ -72,7 +72,7 @@ class TestEvaluate(unittest.TestCase):
         self.assertIn("вигідно лише до", msg)
 
     def test_ram_listing_and_pickup_note(self):
-        msg, res = evaluate_listing(page("Crucial 16GB DDR5-4800 UDIMM Arbeitsspeicher RAM", "55 €",
+        msg, res = evaluate_listing(page("Crucial 32GB (2x16GB) DDR5-4800 UDIMM Arbeitsspeicher RAM", "150 €",
                                          shipping="Nur Abholung"), "u")
         self.assertIn(res["verdict"], ("BUY-EXCELLENT", "BUY-GOOD"))
         self.assertIn("самовивіз", msg)

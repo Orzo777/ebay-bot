@@ -65,7 +65,7 @@ class AssessTest(unittest.TestCase):
         self.assertEqual(ka_wanted.label_item(facts), "Corsair DDR4 1x8GB 2400 MHz")   # номер набору не перетворює 1 планку на 2×8
         b = ka_wanted.assess({"msg": msg, "item": "DDR4 Riegel", "price": 9, "facts": facts})
         self.assertEqual(b["verdict"], "wrong")
-        self.assertIn("8 ГБ (1 план.)", b["text"])
+        self.assertIn("одна планка 8 ГБ — не купуємо", b["text"])   # 18.11: настільні одиночні до 16 ГБ — не купуємо
         self.assertIn("📷 З наклейки: CMK16GX4M2A2400C16", b["text"])
 
     def test_label_kit_no_second_photo_request(self):

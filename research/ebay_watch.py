@@ -34,7 +34,7 @@ import health
 from photo_check import STATS as PHOTO_STATS
 from photo_check import ebay_images, photo_line
 from ram_alert import (_DESC_UNTESTED, PICKUP_COST, SEND_VERDICTS, _questions, cheap_headline, too_cheap, _speed_label, broken_reason, desc_facts,
-                       add_check, checks_block, evaluate, refine_by_desc, tier)
+                       add_check, checks_block, evaluate, refine_by_desc, tier, no_haggle)
 
 RAM_CAT, CONSOLE_CAT = "170083", "139971"
 # (запит, категорія, мін. ціна, макс. ціна). Верх — трохи вище найбільшої стелі «торгуйся» серед типів групи.
@@ -150,7 +150,7 @@ def evaluate_ebay(lst: dict) -> dict:
         return r
     cost = lst["price"] + ship
     r.update(buy_cost=cost, ship_in=ship, profit_est=r["net_q"] - cost, pickup=pickup,
-             verdict=tier(cost, r["cap"], r["good"], r["excellent"], vb, r["net_q"]))
+             verdict=no_haggle(tier(cost, r["cap"], r["good"], r["excellent"], vb, r["net_q"]), r.get("no_haggle")))
     r["notes"] = [_SB_NOTE.sub("", n).strip() for n in r.get("notes", [])]
     r["notes"] = [n for n in r["notes"] if n]
     return r
