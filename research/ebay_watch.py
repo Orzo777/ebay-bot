@@ -294,15 +294,34 @@ def seller_feedback(user: str) -> list[dict] | None:
     return parse_feedback(r.text)
 
 
+# 21.11 (columbus-12: «Corsair LPX 32GB NEU» — прийшли 4-гігові планки з наклейками 32GB; «100% позитивних» — це лише
+# за 12 місяців, а серед старших відгуків: «gebraucht und nicht wie deklariert Neu», «defekt … keine Kommunikation»).
+# Скарги «не той товар / не як в описі / вживане замість нового / дефект» — окремо від «не прийшло».
+_MISDESC = re.compile(r"nicht\s+(?:wie\s+)?(?:beschrieben|deklariert|angegeben|angeboten)|gebraucht\w*\s+(?:\w+\s+){0,3}"
+                      r"(?:statt|nicht|kein\w*)\s+(?:\w+\s+){0,2}neu|nicht\s+neu|falsche[rns]?\s+(?:artikel|ware|teil|modul\w*)|"
+                      r"andere[rns]?\s+(?:artikel|ware|modell)|gefälscht|fälschung|umgelabelt|umetikettiert|"
+                      r"\bdefekt\b|kaputt|funktioniert\w*\s+nicht|nicht\s+funktionsfähig|not\s+as\s+described|wrong\s+item|"
+                      r"counterfeit|\bfake\b", re.I)
+
+
 def feedback_risk(fb: list[dict] | None) -> dict:
-    """Негатив «не прийшло / шахрай» серед відгуків як продавця — картки не буде; у новачка (до 20) — будь-який негатив."""
+    """Негатив «не прийшло / шахрай» серед відгуків як продавця — картки не буде; у новачка (до 20) — будь-який негатив.
+    21.11: два й більше негативи «не як в описі / дефект / підробка» — картки не буде; один — помітне попередження."""
     hard, soft = [], []
     neg = [f for f in fb or [] if f["type"] == "negative"]
     if not neg:
         return dict(hard=hard, soft=soft)
-    quote = neg[0]["text"][:90] + ("…" if len(neg[0]["text"]) > 90 else "")
-    if any(_NOT_DELIVERED.search(f["text"]) for f in neg) and len(fb) < 50:
-        hard.append(f"покупці пишуть, що товар не прийшов: «{quote}» ({len(neg)} з {len(fb)} відгуків як продавцю)")
+    cut = lambda t: t[:90] + ("…" if len(t) > 90 else "")   # noqa: E731
+    quote = cut(neg[0]["text"])
+    miss = [f for f in neg if _MISDESC.search(f["text"])]
+    gone = [f for f in neg if _NOT_DELIVERED.search(f["text"])]
+    if len(miss) >= 2:
+        hard.append(f"покупці вже скаржились, що товар не як в описі: «{cut(miss[0]['text'])}» ({len(miss)} таких з "
+                    f"{len(fb)} відгуків як продавцю; «100% позитивних» рахує лише останні 12 міс.)")
+    elif gone and len(fb) < 50:
+        hard.append(f"покупці пишуть, що товар не прийшов: «{cut(gone[0]['text'])}» ({len(neg)} з {len(fb)} відгуків як продавцю)")
+    elif miss:
+        soft.append(f"один покупець уже скаржився «не як в описі»: «{cut(miss[0]['text'])}» — тестуй одразу після отримання")
     elif len(fb) < 20:
         hard.append(f"негатив серед {len(fb)} відгуків як продавцю: «{quote}»")
     else:
@@ -635,6 +654,9 @@ def share_ebay(item_id: str, client=None, now: datetime | None = None) -> tuple[
     r["desc"] = desc
     broken = broken_reason(desc)
     risk = risk_of(lst, desc, r.get("quick_sale", 0), auction=auction)
+    if not risk["hard"]:   # 21.11: і для посилання, яким поділились, — відгуки продавця (як у картках сторожа)
+        fr = feedback_risk(seller_feedback(lst.get("seller")))
+        risk = dict(hard=fr["hard"], soft=risk["soft"] + fr["soft"])
     # аукціон: уточнення за описом (4×8 замість 2×16 тощо) — за умовною ціною; відкидаємо лише інший тип товару
     new = refine_ebay(r, dict(lst, price=999.0), desc) if auction else refine_ebay(r, lst, desc)
     if auction and new is not r and not new.get("wrong_type"):

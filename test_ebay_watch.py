@@ -124,6 +124,27 @@ class TestRisk(unittest.TestCase):
         self.assertEqual(ew.feedback_risk(good[:5]), {"hard": [], "soft": []})
         self.assertEqual(ew.feedback_risk(None), {"hard": [], "soft": []})   # сторінка недоступна — нічого не вирішуємо
 
+    def test_misdescribed_feedback_21_11(self):
+        # 21.11: columbus-12 «Corsair LPX 32GB NEU» → 4-гігові планки з наклейками 32GB; до нашого відгуку — 100% за 12 міс.,
+        # а серед 25 відгуків як продавцю два старі мінуси «не як в описі» / «defekt»
+        import ebay_watch as ew
+        good = [dict(type="positive", text="Alles super, schneller Versand", price=None)] * 23
+        old = [dict(type="negative", text="Leider keine Kommunikation, der verschickte Artikel ist leider defekt. Trotz "
+                                          "Nachfrage habe ich keine Antwort erhalten. Schade!", price=12.0),
+               dict(type="negative", text="Artikel ist gebraucht und nicht wie deklariert Neu", price=85.0)]
+        r = ew.feedback_risk(good[:11] + old[:1] + good[11:] + old[1:])
+        self.assertTrue(r["hard"] and "не як в описі" in r["hard"][0], r)
+        self.assertIn("лише останні 12 міс.", r["hard"][0])
+        one = ew.feedback_risk(good + old[1:])   # одна така скарга у великого продавця — помітне попередження
+        self.assertEqual(one["hard"], [])
+        self.assertIn("не як в описі", one["soft"][0])
+        for t in ("Statt 32GB-Kit umgelabelte 4GB-Module erhalten", "Falscher Artikel geliefert", "Fälschung!", "not as described"):
+            self.assertTrue(ew._MISDESC.search(t), t)
+        for t in ("Alles wie beschrieben, gerne wieder", "Neu und originalverpackt, top", "Langsamer Versand"):
+            self.assertFalse(ew._MISDESC.search(t), t)
+        nd = ew.feedback_risk(good[:10] + [dict(type="negative", text="Betrug, Fake! Ware nie angekommen", price=None)])
+        self.assertIn("товар не прийшов", nd["hard"][0])   # «не прийшло» лишається як було
+
     def test_contact_and_payment_block(self):
         lst = item("Xbox Series X", 300)
         self.assertTrue(risk_of(lst, "Bitte per WhatsApp melden 0151 2345678", 545)["hard"])
@@ -468,11 +489,13 @@ class ShareAuctionTest(unittest.TestCase):
                 "itemLocation": {"country": "DE"}}
         old_req, old_desc = main._request_with_backoff, ew.fetch_desc
         main._request_with_backoff = lambda *a, **k: item
+        old_fb, ew.seller_feedback = ew.seller_feedback, (lambda u: None)   # 21.11: share теж читає відгуки — без мережі
         ew.fetch_desc = lambda client, iid: "Funktioniert einwandfrei, getestet."
         try:
             msg, r, lst = ew.share_ebay("307224749417", client=type("C", (), {"_headers": lambda self: {}})(), now=NOW)
         finally:
             main._request_with_backoff, ew.fetch_desc = old_req, old_desc
+            ew.seller_feedback = old_fb
         self.assertEqual(r["verdict"], "AUCTION")
         self.assertNotIn("заглушка", msg)
         self.assertIn("🔨 <b>Аукціон eBay</b>", msg)
@@ -499,11 +522,13 @@ class ShareAuctionTest(unittest.TestCase):
                 "itemLocation": {"country": "DE"}}
         old_req, old_desc = main._request_with_backoff, ew.fetch_desc
         main._request_with_backoff = lambda *a, **k: item
+        old_fb, ew.seller_feedback = ew.seller_feedback, (lambda u: None)   # 21.11: share теж читає відгуки — без мережі
         ew.fetch_desc = lambda client, iid: "Gebraucht, aber super Zustand und voll funktionsfähig."
         try:
             msg, r, lst = ew.share_ebay("307224749417", client=type("C", (), {"_headers": lambda self: {}})(), now=NOW)
         finally:
             main._request_with_backoff, ew.fetch_desc = old_req, old_desc
+            ew.seller_feedback = old_fb
         self.assertIn("є <b>Preisvorschlag</b>", msg)
         self.assertNotIn("Sofort-Kaufen", msg)
         self.assertTrue(r["bin_label"].startswith("📋 Текст до Preisvorschlag"))
