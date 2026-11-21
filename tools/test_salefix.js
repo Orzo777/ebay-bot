@@ -55,5 +55,13 @@ check('summary without cancelled', [sum.formulas['6:2'], sum.formulas['15:4'], s
       ['=SUMIFS(' + R('J') + ',' + R('K') + ',"<>Скасовано")', '=SUMIFS(' + R('J') + ',' + R('D') + ',A15,' + R('K') + ',"<>Скасовано")',
        '=SUMIFS(' + R('J') + ',' + R('E') + ',A23,' + R('K') + ',"<>Скасовано")']);
 check('user-edited formula untouched', sum.formulas['16:4'], '=МОЯ ФОРМУЛА');
+// 21.11: «Повернено» (гроші повернули) теж не входить у «Витрачено» — «Гроші зараз +10 €» замість +246 €
+ctx.summaryNoReturned2111_();
+const both = ',' + R('K') + ',"<>Скасовано",' + R('K') + ',"<>Повернено")';
+check('summary without returned', [sum.formulas['6:2'], sum.formulas['15:4'], sum.formulas['23:3'], sum.formulas['16:4']],
+      ['=SUMIFS(' + R('J') + both, '=SUMIFS(' + R('J') + ',' + R('D') + ',A15' + both, '=SUMIFS(' + R('J') + ',' + R('E') + ',A23' + both,
+       '=МОЯ ФОРМУЛА']);
+store.SUM_NO_RETURN_2111 = null; ctx.summaryNoReturned2111_();
+check('second run does not double', sum.formulas['6:2'], '=SUMIFS(' + R('J') + both);
 console.log(bad ? 'FAILED ' + bad : 'OK');
 process.exit(bad ? 1 : 0);

@@ -21,7 +21,7 @@
  *      OFFICE_BOT_TOKEN → у новому боті натиснути «Start» → функція connectOfficeBot → «Виконати».
  */
 
-const VER_LEDGER = '2026-11-11b';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
+const VER_LEDGER = '2026-11-21a';   // версія файлу: сторож порівнює з GitHub і нагадує оновити (при зміні файлу — підняти)
 const LEDGER_TITLE = 'Облік перепродажу';
 const LEDGER_FIRST = 5;          // перший рядок даних в «Угоди»
 const EUR_FMT = '#,##0.00 "€";-#,##0.00 "€";"–"';
@@ -522,6 +522,7 @@ function processLedger() {
   try { photoRetry_(); } catch (e) { console.log('фото ще раз: ' + e); }
   try { summaryNoCancelled1011_(); } catch (e) { console.log('summaryNoCancelled1011_: ' + e); }
   try { moneyBlock1011_(); } catch (e) { console.log('moneyBlock1011_: ' + e); }
+  try { summaryNoReturned2111_(); } catch (e) { console.log('summaryNoReturned2111_: ' + e); }
   try { tidySheet1013_(); } catch (e) { console.log('tidySheet1013_: ' + e); }
   try { fix1103_(); fix1103b_(); fix1106_(); } catch (e) { console.log('fix1103_: ' + e); }
   try { assistConnect_(); } catch (e) { console.log('assistConnect_: ' + e); }
@@ -2921,7 +2922,7 @@ function moneyNow_(rows, exps, today) {
   const sold = rows.filter(function (r) { return r.status === 'Продано' && r.sprice != null; });
   const open = rows.filter(function (r) { return ['Продано', 'Повернено', 'Скасовано'].indexOf(r.status) < 0; });
   const received = sum(sold, function (r) { return r.net != null ? r.net : r.sprice; });
-  const bought = sum(rows.filter(function (r) { return r.status !== 'Скасовано'; }), function (r) { return r.spent; });
+  const bought = sum(rows.filter(function (r) { return ['Скасовано', 'Повернено'].indexOf(r.status) < 0; }), function (r) { return r.spent; });
   const month = sum(sold.filter(function (r) { return String(iso_(r.sdate)).slice(0, 7) === today.slice(0, 7); }),
     function (r) { return r.profit != null ? r.profit : r.sprice - (r.spent || 0); });
   return { cash: received - bought - sum(exps, function (x) { return x.amount; }), stock: sum(open, function (r) { return r.spent; }),
@@ -3221,7 +3222,7 @@ function ledgerSummary_(rows, exps) {
   const net = profit - expTotal;
   // 11.10: гроші загалом — отримано з продажів мінус усі купівлі (без скасованих) мінус витрати
   const received = sum(sold, function (r) { return r.net != null ? r.net : r.sprice; });
-  const bought = sum(rows.filter(function (r) { return r.status !== 'Скасовано'; }), function (r) { return r.spent; });
+  const bought = sum(rows.filter(function (r) { return ['Скасовано', 'Повернено'].indexOf(r.status) < 0; }), function (r) { return r.spent; });
   const stock = sum(open, function (r) { return r.spent; });
   const cash = received - bought - expTotal;
   // 24.10: як у ранковому огляді — словами («вкладено з кишені», «у товарі за ціною купівлі»)
@@ -3674,6 +3675,28 @@ function summaryNoCancelled1011_() {
   props.setProperty('SUM_NO_CANCEL_1011', '1');
 }
 
+/** 21.11 (користувач: «тобто зараз ми вийшли в 0 тільки?» — «Гроші зараз +10 €», а прибуток після витрат +246 €): купівлі
+ *  «Повернено» (товар повернули продавцю, гроші назад — як columbus-12) рахувались у «Витрачено», хоча вже не в товарі й не
+ *  продані. Один раз: у «Підсумку» «Витрачено» без «Скасовано» І без «Повернено» — загалом, за категоріями, за майданчиками. */
+function summaryNoReturned2111_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('SUM_NO_RETURN_2111') === '1') return;
+  const sum = ledger_().getSheetByName('Підсумок');
+  if (!sum) return;
+  const R = function (c) { return "'Угоди'!" + c + '5:' + c; };
+  const was = ',' + R('K') + ',"<>Скасовано"', now = was + ',' + R('K') + ',"<>Повернено"';
+  const cells = ['B6'];
+  for (let r = 15; r <= 19; r++) cells.push('D' + r);
+  for (let r = 23; r <= 26; r++) cells.push('C' + r);
+  cells.forEach(function (a) {
+    const f = sum.getRange(a).getFormula();
+    if (f.indexOf(was) >= 0 && f.indexOf('Повернено') < 0) sum.getRange(a).setFormula(f.replace(was, now));
+  });
+  const lab = sum.createTextFinder ? sum.createTextFinder('Витрачено на купівлі (без скасованих), €').findNext() : null;
+  if (lab) lab.setValue('Витрачено на купівлі (без скасованих і повернених), €');
+  props.setProperty('SUM_NO_RETURN_2111', '1');
+}
+
 /** 11.10 (прохання користувача): у «Підсумку» — скільки ми зараз у плюсі чи мінусі загалом: отримано з продажів мінус
  *  усі купівлі (без скасованих) мінус витрати; і те саме з урахуванням товару на руках за ціною купівлі. Один раз, під усім. */
 const MONEY_FMT = '[Color10]+#,##0.00 "€";[Red]-#,##0.00 "€";0.00 "€"';
@@ -3687,7 +3710,7 @@ function moneyBlock1011_() {
   sum.getRange(r, 1).setValue('💶 Гроші загалом').setFontWeight('bold').setFontSize(12);
   const rows = [
     ['Отримано з продажів (чистими, після пересилки й пакування), €', '=B8', EUR_FMT],
-    ['Витрачено на купівлі (без скасованих), €', '=B6', EUR_FMT],
+    ['Витрачено на купівлі (без скасованих і повернених), €', '=B6', EUR_FMT],
     ['Витрати (обладнання, пакування, пересилка), €', "=IFERROR(SUM('" + EXP_SHEET + "'!C" + EXP_FIRST + ':C),0)', EUR_FMT],
     ['Гроші зараз: плюс чи мінус, €', '=B' + (r + 1) + '-B' + (r + 2) + '-B' + (r + 3), MONEY_FMT],
     ['Товар на руках (за ціною купівлі), €', '=B7', EUR_FMT],
