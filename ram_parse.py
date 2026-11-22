@@ -313,6 +313,11 @@ def parse_title(title: str):
     total, mods, why = parse_capacity(t)
     if total is None:
         return None, why
+    # 22.11 (eBay 147692997725 «G.SKILL Ripjaws S5 32GB (1x16GB)» за 160 € — бот: «БЕРИ, одна планка 32 ГБ»): «32GB» — об'єм
+    # набору, з якого планка, а «1x16GB» — що продають. Також «1x16GB Riegel aus 2x16 Kit».
+    one = re.search(r"(?<![\d.])1\s*x\s*(\d{1,3})\s?gb", t)
+    if one and int(one.group(1)) < total and (mods == 1 or re.search(r"1\s*x\s*\d{1,3}\s?gb[^,;|]{0,30}\b(?:aus|von|from)\b", t)):
+        total, mods = int(one.group(1)), 1
     ecc = bool(re.search(r"(?<!non[- ])(?<!non)\becc\b", t))
     ecc_udimm = bool(ECC_UDIMM.search(t)) and not RDIMM_STRICT.search(t)
     ecc = ecc or ecc_udimm

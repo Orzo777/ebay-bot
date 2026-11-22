@@ -30,6 +30,10 @@ class ParseTitleTests(unittest.TestCase):
     def test_conflicting_capacity_is_rejected_not_guessed(self):
         self.assertIn("суперечливі", P("64GB Kit (2x16GB) DDR4 3200"))          # 64 ≠ 2×16
         self.assertEqual(P("16GB (2x8GB) DDR4 3200")["total"], 16)              # консистентно — ок
+        # 22.11: «32GB (1x16GB)» — планка з набору 2×16: продають ОДНУ на 16 ГБ (eBay 147692997725, бот казав «БЕРИ 1×32»)
+        for t in ("G.SKILL Ripjaws S5 32GB (1x16GB) DDR5-5200 PC5-41600 DIMM RAM", "32GB DDR5 1x16GB Riegel aus 2x16 Kit"):
+            self.assertEqual((P(t)["total"], P(t)["modules"]), (16, 1), t)
+        self.assertEqual(P("Kingston FURY Beast 32GB DDR5 DIMM 1x32GB")["total"], 32)
 
     def test_form_factor(self):
         self.assertEqual(P("Samsung 16GB DDR4 SODIMM 2666 Laptop")["form"], "sodimm")
