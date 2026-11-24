@@ -91,11 +91,16 @@ def update(data: dict, fetch, today: str) -> int:
 
 def risers(data: dict, today: str, min_days: int = 10, max_days: int = 24, th: float = RISE) -> list[tuple]:
     """→ [(назва, +частка, p25 зараз, p25 тоді, днів)] — p25 оголошень виріс ≥ th за 10–24 дні (найстаріший замір у вікні)."""
-    out, t = [], date.fromisoformat(today)
+    out = []
     for name, h in ((data.get("shortage") or {}).get("hist") or {}).items():
         if len(h) < 2:
             continue
         now = h[-1]
+        # 23.11: «зараз» — лише свіжий замір (товар міг випасти із заміру: RTX 4070 Super 09.11 показувався як «+26% за 20 дн.»,
+        # хоча між замірами було 6 днів), а вікно 10–24 дні рахуємо від дати цього заміру
+        t = date.fromisoformat(now[0])
+        if (date.fromisoformat(today) - t).days > EVERY_DAYS + 3:
+            continue
         old = [x for x in h[:-1] if min_days <= (t - date.fromisoformat(x[0])).days <= max_days]
         if not old:
             continue

@@ -357,6 +357,10 @@ class ShortageTest(unittest.TestCase):
         text = "\n".join(sw.lines(data, "2026-10-24"))
         self.assertIn("PS5 Pro: <b>+20%</b> (900 → 1080 € за 14 дн.)", text)
         self.assertNotIn("Steam Deck", text)
+        # 23.11: товар без свіжого заміру (останній 14 дн. тому) — не «дорожчає»; вікно рахується від дати заміру
+        data["shortage"]["hist"]["RTX 4070 Super"] = [["2026-10-03", 680, 729, 8], ["2026-10-09", 857, 879, 6]]
+        r = sw.risers(data, "2026-10-26")
+        self.assertEqual([(x[0], x[4]) for x in r], [("PS5 Pro", 14)])
         self.assertIn("збирає базу", sw.lines({"shortage": {"hist": {"X": [["2026-10-10", 1, 1, 9]]}}}, "2026-10-12")[0])
 
 
