@@ -938,9 +938,21 @@ def price_refresh_check(state: dict, now: datetime, updated_fn=_prices_updated, 
     return code == 204
 
 
-def ka_dispatch_check(state: dict, now: datetime, send=health.office_send, last_fn=_last_ka_dispatch):
+def _check_age() -> int | None:
+    """Скільки хвилин тому check() в Apps Script востаннє успішно шукав у Gmail (зашифрований запит «health»; None — не знаємо)."""
+    import as_health
+    key = os.getenv("OFFICE_BOT_TOKEN", "")
+    url = key and as_health.webapp_url(key)
+    res = url and as_health.ask(url, key, heal=False)
+    age = (res or {}).get("check", -1)
+    return age if isinstance(age, int) and age >= 0 else None
+
+
+def ka_dispatch_check(state: dict, now: datetime, send=health.office_send, last_fn=_last_ka_dispatch, age_fn=_check_age):
     """Незалежно від Apps Script: вдень >3 год без запуску KA-пошти від Apps Script — сигнал (01.10: Gmail-ліміт
-    Google вимкнув check() з 5:00 до вечора, сторож в Apps Script теж не зміг попередити)."""
+    Google вимкнув check() з 5:00 до вечора, сторож в Apps Script теж не зміг попередити).
+    28.11: хибна тривога «9 год не запускав» — check працював щохвилини, просто з півночі не прийшло жодного листа KA
+    (запуск буває лише на новий лист). Тож перед тривогою питаємо сам Apps Script: check свіжий — листів просто не було."""
     try:
         last = last_fn()
     except Exception as e:
@@ -952,6 +964,14 @@ def ka_dispatch_check(state: dict, now: datetime, send=health.office_send, last_
     seen = state.get("ka_gap_seen", 0) + 1 if hours > 3 else 0
     state["ka_gap_seen"] = seen
     if seen >= 2:   # підтверджено дві перевірки поспіль (~2 год), а не один дивний відповідь API
+        try:
+            age = age_fn()
+        except Exception as e:
+            print(f"   [сторож] стан Apps Script: {e.__class__.__name__}")
+            age = None
+        if age is not None and age <= 15:
+            print(f"   [сторож] {hours:.0f} год без запусків KA-пошти, але check працює ({age} хв тому) — нових листів KA не було")
+            return
         health.alert(state, "ka_dispatch", f"⛔ Apps Script уже {hours:.0f} год не запускав обробку листів Kleinanzeigen. "
                      "Картки з KA приходитимуть пачками із запізненням (запасний запуск GitHub — раз на кілька годин). "
                      "Apps Script → «Виконання»: чи працює check і чи немає помилок.", 6, now, send)

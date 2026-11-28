@@ -79,8 +79,14 @@ class EbayWatchHealthTest(unittest.TestCase):
         ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(minutes=2))
         ebay_watch.ka_dispatch_check(st, day, sent.append, lambda: day - timedelta(hours=5))
         self.assertEqual(sent, [])                       # між ними був свіжий запуск — лічильник скинувся
-        ebay_watch.ka_dispatch_check(st, day + timedelta(hours=1), sent.append, lambda: day - timedelta(hours=5))
-        self.assertEqual(len(sent), 1)                   # дві перевірки поспіль — тривога
+        # 28.11: check у Apps Script свіжий (2 хв) — листів KA просто не було, не тривога
+        ebay_watch.ka_dispatch_check(st, day + timedelta(hours=1), sent.append, lambda: day - timedelta(hours=5), lambda: 2)
+        self.assertEqual(sent, [])
+        ebay_watch.ka_dispatch_check(st, day + timedelta(hours=1), sent.append, lambda: day - timedelta(hours=5), lambda: None)
+        self.assertEqual(len(sent), 1)                   # дві перевірки поспіль, стан Apps Script невідомий — тривога
+        st3, sent3 = {"ka_gap_seen": 1}, []
+        ebay_watch.ka_dispatch_check(st3, day, sent3.append, lambda: day - timedelta(hours=5), lambda: 540)
+        self.assertEqual(len(sent3), 1)                  # check сам стоїть 9 год — справжня тривога
         self.assertIn("6 год", sent[0])
         st2, sent2 = {}, []
         night = datetime(2026, 10, 1, 2, 0, tzinfo=timezone.utc)
